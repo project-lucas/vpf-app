@@ -140,25 +140,82 @@ export function HeroBlock({
 }) {
   return (
     <div className={`rounded-lg bg-ink p-1.5 ${className}`}>
-      <div className="rounded-md border border-warm/30 px-5 py-4">{children}</div>
+      <div className="relative overflow-hidden rounded-md border border-warm/30 px-5 py-4">
+        <CourtBackdrop />
+        <div className="relative z-10">{children}</div>
+      </div>
     </div>
   );
 }
 
-/** Case statistique : bordure navy, gros chiffre block, label mono. */
+/** Terrain de basket rétro complet (vue de dessus), tracé en lignes crème
+ *  discrètes et symétriques : deux paniers, raquettes, arcs à 3 points, ligne
+ *  et rond central. Fond décoratif du bloc « Points par match ». */
+function CourtBackdrop() {
+  return (
+    <svg
+      aria-hidden
+      viewBox="0 0 480 150"
+      preserveAspectRatio="xMidYMid slice"
+      className="pointer-events-none absolute inset-0 h-full w-full text-warm/30"
+    >
+      <g
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        vectorEffect="non-scaling-stroke"
+      >
+        {/* Ligne médiane + rond central */}
+        <line x1="240" y1="8" x2="240" y2="142" />
+        <circle cx="240" cy="75" r="30" />
+
+        {/* --- Côté gauche : raquette, cercle LF, arc 3 pts, panier --- */}
+        <rect x="6" y="49" width="80" height="52" />
+        <path d="M86 49 A26 26 0 0 1 86 101" />
+        <path d="M6 20 L44 20 A152 152 0 0 1 44 130 L6 130" />
+        <line x1="15" y1="63" x2="15" y2="87" strokeWidth="2.4" />
+        <circle cx="23" cy="75" r="6" />
+
+        {/* --- Côté droit : miroir --- */}
+        <rect x="394" y="49" width="80" height="52" />
+        <path d="M394 49 A26 26 0 0 0 394 101" />
+        <path d="M474 20 L436 20 A152 152 0 0 0 436 130 L474 130" />
+        <line x1="465" y1="63" x2="465" y2="87" strokeWidth="2.4" />
+        <circle cx="457" cy="75" r="6" />
+      </g>
+    </svg>
+  );
+}
+
+/** Case statistique : bordure navy, gros chiffre block, label mono.
+ *  `tone` colore le cadre : "technique" (navy) / "physique" (rouge brique) —
+ *  le texte reste toujours lisible (chiffre + label passent en crème). */
 export function StatBox({
   value,
   label,
   accent = false,
+  tone = "default",
 }: {
   value: ReactNode;
   label: ReactNode;
   accent?: boolean;
+  tone?: "default" | "technique" | "physique";
 }) {
+  const toned = tone !== "default";
+  const box =
+    tone === "technique"
+      ? "border-ink bg-ink"
+      : tone === "physique"
+        ? "border-[#7d2118] bg-orange"
+        : "border-ink bg-card";
+  const valueColor = toned ? "text-paper" : accent ? "text-orange" : "text-ink";
+  const labelColor = toned ? "text-paper/80" : "text-meta";
   return (
-    <div className="rounded-md border-2 border-ink bg-card px-2 py-3 text-center">
-      <p className={`ed-value text-[26px] ${accent ? "text-orange" : "text-ink"}`}>{value}</p>
-      <p className="ed-meta mt-1.5 text-[8px] text-meta">{label}</p>
+    <div className={`rounded-md border-2 px-2 py-3 text-center ${box}`}>
+      <p className={`ed-value text-[26px] ${valueColor}`}>{value}</p>
+      <p className={`ed-meta mt-1.5 text-[8px] ${labelColor}`}>{label}</p>
     </div>
   );
 }

@@ -117,7 +117,7 @@ export function StatsTabs({
         {(
           [
             { key: "growth", label: "Croissance" },
-            { key: "radar", label: "Profil joueur" },
+            { key: "radar", label: "Graphique Radar" },
           ] as const
         ).map((t) => (
           <button

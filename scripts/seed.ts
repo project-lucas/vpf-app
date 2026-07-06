@@ -231,9 +231,32 @@ async function main() {
       .select("id", { count: "exact", head: true })
       .eq("player_id", playerId);
     if ((statCount ?? 0) === 0) {
+      // feuilles de démo cohérentes : points = 3×3pts + 2×2pts + LF, tirs réussis = 3pts + 2pts
+      const match = (
+        match_date: string,
+        is_starter: boolean,
+        minutes: number,
+        threes: number,
+        twosIn: number,
+        twosOut: number,
+        ft: number,
+        fouls: number
+      ) => ({
+        player_id: playerId,
+        match_date,
+        is_starter,
+        minutes,
+        threes_made: threes,
+        twos_inside_made: twosIn,
+        twos_outside_made: twosOut,
+        free_throws_made: ft,
+        fouls,
+        shots_made: threes + twosIn + twosOut,
+        points: 3 * threes + 2 * (twosIn + twosOut) + ft,
+      });
       await admin.from("match_stats").insert([
-        { player_id: playerId, match_date: addDays(weekStart, -6), points: 8 + i * 2, minutes: 22 + i, rebounds: 4 + i, steals: 1 },
-        { player_id: playerId, match_date: addDays(weekStart, -13), points: 12 + i, minutes: 25, rebounds: 3, steals: 2 },
+        match(addDays(weekStart, -6), true, 22 + i, 1 + (i % 2), 2 + i, 1, 2, 2),
+        match(addDays(weekStart, -13), i % 2 === 0, 25, 2, 3, 1, 1, 3),
       ]);
     }
 

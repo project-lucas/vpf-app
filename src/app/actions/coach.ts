@@ -107,6 +107,17 @@ export async function assignSession(
   if (!user) return { ok: false, error: "Session expirée." };
 
   for (const playerId of playerIds) {
+    // anti-doublon : si la séance est déjà affectée et active pour ce joueur,
+    // on ne recrée pas de ligne (double-clic ou ré-affectation).
+    const { data: already } = await supabase
+      .from("session_assignments")
+      .select("id")
+      .eq("player_id", playerId)
+      .eq("session_id", sessionId)
+      .is("removed_at", null)
+      .maybeSingle();
+    if (already) continue;
+
     const { data: maxRow } = await supabase
       .from("session_assignments")
       .select("order_index")

@@ -6,7 +6,6 @@ import { CheckinModal } from "@/components/CheckinModal";
 import { PushPrompt } from "@/components/PushPrompt";
 import { InstallPrompt } from "@/components/InstallPrompt";
 import {
-  BallIcon,
   CalendarIcon,
   ChartIcon,
   UserIcon,
@@ -59,7 +58,9 @@ export default async function PlayerLayout({ children }: { children: React.React
       <BottomNav
         variant="editorial"
         items={[
-          { href: "/seances", label: "Séances", icon: <BallIcon size={22} /> },
+          // Onglet « Séances » temporairement caché (à réactiver plus tard) —
+          // la route /seances reste accessible, seul l'onglet est masqué.
+          // { href: "/seances", label: "Séances", icon: <BallIcon size={22} /> },
           { href: "/planning", label: "Planning", icon: <CalendarIcon size={22} /> },
           { href: "/dashboard", label: "Dashboard", icon: <ChartIcon size={22} /> },
           { href: "/parametres", label: "Profil", icon: <UserIcon size={22} /> },

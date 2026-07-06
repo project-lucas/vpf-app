@@ -1,17 +1,14 @@
 import Link from "next/link";
-import { Dumbbell, TrendingUp } from "lucide-react";
+import { TrendingUp } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
-import { addDays, currentWeekStart, formatDateFr, parisNow, weekStartOf } from "@/lib/dates";
-import { currentStreak } from "@/lib/discipline";
-import { DEFAULT_EVENT_MINUTES, EVENT_TYPES, WORK_EVENT_TYPES } from "@/lib/constants";
+import { addDays, currentWeekStart, formatDateFr, parisNow } from "@/lib/dates";
+import { EVENT_TYPES } from "@/lib/constants";
 import {
   computeBadges,
   computeMatchRecords,
   computeXp,
   longestRun,
-  twosOf,
 } from "@/lib/gamification";
-import { CountUp } from "@/components/ui/CountUp";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { BallIcon } from "@/components/icons";
 import {
@@ -21,14 +18,11 @@ import {
   DoubleRule,
   SectionHead,
   Badge,
-  HeroBlock,
-  StatBox,
-  XpBar,
-  TrophyChip,
 } from "@/components/editorial/primitives";
 import { HabitsManager } from "@/components/habits/HabitsManager";
 import { GamificationCard } from "@/components/gamification/GamificationCard";
 import { HonorBoard } from "@/components/gamification/HonorBoard";
+import { ScoreBoard } from "./ScoreBoard";
 import { AddMatchButton } from "./AddMatchButton";
 import { WeekSummaryCard } from "./WeekSummaryCard";
 import { DashboardSections, StatsTabs } from "./DashboardSections";
@@ -36,7 +30,6 @@ import { PlayerRadar } from "./PlayerRadar";
 import { ProgressChart, type ProgressPoint } from "./ProgressChart";
 import { MatchList, type MatchRow } from "./MatchList";
 import { ActivityTrackerCard } from "./ActivityTrackerCard";
-import { WeeklyReviewCard } from "./WeeklyReviewCard";
 import type { EventType, Habit, HabitWithChecks, MatchStat } from "@/lib/types";
 
 export const metadata = { title: "Dashboard — VPF" };
@@ -69,7 +62,6 @@ export default async function DashboardPage({
   const [
     { data: completions },
     { data: stats },
-    { data: review },
     { data: player },
     { data: habits },
     { data: allChecks },
@@ -87,12 +79,6 @@ export default async function DashboardPage({
       .select("*")
       .eq("player_id", user.id)
       .order("match_date", { ascending: false }),
-    supabase
-      .from("weekly_reviews")
-      .select("went_well, to_improve")
-      .eq("player_id", user.id)
-      .eq("week_start", weekStart)
-      .maybeSingle(),
     supabase
       .from("players")
       .select("season_goal, position, club")
@@ -129,11 +115,16 @@ export default async function DashboardPage({
   const allCompletions = completions ?? [];
   const matchStats = (stats ?? []) as MatchStat[];
 
-  const streak = currentStreak(allCompletions);
 
   const avgPoints =
     matchStats.length > 0
       ? matchStats.reduce((sum, s) => sum + s.points, 0) / matchStats.length
+      : null;
+
+  // Temps de jeu moyen (minutes par match) — issu de l'historique des feuilles de match
+  const avgMinutes =
+    matchStats.length > 0
+      ? matchStats.reduce((sum, s) => sum + s.minutes, 0) / matchStats.length
       : null;
 
   // ---- Match record (badge "Record" dans la liste) : parcours chronologique
@@ -149,8 +140,11 @@ export default async function DashboardPage({
   const radarMatches = matchStats.map((s) => ({
     points: s.points,
     minutes: s.minutes,
-    rebounds: s.rebounds,
-    steals: s.steals,
+    threes_made: s.threes_made,
+    twos_inside_made: s.twos_inside_made,
+    twos_outside_made: s.twos_outside_made,
+    free_throws_made: s.free_throws_made,
+    fouls: s.fouls,
   }));
   // ---- Suivi automatique des activités planifiées : dès qu'un type
   // d'événement est au planning, sa carte apparaît dans la section Habitudes,
@@ -192,28 +186,6 @@ export default async function DashboardPage({
     };
   });
 
-  // ---- Temps de travail hebdo : moyenne d'heures consacrées à la progression
-  // (entraînements club, séances technique/physique, routines). On utilise la
-  // durée réelle figée au pointage (fallback : durée par défaut du type) et la
-  // durée réelle des séances de la bibliothèque. École, sommeil et nutrition
-  // ne comptent pas. ----
-  const progressDates: string[] = [];
-  let totalProgressMinutes = 0;
-  for (const c of allCompletions) {
-    if (c.status !== "done") continue;
-    if (!WORK_EVENT_TYPES.has(c.event_type as EventType)) continue;
-    totalProgressMinutes += c.duration_minutes ?? DEFAULT_EVENT_MINUTES[c.event_type as EventType];
-    progressDates.push(addDays(c.week_start, c.weekday - 1));
-  }
-  for (const s of sessionRows) {
-    totalProgressMinutes += s.durationMinutes;
-    progressDates.push(parisNow(new Date(s.updated_at)).date);
-  }
-  // moyenne sur chacune de ses semaines d'activité : on ne divise que par les
-  // semaines où il a agi — les semaines vides ne diluent pas la moyenne
-  const activeWeeks = new Set(progressDates.map((d) => weekStartOf(d)));
-  const avgWeeklyMinutes = activeWeeks.size ? totalProgressMinutes / activeWeeks.size : 0;
-
   // ---- Totaux carrière (style Call of) : tout ce qui a été validé depuis
   // le début, séances de la bibliothèque + événements du planning ----
   const TECH_EVENTS = new Set(["entrainement_club", "training_basket"]);
@@ -249,8 +221,8 @@ export default async function DashboardPage({
     sessionsDone: sessionRows.length,
     habitChecks: allHabitChecks.length,
     eventsDone: doneEvents.length,
-    hasDoubleDouble: matchStats.some((m) => m.points >= 10 && m.rebounds >= 10),
-    bestThreesInMatch: Math.max(0, ...matchStats.map((m) => m.threes_made ?? 0)),
+    hasBigGame: matchStats.some((m) => m.points >= 20),
+    bestThreesInMatch: Math.max(0, ...matchStats.map((m) => m.threes_made)),
     level: xp.level,
   });
 
@@ -261,22 +233,6 @@ export default async function DashboardPage({
   ).length;
   const lastWeekSummary =
     (summaries ?? []).find((s) => s.week_start === addDays(weekStart, -7)) ?? null;
-
-  // ---- Adresse carrière : tous les tirs renseignés, cumulés ----
-  const careerShooting = matchStats.reduce(
-    (acc, m) => {
-      if (m.shots_made != null && m.shots_attempted != null) {
-        acc.fgMade += m.shots_made;
-        acc.fgAttempted += m.shots_attempted;
-      }
-      if (m.threes_made != null && m.threes_attempted != null) {
-        acc.threeMade += m.threes_made;
-        acc.threeAttempted += m.threes_attempted;
-      }
-      return acc;
-    },
-    { fgMade: 0, fgAttempted: 0, threeMade: 0, threeAttempted: 0 }
-  );
 
   // ---- Courbe de croissance : XP cumulés JOUR PAR JOUR, par dimension.
   // Chaque action validée pose un point le jour même ; le scoring d'un match
@@ -312,23 +268,24 @@ export default async function DashboardPage({
   {
     const maxes: Record<string, number | null> = {
       points: null,
-      twos: null,
+      shots: null,
       threes: null,
-      rebounds: null,
-      steals: null,
+      twosInside: null,
+      twosOutside: null,
+      freeThrows: null,
     };
     for (const m of [...matchStats].reverse()) {
-      const values: Record<string, number | null> = {
+      const values: Record<string, number> = {
         points: m.points,
-        twos: twosOf(m),
+        shots: m.shots_made,
         threes: m.threes_made,
-        rebounds: m.rebounds,
-        steals: m.steals,
+        twosInside: m.twos_inside_made,
+        twosOutside: m.twos_outside_made,
+        freeThrows: m.free_throws_made,
       };
       let beaten = false;
       for (const key of Object.keys(values)) {
         const value = values[key];
-        if (value == null) continue;
         if (maxes[key] !== null && value > maxes[key]!) beaten = true;
         if (maxes[key] === null || value > maxes[key]!) maxes[key] = value;
       }
@@ -370,18 +327,12 @@ export default async function DashboardPage({
     return {
       id: s.id,
       dateLabel: formatDateFr(s.match_date),
+      isStarter: s.is_starter,
       minutes: s.minutes,
-      rebounds: s.rebounds,
-      steals: s.steals,
       points: s.points,
-      shots:
-        s.shots_made != null && s.shots_attempted != null
-          ? { made: s.shots_made, attempted: s.shots_attempted }
-          : null,
-      threes:
-        s.threes_made != null && s.threes_attempted != null
-          ? { made: s.threes_made, attempted: s.threes_attempted }
-          : null,
+      threes: s.threes_made,
+      twos: s.twos_inside_made + s.twos_outside_made,
+      freeThrows: s.free_throws_made,
       delta: prev ? s.points - prev.points : null,
       isRecord: maxPointsMatch?.id === s.id,
     };
@@ -401,14 +352,6 @@ export default async function DashboardPage({
   const metaParts = [player?.position, player?.club, `Niv.${xp.level}`].filter(
     Boolean
   ) as string[];
-  const findBadge = (key: string) => badges.find((b) => b.key === key);
-  const earnedBadges = badges.filter((b) => b.earned).length;
-  const chips = [
-    { badge: findBadge("premier-match"), label: "1er match" },
-    { badge: findBadge("matchs-5"), label: "5 matchs" },
-    { badge: findBadge("serie-7"), label: "Série 7" },
-  ];
-
   return (
     <>
       {/* En-tête : écusson + surtitre saison + nom serif */}
@@ -436,43 +379,13 @@ export default async function DashboardPage({
         </div>
       )}
 
-      {/* Points par match : bloc héros navy, la métrique reine */}
-      <HeroBlock className="mt-5">
-        <div className="text-center">
-          <p className="ed-value text-[68px] text-paper">
-            {avgPoints !== null ? avgPoints.toFixed(1) : "—"}
-          </p>
-          <p className="ed-overline mt-1 text-warm">Points par match</p>
-        </div>
-      </HeroBlock>
-
-      {/* 3 indicateurs clés */}
-      <div className="mt-4 grid grid-cols-3 gap-2.5">
-        <StatBox value={`${streak} J`} label="Série" />
-        <StatBox value={formatWeeklyTime(avgWeeklyMinutes)} label="Temps/sem" />
-        <StatBox value={`${weekDoneCount}/${weekPlannedCount}`} label="Séances" />
-      </div>
-
-      {/* Progression XP */}
-      <XpBar className="mt-5" value={xp.levelXp} max={xp.levelTarget} />
-
-      {/* Trophées phares */}
-      <div className="mt-4 grid grid-cols-4 gap-2">
-        {chips.map((c) => (
-          <TrophyChip
-            key={c.label}
-            label={c.label}
-            unlocked={Boolean(c.badge?.earned)}
-            value={c.badge?.progress?.current ?? "•"}
-          />
-        ))}
-        <TrophyChip label="Trophées" unlocked={earnedBadges > 0} value={`${earnedBadges}/16`} />
-      </div>
-
-      {/* Feuille de match : saisie d'un nouveau match */}
-      <div className="mt-5">
-        <AddMatchButton records={records} variant="cta" />
-      </div>
+      {/* Tableau d'affichage vintage : moyenne de points (cartons à volet) + bandeau stats */}
+      <ScoreBoard
+        average={avgPoints}
+        technique={totalTechnique}
+        jeuMoy={avgMinutes}
+        physique={totalPhysique}
+      />
 
       <SectionHead className="mb-4 mt-8">Analyse détaillée</SectionHead>
 
@@ -491,19 +404,6 @@ export default async function DashboardPage({
                   : null
               }
             />
-            {/* Totaux carrière : les compteurs à vie, façon Call of */}
-            <div className="mb-4 grid grid-cols-2 gap-2">
-              <CareerTotal
-                label="Séances techniques"
-                value={totalTechnique}
-                icon={<BallIcon size={16} />}
-              />
-              <CareerTotal
-                label="Séances physiques"
-                value={totalPhysique}
-                icon={<Dumbbell size={16} strokeWidth={2.2} />}
-              />
-            </div>
             <GamificationCard xp={xp} badges={badges} storageScope={user.id} />
           </>
         }
@@ -549,7 +449,7 @@ export default async function DashboardPage({
             }
           />
         }
-        records={<HonorBoard records={records} shooting={careerShooting} />}
+        records={<HonorBoard records={records} />}
         matchs={
           <>
             <div className="mb-3 flex items-center justify-between gap-3">
@@ -598,15 +498,6 @@ export default async function DashboardPage({
             )}
 
             <HabitsManager habits={habitsWithChecks} today={today} />
-
-            <div className="my-4 border-t border-hair" />
-
-            {/* Bilan hebdomadaire, replié par défaut */}
-            <WeeklyReviewCard
-              hasReview={Boolean(review)}
-              initialWentWell={review?.went_well ?? ""}
-              initialToImprove={review?.to_improve ?? ""}
-            />
           </>
         }
       />
@@ -614,33 +505,3 @@ export default async function DashboardPage({
   );
 }
 
-/** Compteur carrière : total à vie sur fond navy, gros chiffre doré. */
-function CareerTotal({
-  label,
-  value,
-  icon,
-}: {
-  label: string;
-  value: number;
-  icon: React.ReactNode;
-}) {
-  return (
-    <div className="rounded-md border-2 border-ink bg-ink px-3 py-3 text-center">
-      <p className="ed-value flex items-center justify-center gap-1.5 text-[30px] text-warm">
-        {icon}
-        <CountUp value={value} />
-      </p>
-      <p className="ed-meta mt-1.5 text-[8px] text-paper/70">{label}</p>
-    </div>
-  );
-}
-
-/** Temps hebdo formaté pour la tuile KPI : « 5 h », « 4h30 », ou « — » si trop peu. */
-function formatWeeklyTime(min: number): string {
-  if (min < 20) return "—";
-  const halves = Math.max(1, Math.round(min / 30));
-  const h = Math.floor(halves / 2);
-  const half = halves % 2;
-  if (h < 1) return "30 min";
-  return half ? `${h}h30` : `${h} h`;
-}

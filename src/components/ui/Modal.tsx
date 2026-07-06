@@ -22,6 +22,11 @@ export function Modal({
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
+  // onClose est presque toujours une fonction inline (identité changeante à
+  // chaque rendu du parent) : on la lit via une ref pour NE PAS relancer l'effet
+  // à chaque frappe (sinon le focus est volé du champ vers le bouton Fermer).
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   useEffect(() => {
     if (!open) return;
@@ -40,7 +45,7 @@ export function Modal({
 
     function onKeyDown(e: KeyboardEvent) {
       if (e.key === "Escape") {
-        onClose?.();
+        onCloseRef.current?.();
         return;
       }
       // piège de focus : Tab boucle à l'intérieur du panneau
@@ -69,7 +74,7 @@ export function Modal({
       document.body.style.overflow = prevOverflow;
       trigger?.focus?.();
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open || typeof document === "undefined") return null;
 

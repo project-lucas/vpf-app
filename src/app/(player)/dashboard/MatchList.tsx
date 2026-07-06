@@ -6,14 +6,13 @@ import { ArrowDownIcon, ArrowUpIcon, TrophyIcon } from "@/components/icons";
 export interface MatchRow {
   id: string;
   dateLabel: string;
+  isStarter: boolean;
   minutes: number;
-  rebounds: number;
-  steals: number;
   points: number;
-  /** tirs réussis/tentés, null si non renseignés à la saisie */
-  shots: { made: number; attempted: number } | null;
-  /** 3 pts réussis/tentés, null si non renseignés à la saisie */
-  threes: { made: number; attempted: number } | null;
+  threes: number;
+  /** 2 pts réussis (intérieur + extérieur) */
+  twos: number;
+  freeThrows: number;
   /** écart de points vs le match précédent ; null pour le tout premier match */
   delta: number | null;
   isRecord: boolean;
@@ -42,21 +41,26 @@ export function MatchList({ rows }: { rows: MatchRow[] }) {
                 <span className="rounded-full bg-ink/10 px-2 py-0.5 text-[11px] font-medium text-meta">
                   {r.minutes} min
                 </span>
-                <span className="rounded-full bg-ink/10 px-2 py-0.5 text-[11px] font-medium text-meta">
-                  {r.rebounds} rbds
+                <span
+                  className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                    r.isStarter ? "bg-ink text-paper" : "bg-ink/10 text-meta"
+                  }`}
+                >
+                  {r.isStarter ? "Titulaire" : "Remplaçant"}
                 </span>
-                <span className="rounded-full bg-ink/10 px-2 py-0.5 text-[11px] font-medium text-meta">
-                  {r.steals} int.
-                </span>
-                {r.shots && r.shots.attempted > 0 && (
+                {r.threes > 0 && (
                   <span className="rounded-full bg-warm/25 px-2 py-0.5 text-[11px] font-semibold text-orange">
-                    {r.shots.made}/{r.shots.attempted} tirs ·{" "}
-                    {Math.round((r.shots.made / r.shots.attempted) * 100)} %
+                    {r.threes} à 3 pts
                   </span>
                 )}
-                {r.threes && r.threes.attempted > 0 && (
-                  <span className="rounded-full bg-warm/25 px-2 py-0.5 text-[11px] font-semibold text-orange">
-                    {r.threes.made}/{r.threes.attempted} à 3 pts
+                {r.twos > 0 && (
+                  <span className="rounded-full bg-ink/10 px-2 py-0.5 text-[11px] font-medium text-meta">
+                    {r.twos} à 2 pts
+                  </span>
+                )}
+                {r.freeThrows > 0 && (
+                  <span className="rounded-full bg-ink/10 px-2 py-0.5 text-[11px] font-medium text-meta">
+                    {r.freeThrows} LF
                   </span>
                 )}
               </div>

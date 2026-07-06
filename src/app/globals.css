@@ -552,3 +552,139 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     animation: none;
   }
 }
+
+/* Score « panneau d'affichage » : ombre portée rétro + halo ambré qui respire. */
+@keyframes score-glow {
+  0%,
+  100% {
+    text-shadow:
+      0 3px 0 rgba(0, 0, 0, 0.35),
+      0 0 10px rgba(232, 168, 124, 0.15);
+  }
+  50% {
+    text-shadow:
+      0 3px 0 rgba(0, 0, 0, 0.35),
+      0 0 24px rgba(247, 169, 59, 0.55);
+  }
+}
+.animate-score-glow {
+  animation: score-glow 3.2s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-score-glow {
+    animation: none;
+    text-shadow: 0 3px 0 rgba(0, 0, 0, 0.35);
+  }
+}
+
+/* Éclair de série au repos : flicker électrique + halo qui palpite. */
+@keyframes zap-electric {
+  0%,
+  100% {
+    transform: scale(1) rotate(0deg);
+    filter: drop-shadow(0 0 2px rgba(232, 168, 124, 0.4));
+  }
+  6% {
+    transform: scale(1.1) rotate(-5deg);
+    filter: drop-shadow(0 0 9px rgba(247, 169, 59, 0.95));
+  }
+  12% {
+    transform: scale(1.02) rotate(4deg);
+    filter: drop-shadow(0 0 3px rgba(232, 168, 124, 0.5));
+  }
+  18% {
+    transform: scale(1.07) rotate(-2deg);
+    filter: drop-shadow(0 0 7px rgba(247, 169, 59, 0.8));
+  }
+  26% {
+    transform: scale(1) rotate(0deg);
+    filter: drop-shadow(0 0 2px rgba(232, 168, 124, 0.4));
+  }
+}
+.animate-zap-electric {
+  animation: zap-electric 3s ease-in-out infinite;
+  transform-origin: center;
+}
+
+/* Décharge : joue une fois quand le joueur gagne un jour de série. */
+@keyframes zap-strike {
+  0% {
+    transform: scale(1) rotate(0deg);
+    filter: drop-shadow(0 0 0 rgba(247, 169, 59, 0));
+  }
+  20% {
+    transform: scale(1.7) rotate(-14deg);
+    filter: drop-shadow(0 0 16px rgba(247, 169, 59, 1));
+  }
+  42% {
+    transform: scale(1.15) rotate(11deg);
+    filter: drop-shadow(0 0 7px rgba(247, 169, 59, 0.7));
+  }
+  62% {
+    transform: scale(1.5) rotate(-6deg);
+    filter: drop-shadow(0 0 20px rgba(247, 169, 59, 0.95));
+  }
+  100% {
+    transform: scale(1) rotate(0deg);
+    filter: drop-shadow(0 0 0 rgba(247, 169, 59, 0));
+  }
+}
+.animate-zap-strike {
+  animation: zap-strike 0.95s ease-out;
+  transform-origin: center;
+}
+
+/* Halo de décharge qui se propage derrière l'éclair quand la série monte. */
+@keyframes zap-ring {
+  0% {
+    transform: scale(0.4);
+    opacity: 0.7;
+  }
+  100% {
+    transform: scale(2.6);
+    opacity: 0;
+  }
+}
+.animate-zap-ring {
+  animation: zap-ring 0.95s ease-out forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-zap-electric,
+  .animate-zap-strike,
+  .animate-zap-ring {
+    animation: none;
+  }
+}
+
+/* Tableau d'affichage : fondu du chiffre (sert aussi de crossfade en
+   reduced-motion) + apparition d'un carton quand le nombre de chiffres change. */
+@keyframes sb-fade {
+  from {
+    opacity: 0.15;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.sb-digit {
+  animation: sb-fade 300ms ease-out;
+}
+@keyframes sb-card-enter {
+  from {
+    opacity: 0;
+    transform: scaleX(0.25);
+  }
+  to {
+    opacity: 1;
+    transform: scaleX(1);
+  }
+}
+.sb-card-enter {
+  animation: sb-card-enter 300ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .sb-card-enter {
+    animation: none;
+  }
+}

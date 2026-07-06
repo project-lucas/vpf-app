@@ -9,21 +9,22 @@ import { EdButton, EdField, EdTextarea } from "@/components/editorial/forms";
 export function WeeklyReviewForm({
   initialWentWell,
   initialToImprove,
+  onDone,
 }: {
   initialWentWell: string;
   initialToImprove: string;
+  /** appelé après un enregistrement réussi (ex. fermeture de la modale) */
+  onDone?: () => void;
 }) {
   const router = useRouter();
   const [wentWell, setWentWell] = useState(initialWentWell);
   const [toImprove, setToImprove] = useState(initialToImprove);
-  const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
-    setSaved(false);
     setLoading(true);
     const result = await submitWeeklyReview(wentWell, toImprove);
     setLoading(false);
@@ -31,8 +32,8 @@ export function WeeklyReviewForm({
       setError(result.error);
       return;
     }
-    setSaved(true);
     router.refresh();
+    onDone?.();
   }
 
   return (
@@ -52,13 +53,14 @@ export function WeeklyReviewForm({
         />
       </EdField>
       {error && <p className="text-sm font-medium text-orange">{error}</p>}
-      {saved && (
-        <p className="flex items-center gap-1 text-sm font-semibold text-ink">
-          <Check size={14} /> Bilan enregistré
-        </p>
-      )}
       <EdButton type="submit" full variant="navy" disabled={loading}>
-        {loading ? "Enregistrement…" : "Enregistrer mon bilan"}
+        {loading ? (
+          "Enregistrement…"
+        ) : (
+          <span className="inline-flex items-center gap-1.5">
+            <Check size={15} /> Enregistrer mon bilan
+          </span>
+        )}
       </EdButton>
     </form>
   );

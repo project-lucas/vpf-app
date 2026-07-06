@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { addMatchStat } from "@/app/actions/player";
-import { twosOf, type MatchRecords, type RecordKey } from "@/lib/gamification";
+import type { MatchRecords, RecordKey } from "@/lib/gamification";
 import { EdButton, EdField, EdInput } from "@/components/editorial/forms";
 
 export function MatchStatForm({
@@ -18,6 +18,7 @@ export function MatchStatForm({
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [isStarter, setIsStarter] = useState(true);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -31,21 +32,26 @@ export function MatchStatForm({
 
     setLoading(true);
     const fd = new FormData(e.currentTarget);
-    // champs de tir optionnels : vide = non renseigné
-    const numOrNull = (name: string) => {
-      const v = String(fd.get(name) ?? "");
-      return v === "" ? null : Number(v);
-    };
+    const num = (name: string) => Number(fd.get(name) ?? 0) || 0;
+
+    const threes_made = num("threes_made");
+    const twos_inside_made = num("twos_inside_made");
+    const twos_outside_made = num("twos_outside_made");
+    const free_throws_made = num("free_throws_made");
+
+    // valeurs calculées (affichées côté joueur, recalculées côté serveur)
+    const shots_made = threes_made + twos_inside_made + twos_outside_made;
+    const points = 3 * threes_made + 2 * (twos_inside_made + twos_outside_made) + free_throws_made;
+
     const data = {
       match_date: String(fd.get("match_date") ?? ""),
-      points: Number(fd.get("points")),
-      minutes: Number(fd.get("minutes")),
-      rebounds: Number(fd.get("rebounds")),
-      steals: Number(fd.get("steals")),
-      shots_attempted: numOrNull("shots_attempted"),
-      shots_made: numOrNull("shots_made"),
-      threes_attempted: numOrNull("threes_attempted"),
-      threes_made: numOrNull("threes_made"),
+      is_starter: isStarter,
+      minutes: num("minutes"),
+      threes_made,
+      twos_inside_made,
+      twos_outside_made,
+      free_throws_made,
+      fouls: num("fouls"),
     };
     const result = await addMatchStat(data);
     setLoading(false);
@@ -58,19 +64,22 @@ export function MatchStatForm({
     // records battus par ce match (seulement si un record existait déjà)
     const beaten: RecordKey[] = [];
     if (records) {
-      const twos = twosOf(data);
-      const beats = (key: RecordKey, value: number | null) => {
-        const record = records[key];
-        if (record && value != null && value > record.value) beaten.push(key);
+      const values: Record<RecordKey, number> = {
+        points,
+        shots: shots_made,
+        threes: threes_made,
+        twosInside: twos_inside_made,
+        twosOutside: twos_outside_made,
+        freeThrows: free_throws_made,
       };
-      beats("points", data.points);
-      beats("twos", twos);
-      beats("threes", data.threes_made);
-      beats("rebounds", data.rebounds);
-      beats("steals", data.steals);
+      (Object.keys(values) as RecordKey[]).forEach((key) => {
+        const record = records[key];
+        if (record && values[key] > record.value) beaten.push(key);
+      });
     }
 
     (e.target as HTMLFormElement).reset?.();
+    setIsStarter(true);
     router.refresh();
     onSuccess?.(beaten);
   }
@@ -80,35 +89,60 @@ export function MatchStatForm({
       <EdField label="Date du match">
         <EdInput name="match_date" type="date" required />
       </EdField>
+
+      {/* Titulaire oui / non */}
+      <div>
+        <p className="ed-overline mb-1.5">Titulaire</p>
+        <div className="flex gap-2">
+          {[
+            { label: "Oui", value: true },
+            { label: "Non", value: false },
+          ].map((opt) => (
+            <button
+              key={opt.label}
+              type="button"
+              onClick={() => {
+                setIsStarter(opt.value);
+                setConfirming(false);
+              }}
+              aria-pressed={isStarter === opt.value}
+              className={`flex-1 rounded-md border-2 py-2 text-sm font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange/40 ${
+                isStarter === opt.value
+                  ? "border-ink bg-ink text-paper"
+                  : "border-ink/30 bg-transparent text-muted"
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <div className="grid grid-cols-2 gap-3">
-        <EdField label="Points">
-          <EdInput name="points" type="number" min={0} max={200} required inputMode="numeric" />
-        </EdField>
-        <EdField label="Minutes jouées">
+        <EdField label="Temps de jeu (min)">
           <EdInput name="minutes" type="number" min={0} max={60} required inputMode="numeric" />
         </EdField>
-        <EdField label="Rebonds">
-          <EdInput name="rebounds" type="number" min={0} max={100} required inputMode="numeric" />
-        </EdField>
-        <EdField label="Interceptions">
-          <EdInput name="steals" type="number" min={0} max={100} required inputMode="numeric" />
+        <EdField label="Fautes">
+          <EdInput name="fouls" type="number" min={0} max={20} inputMode="numeric" />
         </EdField>
       </div>
-      <p className="ed-overline pt-1">Tirs — optionnel mais ton objectif de saison se joue là</p>
+
+      <p className="ed-overline pt-1">Tirs réussis — le scoring se calcule tout seul</p>
       <div className="grid grid-cols-2 gap-3">
-        <EdField label="Tirs tentés">
-          <EdInput name="shots_attempted" type="number" min={0} max={200} inputMode="numeric" />
+        <EdField label="2 pts intérieur">
+          <EdInput name="twos_inside_made" type="number" min={0} max={100} inputMode="numeric" />
         </EdField>
-        <EdField label="Tirs réussis">
-          <EdInput name="shots_made" type="number" min={0} max={200} inputMode="numeric" />
-        </EdField>
-        <EdField label="3 pts tentés">
-          <EdInput name="threes_attempted" type="number" min={0} max={100} inputMode="numeric" />
+        <EdField label="2 pts extérieur">
+          <EdInput name="twos_outside_made" type="number" min={0} max={100} inputMode="numeric" />
         </EdField>
         <EdField label="3 pts réussis">
           <EdInput name="threes_made" type="number" min={0} max={100} inputMode="numeric" />
         </EdField>
+        <EdField label="Lancers francs marqués">
+          <EdInput name="free_throws_made" type="number" min={0} max={100} inputMode="numeric" />
+        </EdField>
       </div>
+
       {error && <p className="ed-meta text-[11px] text-orange">{error}</p>}
       {confirming && (
         <p className="ed-meta rounded-md border-2 border-orange px-3 py-2 text-[10px] leading-relaxed text-orange">

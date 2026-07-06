@@ -6,17 +6,16 @@ import { currentWeekStart } from "@/lib/dates";
 import { PLAYER_CATEGORIES, POSITIONS } from "@/lib/constants";
 import type { ActionResult, CheckinQuestion } from "@/lib/types";
 
-/** Saisie d'une statistique match — immuable ensuite (aucune modification/suppression). */
+/** Saisie d'une feuille de match — immuable ensuite (aucune modification/suppression). */
 export async function addMatchStat(data: {
   match_date: string;
-  points: number;
+  is_starter: boolean;
   minutes: number;
-  rebounds: number;
-  steals: number;
-  shots_attempted?: number | null;
-  shots_made?: number | null;
-  threes_attempted?: number | null;
-  threes_made?: number | null;
+  threes_made: number;
+  twos_inside_made: number;
+  twos_outside_made: number;
+  free_throws_made: number;
+  fouls: number;
 }): Promise<ActionResult> {
   const supabase = await createClient();
   const {
@@ -24,42 +23,41 @@ export async function addMatchStat(data: {
   } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: "Session expirée." };
 
-  const nums = [data.points, data.minutes, data.rebounds, data.steals];
-  if (nums.some((n) => !Number.isInteger(n) || n < 0) || data.minutes > 60 || !data.match_date) {
+  const counts = [
+    data.minutes,
+    data.threes_made,
+    data.twos_inside_made,
+    data.twos_outside_made,
+    data.free_throws_made,
+    data.fouls,
+  ];
+  if (
+    !data.match_date ||
+    counts.some((n) => !Number.isInteger(n) || n < 0 || n > 200) ||
+    data.minutes > 60
+  ) {
     return { ok: false, error: "Valeurs invalides." };
   }
 
-  const shooting = [
-    data.shots_attempted,
-    data.shots_made,
-    data.threes_attempted,
-    data.threes_made,
-  ];
-  if (shooting.some((n) => n != null && (!Number.isInteger(n) || n < 0 || n > 200))) {
-    return { ok: false, error: "Valeurs de tir invalides." };
-  }
-  if (
-    (data.shots_made != null &&
-      data.shots_attempted != null &&
-      data.shots_made > data.shots_attempted) ||
-    (data.threes_made != null &&
-      data.threes_attempted != null &&
-      data.threes_made > data.threes_attempted)
-  ) {
-    return { ok: false, error: "Tirs réussis > tirs tentés : vérifie ta saisie." };
-  }
+  // Source de vérité : points et tirs réussis (hors LF) recalculés côté serveur.
+  const shots_made = data.threes_made + data.twos_inside_made + data.twos_outside_made;
+  const points =
+    3 * data.threes_made +
+    2 * (data.twos_inside_made + data.twos_outside_made) +
+    data.free_throws_made;
 
   const { error } = await supabase.from("match_stats").insert({
     player_id: user.id,
     match_date: data.match_date,
-    points: data.points,
+    is_starter: data.is_starter,
     minutes: data.minutes,
-    rebounds: data.rebounds,
-    steals: data.steals,
-    shots_attempted: data.shots_attempted ?? null,
-    shots_made: data.shots_made ?? null,
-    threes_attempted: data.threes_attempted ?? null,
-    threes_made: data.threes_made ?? null,
+    points,
+    shots_made,
+    threes_made: data.threes_made,
+    twos_inside_made: data.twos_inside_made,
+    twos_outside_made: data.twos_outside_made,
+    free_throws_made: data.free_throws_made,
+    fouls: data.fouls,
   });
   if (error) return { ok: false, error: "Enregistrement impossible." };
   revalidatePath("/dashboard");

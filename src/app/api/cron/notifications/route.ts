@@ -105,7 +105,7 @@ export async function GET(request: NextRequest) {
         await sendPushToUser(playerId, {
           title: "Ton bilan de la semaine 📝",
           body: "Qu'as-tu bien fait ? Que dois-tu améliorer ? 2 minutes suffisent.",
-          url: "/dashboard",
+          url: "/planning",
         });
         results.reviewReminders++;
       }

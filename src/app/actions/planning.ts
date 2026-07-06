@@ -25,6 +25,18 @@ export async function addPlannedEvent(
     return { ok: false, error: "Événement invalide." };
   }
   const supabase = await createClient();
+
+  // Règle : pas deux événements à la même heure le même jour.
+  const targetTime = event.event_time.slice(0, 5);
+  const { data: sameDay } = await supabase
+    .from("planned_events")
+    .select("event_time")
+    .eq("player_id", playerId)
+    .eq("weekday", event.weekday);
+  if ((sameDay ?? []).some((e) => String(e.event_time).slice(0, 5) === targetTime)) {
+    return { ok: false, error: "Un événement est déjà prévu à cette heure ce jour-là." };
+  }
+
   const { error } = await supabase.from("planned_events").insert({
     player_id: playerId,
     event_type: event.event_type,
@@ -54,6 +66,29 @@ export async function updatePlannedEvent(
     return { ok: false, error: "Durée invalide." };
   }
   const supabase = await createClient();
+
+  // Règle anti-doublon horaire si l'heure ou le jour change.
+  if (fields.weekday !== undefined || fields.event_time !== undefined) {
+    const { data: current } = await supabase
+      .from("planned_events")
+      .select("weekday, event_time")
+      .eq("id", eventId)
+      .maybeSingle();
+    const targetWeekday = fields.weekday ?? current?.weekday;
+    const targetTime = (fields.event_time ?? current?.event_time ?? "").slice(0, 5);
+    if (targetWeekday != null && targetTime) {
+      const { data: sameDay } = await supabase
+        .from("planned_events")
+        .select("event_time")
+        .eq("player_id", playerId)
+        .eq("weekday", targetWeekday)
+        .neq("id", eventId);
+      if ((sameDay ?? []).some((e) => String(e.event_time).slice(0, 5) === targetTime)) {
+        return { ok: false, error: "Un événement est déjà prévu à cette heure ce jour-là." };
+      }
+    }
+  }
+
   const { error } = await supabase.from("planned_events").update(fields).eq("id", eventId);
   if (error) return { ok: false, error: "Modification impossible." };
   revalidatePlanning(playerId);

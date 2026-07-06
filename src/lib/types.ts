@@ -88,15 +88,19 @@ export interface MatchStat {
   id: string;
   player_id: string;
   match_date: string;
-  points: number;
+  /** titulaire au coup d'envoi */
+  is_starter: boolean;
+  /** temps de jeu, en minutes */
   minutes: number;
-  rebounds: number;
-  steals: number;
-  // stats de tir, absentes des matchs saisis avant leur introduction
-  shots_attempted: number | null;
-  shots_made: number | null;
-  threes_attempted: number | null;
-  threes_made: number | null;
+  /** points marqués (calculé : 3×3pts + 2×(2pts int+ext) + 1×LF) */
+  points: number;
+  /** tirs réussis hors lancer franc (calculé : 3pts + 2pts int + 2pts ext) */
+  shots_made: number;
+  threes_made: number;
+  twos_inside_made: number;
+  twos_outside_made: number;
+  free_throws_made: number;
+  fouls: number;
   created_at: string;
 }
 

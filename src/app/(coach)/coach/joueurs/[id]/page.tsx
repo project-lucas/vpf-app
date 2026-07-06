@@ -236,8 +236,8 @@ export default async function PlayerDetailPage({
                           Assiduité de la semaine
                         </span>
                         <span className="text-sm font-extrabold text-navy-800">
-                          {weekDone}/{weekEvents.length} ·{" "}
-                          {formatPercent(weekDone / weekEvents.length)}
+                          {Math.min(weekDone, weekEvents.length)}/{weekEvents.length} ·{" "}
+                          {formatPercent(Math.min(1, weekDone / weekEvents.length))}
                         </span>
                       </div>
                       <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-navy-50">
@@ -249,7 +249,7 @@ export default async function PlayerDetailPage({
                                 ? "bg-danger/70"
                                 : "bg-navy-700"
                           }`}
-                          style={{ width: `${(weekDone / weekEvents.length) * 100}%` }}
+                          style={{ width: `${Math.min(1, weekDone / weekEvents.length) * 100}%` }}
                         />
                       </div>
                       <div className="mt-2.5 grid grid-cols-7 gap-1">
@@ -394,7 +394,8 @@ export default async function PlayerDetailPage({
                             {formatDateFr(s.match_date)}
                           </p>
                           <p className="text-xs text-navy-400">
-                            {s.minutes} min · {s.rebounds} rbds · {s.steals} int.
+                            {s.minutes} min · {s.is_starter ? "titulaire" : "remplaçant"} ·{" "}
+                            {s.threes_made} × 3 pts · {s.free_throws_made} LF
                           </p>
                         </div>
                         <p className="text-lg font-extrabold text-navy-800">

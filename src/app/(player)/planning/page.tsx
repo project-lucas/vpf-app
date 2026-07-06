@@ -2,12 +2,16 @@ import { createClient } from "@/lib/supabase/server";
 import { addDays, currentWeekStart, isoWeekNumber, parisNow } from "@/lib/dates";
 import { completedDayStreak } from "@/lib/discipline";
 import { PlanningView } from "@/components/planning/PlanningView";
+import { WeeklyReviewLauncher } from "@/components/planning/WeeklyReviewLauncher";
+import { MatchSheetLauncher } from "@/components/planning/MatchSheetLauncher";
+import { StreakBanner } from "@/components/planning/StreakBanner";
 import { Overline, DisplayTitle, DoubleRule } from "@/components/editorial/primitives";
-import { ZapIcon, DiscordIcon } from "@/components/icons";
+import { DiscordIcon } from "@/components/icons";
 import { DISCORD_INVITE_URL } from "@/lib/constants";
+import { computeMatchRecords } from "@/lib/gamification";
 import type { DayOutcome } from "@/components/planning/DisciplineCalendar";
 import type { DayHabit } from "@/components/planning/DayActionList";
-import type { EventCompletion, HabitColor, PlannedEvent } from "@/lib/types";
+import type { EventCompletion, HabitColor, MatchStat, PlannedEvent } from "@/lib/types";
 
 export const metadata = { title: "Planning — VPF" };
 export const dynamic = "force-dynamic";
@@ -113,7 +117,12 @@ export default async function PlanningPage() {
 
   // Focus de la semaine : le message écrit par le coach (coach_focus) prime,
   // sinon le « à améliorer » du dernier bilan du joueur
-  const [{ data: lastReview }, { data: coachFocusRow }] = await Promise.all([
+  const [
+    { data: lastReview },
+    { data: coachFocusRow },
+    { data: thisWeekReview },
+    { data: matchStats },
+  ] = await Promise.all([
     supabase
       .from("weekly_reviews")
       .select("to_improve")
@@ -121,7 +130,28 @@ export default async function PlanningPage() {
       .eq("week_start", prevWeekStart)
       .maybeSingle(),
     supabase.from("coach_focus").select("content").eq("player_id", user.id).maybeSingle(),
+    supabase
+      .from("weekly_reviews")
+      .select("went_well, to_improve")
+      .eq("player_id", user.id)
+      .eq("week_start", weekStart)
+      .maybeSingle(),
+    supabase
+      .from("match_stats")
+      .select("*")
+      .eq("player_id", user.id)
+      .order("match_date", { ascending: false }),
   ]);
+
+  // Feuille de match + bilan déplacés dans le planning (pastilles en bas). Un
+  // « ? » jaune apparaît le week-end (samedi/dimanche) tant que NI le bilan NI
+  // une feuille de match de la semaine n'ont été remplis — il s'arrête dès que
+  // l'un des deux l'est.
+  const records = computeMatchRecords((matchStats ?? []) as MatchStat[]);
+  const hasReview = Boolean(thisWeekReview);
+  const hasMatchThisWeek = (matchStats ?? []).some((m) => m.match_date >= weekStart);
+  const isWeekend = now.isoWeekday >= 6;
+  const remind = isWeekend && !hasReview && !hasMatchThisWeek;
   const coachFocus = coachFocusRow?.content?.trim() || null;
   const playerFocus = lastReview?.to_improve?.trim() || null;
   const focus = coachFocus
@@ -143,16 +173,7 @@ export default async function PlanningPage() {
       {/* Série de jours complets : fondu dans le papier. Scoreboard deux tons —
           éclair + chiffre rouge brique (le héros), « JOURS DE SUITE » navy,
           « DE PROGRESSION » en surtitre mono rouge pour la respiration. */}
-      <div className="mt-5 flex items-center gap-3.5 py-2">
-        <ZapIcon size={38} className="animate-zap shrink-0 text-orange" />
-        <span className="ed-value text-[56px] leading-none text-orange">{streak}</span>
-        <span>
-          <span className="ed-display block text-[21px] leading-[0.95] text-ink">
-            Jours de suite
-          </span>
-          <span className="ed-overline mt-1 block">De progression</span>
-        </span>
-      </div>
+      <StreakBanner streak={streak} storageScope={user.id} />
       <p className="ed-meta mt-3 text-[11px] leading-relaxed text-meta">
         {streak === 0
           ? "Lance ta série — boucle ta journée."
@@ -174,6 +195,18 @@ export default async function PlanningPage() {
         focus={focus}
         streakOnComplete={streakOnComplete}
       />
+
+      {/* Feuille de match + bilan de la semaine : pastilles en bas à gauche.
+          « ? » jaune de rappel le week-end tant que ni l'un ni l'autre n'est rempli. */}
+      <div className="mt-8 flex flex-wrap items-center gap-2.5">
+        <MatchSheetLauncher records={records} hasMatch={hasMatchThisWeek} remind={remind} />
+        <WeeklyReviewLauncher
+          hasReview={hasReview}
+          remind={remind}
+          initialWentWell={thisWeekReview?.went_well ?? ""}
+          initialToImprove={thisWeekReview?.to_improve ?? ""}
+        />
+      </div>
 
       {/* Discord de l'équipe : bouton flottant en bas à droite, au-dessus de la
           barre. L'équipe échange sur Discord ; on migrera sur WhatsApp plus tard. */}

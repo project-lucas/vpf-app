@@ -70,7 +70,13 @@ export function nextLevelTitle(level: number): { level: number; title: string } 
 // Tableau d'honneur — records personnels en match, tous dérivés de match_stats.
 // ---------------------------------------------------------------------------
 
-export type RecordKey = "points" | "twos" | "threes" | "rebounds" | "steals";
+export type RecordKey =
+  | "points"
+  | "shots"
+  | "threes"
+  | "twosInside"
+  | "twosOutside"
+  | "freeThrows";
 
 export interface RecordEntry {
   value: number;
@@ -81,37 +87,29 @@ export type MatchRecords = Record<RecordKey, RecordEntry | null>;
 
 export const RECORD_LABELS: Record<RecordKey, string> = {
   points: "Points",
-  twos: "Tirs à 2 pts",
+  shots: "Tirs réussis",
   threes: "Tirs à 3 pts",
-  rebounds: "Rebonds",
-  steals: "Interceptions",
+  twosInside: "2 pts intérieur",
+  twosOutside: "2 pts extérieur",
+  freeThrows: "Lancers francs",
 };
 
-/** Paniers à 2 pts réussis, dérivés des tirs réussis moins les 3 pts. */
-export function twosOf(m: {
-  shots_made: number | null;
-  threes_made: number | null;
-}): number | null {
-  if (m.shots_made == null || m.threes_made == null) return null;
-  return Math.max(0, m.shots_made - m.threes_made);
-}
-
 export function computeMatchRecords(stats: MatchStat[]): MatchRecords {
-  const best = (pick: (m: MatchStat) => number | null): RecordEntry | null => {
+  const best = (pick: (m: MatchStat) => number): RecordEntry | null => {
     let record: RecordEntry | null = null;
     for (const m of stats) {
       const value = pick(m);
-      if (value == null) continue;
       if (record === null || value > record.value) record = { value, date: m.match_date };
     }
     return record;
   };
   return {
     points: best((m) => m.points),
-    twos: best(twosOf),
+    shots: best((m) => m.shots_made),
     threes: best((m) => m.threes_made),
-    rebounds: best((m) => m.rebounds),
-    steals: best((m) => m.steals),
+    twosInside: best((m) => m.twos_inside_made),
+    twosOutside: best((m) => m.twos_outside_made),
+    freeThrows: best((m) => m.free_throws_made),
   };
 }
 
@@ -178,8 +176,8 @@ export interface BadgeInput {
   habitChecks: number;
   /** événements du planning pointés « fait » */
   eventsDone: number;
-  /** au moins un match à 10+ points et 10+ rebonds */
-  hasDoubleDouble: boolean;
+  /** au moins un match à 20 points ou plus */
+  hasBigGame: boolean;
   /** meilleur nombre de 3 pts réussis sur un match */
   bestThreesInMatch: number;
   level: number;
@@ -219,9 +217,9 @@ export function computeBadges(input: BadgeInput): BadgeStatus[] {
     },
     {
       key: "double-double",
-      label: "Double-double",
-      description: "10+ points et 10+ rebonds sur un même match.",
-      earned: input.hasDoubleDouble,
+      label: "Gros match",
+      description: "20 points ou plus sur un même match.",
+      earned: input.hasBigGame,
       progress: null,
     },
     counted("sniper", "Sniper", "5 tirs à 3 pts réussis sur un match.", input.bestThreesInMatch, 5),

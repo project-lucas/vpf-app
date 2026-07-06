@@ -112,13 +112,15 @@ export function DayActionList({
   }
 
   const eventDone = (e: PlannedEvent) => completionOf(e.id)?.status === "done";
-  const eventNotDone = (e: PlannedEvent) => completionOf(e.id)?.status === "not_done";
 
-  const todoEvents = events.filter((e) => !eventDone(e) && !eventNotDone(e));
-  const doneEvents = events.filter((e) => eventDone(e) || eventNotDone(e));
+  // Système binaire : « Fait » = fait (rayé) ; « À faire » = tout le reste
+  // (jamais pointé OU remis en « à faire » via la croix). Cocher fait monter le
+  // % du jour, annuler le fait redescendre.
+  const todoEvents = events.filter((e) => !eventDone(e));
+  const doneEvents = events.filter((e) => eventDone(e));
   const todoHabits = optHabits.filter((h) => !h.checkedToday);
   const doneHabits = optHabits.filter((h) => h.checkedToday);
-  const doneCount = events.filter(eventDone).length + doneHabits.length;
+  const doneCount = doneEvents.length + doneHabits.length;
   const todoCount = todoEvents.length + todoHabits.length;
 
   const showEvents = tab === "todo" ? todoEvents : doneEvents;
@@ -153,7 +155,6 @@ export function DayActionList({
           {showEvents.length > 0 && <Overline className="mb-2">Mon planning</Overline>}
           {showEvents.map((event) => {
             const done = eventDone(event);
-            const notDone = eventNotDone(event);
             return (
               <div
                 key={event.id}
@@ -169,65 +170,36 @@ export function DayActionList({
                   <span className="min-w-0 flex-1">
                     <span
                       className={`ed-value block truncate text-lg ${
-                        done || notDone ? "text-muted line-through" : "text-ink"
+                        done ? "text-muted line-through" : "text-ink"
                       }`}
                     >
                       {EVENT_TYPE_LABELS[event.event_type]}
                     </span>
                     <span className="ed-meta block text-[9px] text-meta">
                       {formatTime(event.event_time)} · {formatDuration(event.duration_minutes)}
-                      {notDone && " · pas fait"}
                     </span>
                   </span>
                 </button>
-                {tab === "todo" ? (
-                  /* À faire : les deux choix, fait ou pas fait */
-                  <div className="flex shrink-0 gap-1.5">
-                    <SquareIconButton
-                      onClick={() => checkEventAction(event, "done")}
-                      aria-label="Fait"
-                      filled
-                      className="transition-transform active:scale-90"
-                    >
-                      <CheckIcon size={18} />
-                    </SquareIconButton>
-                    <SquareIconButton
-                      onClick={() => checkEventAction(event, "not_done")}
-                      aria-label="Pas fait"
-                      className="transition-transform active:scale-90"
-                    >
-                      <XIcon size={18} />
-                    </SquareIconButton>
-                  </div>
+                {done ? (
+                  /* Fait : rayé, la croix le renvoie en « À faire » */
+                  <SquareIconButton
+                    onClick={() => checkEventAction(event, "not_done")}
+                    aria-label="Annuler : remettre à faire"
+                    title="Remettre à faire"
+                    className="transition-transform active:scale-90"
+                  >
+                    <XIcon size={18} />
+                  </SquareIconButton>
                 ) : (
-                  /* Fait : état affiché + un seul bouton de correction (l'opposé),
-                     pas de ✓ redondant. Corriger vers « pas fait » ne fait que
-                     rendre la stat plus honnête, jamais l'inverse. */
-                  <div className="flex shrink-0 items-center gap-2.5">
-                    <span className={`ed-meta text-[10px] ${done ? "text-meta" : "text-orange"}`}>
-                      {done ? "Fait" : "Pas fait"}
-                    </span>
-                    {done ? (
-                      <SquareIconButton
-                        onClick={() => checkEventAction(event, "not_done")}
-                        aria-label="Corriger : marquer pas fait"
-                        title="Pas fait finalement ?"
-                        className="transition-transform active:scale-90"
-                      >
-                        <XIcon size={18} />
-                      </SquareIconButton>
-                    ) : (
-                      <SquareIconButton
-                        onClick={() => checkEventAction(event, "done")}
-                        aria-label="Corriger : marquer fait"
-                        title="Fait finalement ?"
-                        filled
-                        className="transition-transform active:scale-90"
-                      >
-                        <CheckIcon size={18} />
-                      </SquareIconButton>
-                    )}
-                  </div>
+                  /* À faire : la coche le marque fait (il se raye et passe à droite) */
+                  <SquareIconButton
+                    onClick={() => checkEventAction(event, "done")}
+                    aria-label="Marquer fait"
+                    filled
+                    className="transition-transform active:scale-90"
+                  >
+                    <CheckIcon size={18} />
+                  </SquareIconButton>
                 )}
               </div>
             );
