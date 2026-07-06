@@ -1,0 +1,159 @@
+{
+  "poste": "arriere",
+  "posteNumber": 2,
+  "posteLabel": "Arrière",
+  "seances": [
+    {
+      "number": 1,
+      "durationMinutes": 60,
+      "title": "CATCH & SHOOT À 3PTS",
+      "subtitle": "Mécanisme & volume",
+      "intro": "Bâtir un tir à 3pts automatique depuis les 5 spots — auto-passe avec rebond du ballon.",
+      "exercises": [
+        {
+          "order": 1,
+          "title": "Footwork de tireur",
+          "durationMinutes": 10,
+          "tag": null,
+          "description": "Hop-step et 1-2 step depuis chaque spot de la ligne à 3pts. Pieds orientés panier avant la réception, équilibre parfait à l'arrêt. 5 min sans ballon, 5 min avec."
+        },
+        {
+          "order": 2,
+          "title": "C&S — 5 spots",
+          "durationMinutes": 20,
+          "tag": "ARME",
+          "description": "Corners, ailes, top. Auto-passe (ballon lancé avec rebond), réception pieds prêts, tir en 1 temps. Mécanisme irréprochable : genoux, montée simultanée, release au sommet. 5 tirs × 5 spots × 2 passages."
+        },
+        {
+          "order": 3,
+          "title": "C&S sur déplacement latéral",
+          "durationMinutes": 20,
+          "tag": null,
+          "description": "Shuffle 2-3 pas du centre vers le corner ou l'aile, auto-passe, catch et tir immédiat. Pieds déjà orientés dans le déplacement — pas d'ajustement après la réception. 3 × 8 par côté."
+        }
+      ],
+      "challenge": {
+        "durationMinutes": 10,
+        "title": "Tour des 5 spots",
+        "description": "5 tirs × 5 spots = 25 tirs, pieds prêts, 1 temps. Objectif expert : 18+/25. Note ton score chaque semaine.",
+        "maxScore": 25,
+        "scoreUnit": "réussites",
+        "objective": "18+/25"
+      }
+    },
+    {
+      "number": 2,
+      "durationMinutes": 60,
+      "title": "CRÉER SON TIR",
+      "subtitle": "Step-back & side-step",
+      "intro": "Quand personne n'est ouvert, l'arrière crée son propre espace. La chaise = ton défenseur.",
+      "exercises": [
+        {
+          "order": 1,
+          "title": "Échauffement handle + form",
+          "durationMinutes": 10,
+          "tag": null,
+          "description": "Figures sur place tête haute, puis 15 tirs de mise en route à mi-distance. Les jambes se chargent, le poignet se règle."
+        },
+        {
+          "order": 2,
+          "title": "Step-back à 3pts",
+          "durationMinutes": 20,
+          "tag": "ARME",
+          "description": "1 dribble vers la chaise pour l'attirer, step-back d'un pas derrière la ligne, espace créé, tir. Garder l'équilibre dans le recul. Ailes et top : côté fort → côté faible → top. 3 × 10."
+        },
+        {
+          "order": 3,
+          "title": "Side-step & hésitation",
+          "durationMinutes": 20,
+          "tag": null,
+          "description": "Pump fake devant la chaise, un pas de côté pour se décaler, tir. Puis hésitation → accélération → step into 3. Créer vers l'extérieur, jamais charger le défenseur. 3 × 10."
+        }
+      ],
+      "challenge": {
+        "durationMinutes": 10,
+        "title": "10 step-back + 10 side-step",
+        "description": "10 step-back à 3pts (ailes + top) puis 10 side-step après pump fake. Deux scores séparés — ton outil de création en chiffres.",
+        "maxScore": 20,
+        "scoreUnit": "réussites",
+        "objective": null
+      }
+    },
+    {
+      "number": 3,
+      "durationMinutes": 60,
+      "title": "ATTAQUE DU CERCLE",
+      "subtitle": "Premier pas & finitions",
+      "intro": "Le tir ouvre le drive : un premier pas explosif et des finitions des deux mains.",
+      "exercises": [
+        {
+          "order": 1,
+          "title": "Premiers pas",
+          "durationMinutes": 10,
+          "tag": null,
+          "description": "Depuis la ligne à 3pts : jab step puis premier pas explosif, 2 dribbles max jusqu'au cercle, sans finir. Droite et gauche. Le premier appui décide de tout. 3 × 8."
+        },
+        {
+          "order": 2,
+          "title": "Drives & finitions variées",
+          "durationMinutes": 20,
+          "tag": "ARME",
+          "description": "Auto-passe dans le corner ou l'aile, catch, drive ligne de fond ou centre : layup classique, reverse, euro-step. Main forte et main faible à volume égal. 4 × 8 finitions."
+        },
+        {
+          "order": 3,
+          "title": "Finition contact",
+          "durationMinutes": 20,
+          "tag": null,
+          "description": "Pose un sac (ou coussin) sous le cercle : finir à travers le contact, gainé, deux mains puis main faible. Monter fort, pas de finesse ici. 3 × 8."
+        }
+      ],
+      "challenge": {
+        "durationMinutes": 10,
+        "title": "20 drives",
+        "description": "20 drives depuis l'aile (10 par côté), finition libre mais jamais deux fois la même de suite. Objectif : 15+/20.",
+        "maxScore": 20,
+        "scoreUnit": "réussites",
+        "objective": "15+/20"
+      }
+    },
+    {
+      "number": 4,
+      "durationMinutes": 60,
+      "title": "TIR EN FATIGUE",
+      "subtitle": "Scorer les jambes lourdes",
+      "intro": "En fin de match, le mécanisme doit tenir. On fatigue les jambes, puis on tire.",
+      "exercises": [
+        {
+          "order": 1,
+          "title": "Échauffement",
+          "durationMinutes": 10,
+          "tag": null,
+          "description": "Footwork + 15 tirs de mise en route à mi-distance, puis 10 tirs depuis les spots à 3pts."
+        },
+        {
+          "order": 2,
+          "title": "Gamme mi-distance",
+          "durationMinutes": 20,
+          "tag": "ARME",
+          "description": "Pull-up 1 dribble depuis chaque aile, coude droit, coude gauche, tête de raquette. 5 tirs par position, deux tours. L'arrêt identique à chaque fois. 50 tirs."
+        },
+        {
+          "order": 3,
+          "title": "Tirs en fatigue",
+          "durationMinutes": 20,
+          "tag": null,
+          "description": "5 squats sautés ou 5 sprints courts, puis 5 tirs à 3pts, et on recommence. Maintenir le mécanisme coûte que coûte : genoux, release au sommet. 4 séquences."
+        }
+      ],
+      "challenge": {
+        "durationMinutes": 10,
+        "title": "25 tirs en fatigue",
+        "description": "Après 15 squats rapides : 5 tirs par spot (5 spots = 25 tirs). Compare ce score avec ton « Tour des 5 spots » frais — l'écart doit se réduire chaque semaine.",
+        "maxScore": 25,
+        "scoreUnit": "en fatigue",
+        "objective": null
+      }
+    }
+  ]
+}

@@ -1,0 +1,58 @@
+import {
+  Calendar,
+  CheckCircle,
+  Crown,
+  Dumbbell,
+  Flame,
+  Hand,
+  Heart,
+  Medal,
+  Rocket,
+  Shield,
+  Sparkles,
+  Star,
+  Target,
+  Trophy,
+  Zap,
+  type LucideIcon,
+} from "lucide-react";
+import { BasketballIcon } from "@/components/planning/EventIcon";
+import type { BadgeKey } from "@/lib/gamification";
+
+export const BADGE_ICONS: Record<BadgeKey, LucideIcon | typeof BasketballIcon> = {
+  "premier-match": BasketballIcon,
+  "matchs-5": Calendar,
+  "matchs-20": Shield,
+  "serie-7": Flame,
+  "serie-30": Medal,
+  "serie-100": Crown,
+  "record-battu": Trophy,
+  "double-double": Hand,
+  sniper: Target,
+  "semaine-parfaite": Star,
+  "semaines-5": Sparkles,
+  "seances-10": Dumbbell,
+  "seances-50": Rocket,
+  "checks-100": Heart,
+  "pointages-100": CheckCircle,
+  "niveau-10": Zap,
+};
+
+export const BADGE_COLORS: Record<BadgeKey, string> = {
+  "premier-match": "#f97316",
+  "matchs-5": "#3b82f6",
+  "matchs-20": "#0ea5e9",
+  "serie-7": "#ef4444",
+  "serie-30": "#8b5cf6",
+  "serie-100": "#d946ef",
+  "record-battu": "#f59e0b",
+  "double-double": "#14b8a6",
+  sniper: "#22c55e",
+  "semaine-parfaite": "#6366f1",
+  "semaines-5": "#eab308",
+  "seances-10": "#ec4899",
+  "seances-50": "#7c3aed",
+  "checks-100": "#e11d48",
+  "pointages-100": "#059669",
+  "niveau-10": "#f59e0b",
+};

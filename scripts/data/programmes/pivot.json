@@ -1,0 +1,159 @@
+{
+  "poste": "pivot",
+  "posteNumber": 5,
+  "posteLabel": "Pivot",
+  "seances": [
+    {
+      "number": 1,
+      "durationMinutes": 60,
+      "title": "FINITIONS RAQUETTE",
+      "subtitle": "Zéro point laissé sous le cercle",
+      "intro": "Le pivot qui rate près du cercle laisse des points au sol. Toucher, extension, contact.",
+      "exercises": [
+        {
+          "order": 1,
+          "title": "Mikan + reverse",
+          "durationMinutes": 10,
+          "tag": null,
+          "description": "Layups alternés sans que le ballon touche le sol, classique puis reverse. Rythme régulier, deux mains fortes. 4 × 30 secondes."
+        },
+        {
+          "order": 2,
+          "title": "Extension une main + contact",
+          "durationMinutes": 20,
+          "tag": "ARME",
+          "description": "Finitions bras tendu au-dessus du sac posé sous le cercle : main droite côté droit, main gauche côté gauche, extension maximale. Le contact ne change rien au geste. 4 × 8."
+        },
+        {
+          "order": 3,
+          "title": "Reverse ligne de fond",
+          "durationMinutes": 20,
+          "tag": null,
+          "description": "Départ ligne de fond, passer sous le cercle, finir reverse de l'autre côté — la planche te protège du contre. Droite puis gauche. 3 × 8."
+        }
+      ],
+      "challenge": {
+        "durationMinutes": 10,
+        "title": "20 finitions chrono",
+        "description": "2 minutes : alterner extension, reverse et power layup, côté gauche puis droit. Compter les réussites sur 20 tentatives max. Objectif : 15+/20.",
+        "maxScore": 20,
+        "scoreUnit": "réussites",
+        "objective": "15+/20"
+      }
+    },
+    {
+      "number": 2,
+      "durationMinutes": 60,
+      "title": "MOVES AU POSTE BAS",
+      "subtitle": "Dos au panier, plusieurs réponses",
+      "intro": "Un move principal, un contre-move, une feinte : le trio qui rend un pivot injouable.",
+      "exercises": [
+        {
+          "order": 1,
+          "title": "Sceller + réception",
+          "durationMinutes": 10,
+          "tag": null,
+          "description": "Auto-passe au poste bas, réception jump stop, ballon au menton, sentir le sac dans le dos. Pivot ligne de fond, pivot centre — sans finir. Les appuis d'abord. 3 × 10."
+        },
+        {
+          "order": 2,
+          "title": "Drop step & jump hook",
+          "durationMinutes": 20,
+          "tag": "ARME",
+          "description": "Drop step ligne de fond → power layup, jump hook vers le centre. Épaule rentrée, ballon haut, finir au-dessus du sac. 3 × 8 par côté, les deux moves."
+        },
+        {
+          "order": 3,
+          "title": "Up & under + spin",
+          "durationMinutes": 20,
+          "tag": null,
+          "description": "Feinte de hook → passer dessous (up & under), puis spin ligne de fond sur le contre-move. Enchaîner move et contre-move sur la même possession. 3 × 8."
+        }
+      ],
+      "challenge": {
+        "durationMinutes": 10,
+        "title": "20 moves mélangés",
+        "description": "20 attaques au poste : drop step, hook, up & under, spin — jamais deux fois le même de suite, 10 par côté. Objectif : 14+/20.",
+        "maxScore": 20,
+        "scoreUnit": "réussites",
+        "objective": "14+/20"
+      }
+    },
+    {
+      "number": 3,
+      "durationMinutes": 60,
+      "title": "TOUCHER & LANCERS FRANCS",
+      "subtitle": "Les points gratuits du pivot",
+      "intro": "Le pivot va sur la ligne plus que tout le monde. Chaque lancer raté est un cadeau rendu.",
+      "exercises": [
+        {
+          "order": 1,
+          "title": "Form shooting proche",
+          "durationMinutes": 10,
+          "tag": null,
+          "description": "Tirs une main à 1-2 mètres, 5 positions autour du cercle. Le poignet se règle, la planche est une alliée sur les angles."
+        },
+        {
+          "order": 2,
+          "title": "Tir raquette 2-3 m",
+          "durationMinutes": 20,
+          "tag": "ARME",
+          "description": "Petits tirs dans la raquette : angle droit avec planche, angle gauche avec planche, centre sans planche. 5 tirs par position, plusieurs tours. Le « toucher court » qui fait les gros pourcentages. 4 × 15."
+        },
+        {
+          "order": 3,
+          "title": "Lancers francs en fatigue",
+          "durationMinutes": 20,
+          "tag": null,
+          "description": "5 sauts groupés ou 5 pompes, puis 2 lancers francs — routine complète à chaque fois (respiration, dribbles, regard). Répéter. Comme en match : fatigué, seul sur la ligne. 10 séquences."
+        }
+      ],
+      "challenge": {
+        "durationMinutes": 10,
+        "title": "20 lancers francs",
+        "description": "20 lancers francs après effort (5 squats avant chaque paire). Routine identique à chaque lancer. Objectif : 15+/20.",
+        "maxScore": 20,
+        "scoreUnit": "réussites",
+        "objective": "15+/20"
+      }
+    },
+    {
+      "number": 4,
+      "durationMinutes": 60,
+      "title": "ÉCRAN-ROLL & FOOTWORK",
+      "subtitle": "Le moteur du jeu à deux",
+      "intro": "Poser un vrai écran, rouler fort, recevoir haut : le pivot crée des points sans toucher le ballon.",
+      "exercises": [
+        {
+          "order": 1,
+          "title": "Appuis raquette",
+          "durationMinutes": 10,
+          "tag": null,
+          "description": "Déplacements latéraux ligne de fond → coude → ligne de fond, puis pivots avant/arrière enchaînés. Le footwork propre évite les fautes bêtes et gagne les positions."
+        },
+        {
+          "order": 2,
+          "title": "Écran → roll → réception haute",
+          "durationMinutes": 20,
+          "tag": "ARME",
+          "description": "Poser l'écran (position large, gainé) en tête de raquette, roll direct vers le cercle, auto-lob contre la planche, capter haut et finir sans redescendre le ballon. 4 × 6 rolls."
+        },
+        {
+          "order": 3,
+          "title": "Passe au mur → duck-in → finition",
+          "durationMinutes": 20,
+          "tag": null,
+          "description": "Passe au mur (côté raquette), sprint sceller au poste (duck-in), réception du rebond du mur, finition immédiate. Simule la passe intérieure du jeu à deux. 3 × 8."
+        }
+      ],
+      "challenge": {
+        "durationMinutes": 10,
+        "title": "15 rolls finis",
+        "description": "15 séquences écran → roll → réception (auto-lob ou mur) → finition. Une réception ratée = séquence ratée. Objectif : 11+/15.",
+        "maxScore": 15,
+        "scoreUnit": "réussites",
+        "objective": "11+/15"
+      }
+    }
+  ]
+}

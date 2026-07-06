@@ -1,0 +1,554 @@
+@import "tailwindcss";
+
+@theme {
+  /* Bleu marine premium */
+  --color-navy-50: #f2f5f9;
+  --color-navy-100: #e2e9f1;
+  --color-navy-200: #c3d1e2;
+  --color-navy-300: #97afc9;
+  --color-navy-400: #6487ab;
+  --color-navy-500: #41668d;
+  --color-navy-600: #2d4e73;
+  --color-navy-700: #1e3a5c;
+  --color-navy-800: #0f2a4a;
+  --color-navy-900: #0a1d33;
+
+  /* Fond de page blanc / gris très clair */
+  --color-cream: #fafafa;
+
+  --color-success: #15803d;
+  --color-success-soft: #dcf2e4;
+  --color-danger: #b91c1c;
+  --color-danger-soft: #fde8e8;
+  --color-warning: #b45309;
+  --color-warning-soft: #fdf0dc;
+
+  /* Or VPF : réservé à l'accompli (records, séries, totaux, progression) */
+  --color-gold: #f59e0b;
+  --color-gold-soft: #fdf0dc;
+
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, sans-serif;
+  /* display "scoreboard" : titres et gros chiffres, toujours en uppercase */
+  --font-display: var(--font-barlow), var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+
+  /* ── Direction « Retro Varsity » (écrans joueur) ───────────────────────────
+     Club de basket vintage : papier crème, encre navy, rouge brique en accent.
+     Écussons ronds, filets doubles, gros chiffres block, citations serif.
+     Les noms de tokens sont réutilisés depuis l'ancienne direction pour garder
+     les composants câblés ; « ink » = navy, « orange » = rouge brique. */
+  --color-ink: #1c3a4b; /* navy — encre principale */
+  --color-paper: #f0e4cc; /* papier crème (fond) */
+  --color-card: #f7efdc; /* crème carte (un ton plus clair) */
+  --color-orange: #c0392b; /* rouge brique — accent (chiffres clés, actif) */
+  --color-tan: #e4d4b4; /* tan — nav basse, pistes */
+  --color-warm: #e8a87c; /* ambre chaud — flammes, chiffres trophées */
+  --color-meta: #5a6a62; /* texte doux */
+  --color-muted: #a1937a; /* désactivé / placeholder */
+  --color-hair: rgba(28, 58, 75, 0.22); /* filet navy translucide */
+
+  /* Archivo : gros chiffres block, titres varsity, valeurs (MAJUSCULES) */
+  --font-cond: var(--font-archivo), "Arial Black", ui-sans-serif, sans-serif;
+  /* DM Serif Display : nom du joueur, citations (italique) */
+  --font-serif: var(--font-dm-serif), ui-serif, Georgia, serif;
+  /* Mono : surtitres, labels de champ, tags, index */
+  --font-mono-ed: var(--font-jetbrains), ui-monospace, "SFMono-Regular", monospace;
+  /* Sans : texte long en casse normale uniquement */
+  --font-body: var(--font-jakarta), ui-sans-serif, system-ui, sans-serif;
+}
+
+html {
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  background-color: var(--color-cream);
+  color: var(--color-navy-900);
+  font-family: var(--font-sans);
+  overscroll-behavior-y: none;
+}
+
+/* Zone sûre iOS (encoche / barre home) */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+input[type="time"]::-webkit-calendar-picker-indicator,
+input[type="date"]::-webkit-calendar-picker-indicator {
+  opacity: 0.5;
+}
+
+/* Célébration (journée parfaite) */
+@keyframes pop {
+  0% {
+    transform: scale(0.6);
+    opacity: 0;
+  }
+  70% {
+    transform: scale(1.05);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+.animate-pop {
+  animation: pop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-pop {
+    animation: none;
+  }
+}
+
+/* Flamme de série (planning) : les couches ondulent — étirement vertical +
+   balancement, désynchronisées par des delays négatifs */
+@keyframes streak-flame {
+  0%,
+  100% {
+    transform: scaleY(1) rotate(-2deg);
+  }
+  50% {
+    transform: scaleY(1.08) rotate(2deg);
+  }
+}
+.animate-streak-flame {
+  animation: streak-flame 1.2s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+}
+
+/* Étincelles : partent du sommet, dérivent (--sx) et s'évanouissent en montant */
+@keyframes spark-rise {
+  0% {
+    transform: translate(0, 0) scale(1);
+    opacity: 0;
+  }
+  20% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate(var(--sx, 0px), -24px) scale(0.3);
+    opacity: 0;
+  }
+}
+.animate-spark {
+  animation: spark-rise 1.5s ease-out infinite;
+}
+
+/* Halo orange qui pulse derrière la flamme de série : large et diffus,
+   il suggère la chaleur sans attirer l'œil */
+@keyframes streak-glow {
+  0%,
+  100% {
+    box-shadow: 0 0 28px 6px rgba(244, 144, 12, 0.16);
+  }
+  50% {
+    box-shadow: 0 0 44px 12px rgba(244, 144, 12, 0.28);
+  }
+}
+.animate-streak-glow {
+  animation: streak-glow 1.8s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-streak-flame,
+  .animate-streak-glow {
+    animation: none;
+  }
+  .animate-spark {
+    animation: none;
+    display: none;
+  }
+}
+
+/* Checkpoint complété : pop à la validation puis halo doré qui pulse en
+   continu — décalé jour par jour, les animations s'accumulent le long de la
+   chaîne au fil de la semaine */
+@keyframes checkpoint-glow {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.45);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow: 0 0 0 7px rgba(245, 158, 11, 0);
+    transform: scale(1.07);
+  }
+}
+.animate-checkpoint-done {
+  animation:
+    pop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1),
+    checkpoint-glow 2.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-checkpoint-done {
+    animation: none;
+  }
+}
+
+/* Confetti (journée bouclée, badge débloqué) */
+@keyframes confetti-fall {
+  0% {
+    transform: translateY(-10vh) rotate(0deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(110vh) rotate(720deg);
+    opacity: 0.7;
+  }
+}
+.animate-confetti {
+  animation: confetti-fall 1.6s ease-in forwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-confetti {
+    animation: none;
+    display: none;
+  }
+}
+
+/* Panneau du dashboard : s'ouvre en glissant depuis la barre d'icônes */
+@keyframes slide-down {
+  0% {
+    transform: translateY(-10px);
+    opacity: 0;
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+.animate-slide-down {
+  animation: slide-down 0.22s ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-slide-down {
+    animation: none;
+  }
+}
+
+/* Apparition douce (bannière badge, contenus dépliés) */
+@keyframes rise-in {
+  0% {
+    transform: translateY(6px);
+    opacity: 0;
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+.animate-rise {
+  animation: rise-in 0.25s ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-rise {
+    animation: none;
+  }
+}
+
+/* « +N XP » : s'élève au-dessus du bouton de validation puis s'efface */
+@keyframes xp-burst {
+  0% {
+    transform: translate(-50%, 0) scale(0.7);
+    opacity: 0;
+  }
+  15% {
+    transform: translate(-50%, -8px) scale(1.05);
+    opacity: 1;
+  }
+  70% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -34px) scale(1);
+    opacity: 0;
+  }
+}
+.animate-xp-burst {
+  animation: xp-burst 1.1s ease-out forwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-xp-burst {
+    animation: none;
+    display: none;
+  }
+}
+
+/* Header héros du dashboard, façon carte de jeu ------------------------------ */
+
+/* Reflet qui balaie l'avatar en diagonale, toutes les quelques secondes */
+@keyframes hero-shine {
+  0% {
+    transform: translateX(-160%) rotate(12deg);
+    opacity: 0;
+  }
+  12% {
+    opacity: 0.65;
+  }
+  32% {
+    opacity: 0;
+  }
+  100% {
+    transform: translateX(260%) rotate(12deg);
+    opacity: 0;
+  }
+}
+.animate-hero-shine {
+  animation: hero-shine 5.5s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-hero-shine {
+    animation: none;
+    display: none;
+  }
+}
+
+/* Semaine parfaite : le ✓ devient une flamme qui vacille pour féliciter */
+@keyframes flame-pulse {
+  0%,
+  100% {
+    transform: scale(1) rotate(-4deg);
+  }
+  50% {
+    transform: scale(1.15) rotate(4deg);
+  }
+}
+.animate-flame-pulse {
+  animation: flame-pulse 1s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-flame-pulse {
+    animation: none;
+  }
+}
+
+/* Défilement sans barre visible (swipe mobile / cliquer-glisser desktop) */
+.scrollbar-none {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   DIRECTION « RETRO VARSITY » — écrans joueur
+   Club de basket vintage : papier crème, encre navy, rouge brique en accent.
+   Coins 6–8px, bordures navy 2px, filets doubles, gros chiffres block Archivo,
+   citations serif italique. Le scope `.ed` isole ce langage des écrans
+   admin/coach (inchangés).
+   Classes en @layer components : les utilitaires Tailwind `text-*`/`bg-*`
+   (layer utilities, prioritaire) peuvent surcharger leurs couleurs par défaut.
+   ═══════════════════════════════════════════════════════════════════════════ */
+@layer components {
+.ed {
+  background-color: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+}
+.ed ::selection {
+  background: var(--color-orange);
+  color: var(--color-paper);
+}
+
+/* Surtitre / label mono rouge : MAJUSCULES, interlettrage large */
+.ed-overline {
+  font-family: var(--font-mono-ed);
+  font-weight: 700;
+  font-size: 11px;
+  line-height: 1.3;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-orange);
+}
+
+/* Titre varsity Archivo : MAJUSCULES, block serré */
+.ed-display {
+  font-family: var(--font-cond);
+  font-weight: 900;
+  line-height: 0.92;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+  color: var(--color-ink);
+}
+
+/* Nom / citation en serif d'affichage italique */
+.ed-serif {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-weight: 400;
+  line-height: 1.05;
+  color: var(--color-ink);
+}
+
+/* Valeurs / chiffres block Archivo (non-titres) */
+.ed-value {
+  font-family: var(--font-cond);
+  font-weight: 800;
+  line-height: 0.9;
+  text-transform: uppercase;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Méta en mono, casse haute, texte doux */
+.ed-meta {
+  font-family: var(--font-mono-ed);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-meta);
+}
+
+/* Filets : simple (2px navy) et fin */
+.ed-rule {
+  border: 0;
+  border-top: 2px solid var(--color-ink);
+  margin: 0;
+}
+.ed-rule-thin {
+  border: 0;
+  border-top: 1px solid var(--color-hair);
+  margin: 0;
+}
+
+/* Champ texte / select rétro : fond crème, bordure navy 2px, coins 6px */
+.ed-field {
+  width: 100%;
+  background: var(--color-card);
+  border: 2px solid var(--color-ink);
+  border-radius: 6px;
+  padding: 12px 14px;
+  font-family: var(--font-body);
+  font-size: 15px;
+  color: var(--color-ink);
+}
+.ed-field::placeholder {
+  color: var(--color-muted);
+}
+.ed-field:focus-visible {
+  outline: none;
+  border-color: var(--color-orange);
+}
+
+/* Valeur de select rétro : Archivo bold navy, chevron custom */
+.ed-select {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
+  background: var(--color-card);
+  border: 2px solid var(--color-ink);
+  border-radius: 6px;
+  padding: 12px 38px 12px 14px;
+  font-family: var(--font-cond);
+  font-weight: 800;
+  font-size: 17px;
+  line-height: 1;
+  text-transform: uppercase;
+  color: var(--color-ink);
+  cursor: pointer;
+}
+.ed-select:focus-visible {
+  outline: none;
+  border-color: var(--color-orange);
+}
+
+/* Focus visible générique dans le scope rétro */
+.ed :focus-visible {
+  outline: 2px solid var(--color-orange);
+  outline-offset: 2px;
+}
+}
+
+/* Frise des jours : halo ambré qui balaie la chaîne de gauche à droite,
+   suggérant l'élan de la série qui se propage jour après jour. */
+@keyframes week-wave {
+  0% {
+    left: -8%;
+    opacity: 0;
+  }
+  15% {
+    opacity: 0.9;
+  }
+  85% {
+    opacity: 0.9;
+  }
+  100% {
+    left: 108%;
+    opacity: 0;
+  }
+}
+.animate-week-wave {
+  animation: week-wave 3.4s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-week-wave {
+    animation: none;
+    display: none;
+  }
+}
+
+/* Éclair de série (hero Planning) : reste calme puis se secoue brièvement,
+   comme une petite décharge électrique — dynamise sans distraire. */
+@keyframes zap-jolt {
+  0%,
+  55%,
+  100% {
+    transform: rotate(0deg) scale(1);
+    opacity: 1;
+  }
+  62% {
+    transform: rotate(-8deg) scale(1.15);
+    opacity: 0.8;
+  }
+  69% {
+    transform: rotate(6deg) scale(1.15);
+    opacity: 1;
+  }
+  76% {
+    transform: rotate(0deg) scale(1);
+  }
+}
+.animate-zap {
+  animation: zap-jolt 2.6s ease-in-out infinite;
+  transform-origin: center;
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-zap {
+    animation: none;
+  }
+}
+
+/* Coche des jours validés (frise) : petit rebond périodique. Décalée jour par
+   jour (animation-delay inline) pour une vague le long de la chaîne. */
+@keyframes check-pop {
+  0%,
+  60%,
+  100% {
+    transform: scale(1);
+    filter: drop-shadow(0 0 0 rgba(247, 169, 59, 0));
+  }
+  70% {
+    transform: scale(1.28);
+    filter: drop-shadow(0 0 6px rgba(247, 169, 59, 0.6));
+  }
+  82% {
+    transform: scale(0.93);
+  }
+  92% {
+    transform: scale(1);
+    filter: drop-shadow(0 0 0 rgba(247, 169, 59, 0));
+  }
+}
+.animate-check-pop {
+  animation: check-pop 2.8s ease-in-out infinite;
+  transform-origin: center;
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-check-pop {
+    animation: none;
+  }
+}

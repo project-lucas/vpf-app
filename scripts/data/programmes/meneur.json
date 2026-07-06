@@ -1,0 +1,159 @@
+{
+  "poste": "meneur",
+  "posteNumber": 1,
+  "posteLabel": "Meneur",
+  "seances": [
+    {
+      "number": 1,
+      "durationMinutes": 60,
+      "title": "HANDLE & CONTRÔLE",
+      "subtitle": "Le ballon au bout des doigts",
+      "intro": "Un meneur qui ne regarde jamais son ballon peut lire le jeu. Volume + vitesse = contrôle.",
+      "exercises": [
+        {
+          "order": 1,
+          "title": "Stationnaire intensif",
+          "durationMinutes": 10,
+          "tag": null,
+          "description": "Sur place, tête haute : crossover, in & out, entre les jambes, derrière le dos — 30 s par figure, à fond. Puis les mêmes à genou ou assis pour isoler le poignet."
+        },
+        {
+          "order": 2,
+          "title": "Gamme sur cônes",
+          "durationMinutes": 20,
+          "tag": "ARME",
+          "description": "3 cônes (ou objets) en ligne : un move différent à chaque cône, finir layup ou pull-up. Vitesse réelle de match, main forte puis main faible à volume égal. 3 × 6 passages."
+        },
+        {
+          "order": 3,
+          "title": "Zigzag pleine vitesse",
+          "durationMinutes": 20,
+          "tag": null,
+          "description": "Zigzag ligne de fond → milieu de terrain : changement de main à chaque angle, accélération après le move. Retour main faible uniquement. Chaque perte de balle = on recommence le passage."
+        }
+      ],
+      "challenge": {
+        "durationMinutes": 10,
+        "title": "Circuit chrono",
+        "description": "10 passages de cônes avec move imposé, finir layup. Zéro perte de balle tolérée : une perte = le passage ne compte pas. Objectif : 8+/10.",
+        "maxScore": 10,
+        "scoreUnit": "réussites",
+        "objective": "8+/10"
+      }
+    },
+    {
+      "number": 2,
+      "durationMinutes": 60,
+      "title": "FINITIONS AU CERCLE",
+      "subtitle": "Petit mais impossible à arrêter",
+      "intro": "Le meneur finit au milieu des grands : variété, toucher et les deux mains.",
+      "exercises": [
+        {
+          "order": 1,
+          "title": "Mikan + reverse",
+          "durationMinutes": 10,
+          "tag": null,
+          "description": "Layups alternés gauche-droite sous le cercle sans que le ballon touche le sol, puis version reverse. Toucher et rythme. 4 × 30 secondes."
+        },
+        {
+          "order": 2,
+          "title": "Gamme de layups",
+          "durationMinutes": 20,
+          "tag": "ARME",
+          "description": "Départ ligne à 3pts, 2 dribbles max : layup classique, ligne de fond, euro-step (2 appuis décalés), inside hand. Main forte puis main faible, des deux côtés. 4 × 8 finitions."
+        },
+        {
+          "order": 3,
+          "title": "Floater",
+          "durationMinutes": 20,
+          "tag": null,
+          "description": "Depuis la ligne des lancers francs : 1 dribble, décollage un pied, floater par-dessus le grand imaginaire (ou chaise dans la raquette). Gauche et droite du cercle. 4 × 8."
+        }
+      ],
+      "challenge": {
+        "durationMinutes": 10,
+        "title": "20 finitions mélangées",
+        "description": "20 finitions en alternant : layup, euro-step, reverse, floater — jamais deux fois la même de suite. Objectif : 14+/20.",
+        "maxScore": 20,
+        "scoreUnit": "réussites",
+        "objective": "14+/20"
+      }
+    },
+    {
+      "number": 3,
+      "durationMinutes": 60,
+      "title": "TIR EN SORTIE DE DRIBBLE",
+      "subtitle": "Punir quand on passe sous l'écran",
+      "intro": "Le pull-up est l'arme du meneur : arrêt propre, équilibre parfait, release rapide.",
+      "exercises": [
+        {
+          "order": 1,
+          "title": "Form shooting + footwork",
+          "durationMinutes": 10,
+          "tag": null,
+          "description": "15 tirs proches du cercle une main, puis hop-step et 1-2 step à mi-distance sans ballon. Le mécanisme avant le volume."
+        },
+        {
+          "order": 2,
+          "title": "Pull-up mi-distance",
+          "durationMinutes": 20,
+          "tag": "ARME",
+          "description": "1 à 2 dribbles depuis la ligne à 3pts, arrêt équilibré, pull-up. Départ droite, gauche, centre — l'arrêt doit être identique partout. 4 × 10 tirs."
+        },
+        {
+          "order": 3,
+          "title": "3pts après dribble",
+          "durationMinutes": 20,
+          "tag": null,
+          "description": "Hésitation ou crossover, puis step into 3 : reculer d'un pas derrière la ligne, pieds prêts, tir. Depuis le top et les deux ailes. 3 × 8 tirs."
+        }
+      ],
+      "challenge": {
+        "durationMinutes": 10,
+        "title": "15 pull-ups",
+        "description": "5 pull-ups mi-distance + 5 pull-ups après hésitation + 5 step into 3. Enchaînés, sans pause. Objectif : 10+/15.",
+        "maxScore": 15,
+        "scoreUnit": "réussites",
+        "objective": "10+/15"
+      }
+    },
+    {
+      "number": 4,
+      "durationMinutes": 60,
+      "title": "PASSES & VISION",
+      "subtitle": "Le mur est ton coéquipier",
+      "intro": "Une passe précise des deux mains, après dribble, sous pression — ça se construit seul, au mur.",
+      "exercises": [
+        {
+          "order": 1,
+          "title": "Gamme au mur",
+          "durationMinutes": 10,
+          "tag": null,
+          "description": "Cible marquée au mur (scotch) : passe directe deux mains, passe à terre, passe une main droite puis gauche. 3 mètres, puis 5 mètres. 10 par type."
+        },
+        {
+          "order": 2,
+          "title": "Passe après dribble",
+          "durationMinutes": 20,
+          "tag": "ARME",
+          "description": "2 dribbles en mouvement puis passe une main dans la cible sans t'arrêter — comme une passe de pick & roll. Main droite et main gauche, à volume égal. La passe ratée se rejoue. 4 × 10."
+        },
+        {
+          "order": 3,
+          "title": "Passe-réception-tir",
+          "durationMinutes": 20,
+          "tag": null,
+          "description": "Passe au mur, réception en mouvement, enchaîner : 1 dribble → pull-up, ou pivot → tir. Simule le jeu à deux. 3 × 10 enchaînements."
+        }
+      ],
+      "challenge": {
+        "durationMinutes": 10,
+        "title": "30 passes cibles",
+        "description": "30 passes dans la cible : 10 directes, 10 à terre, 10 une main après dribble (5 par main). Une passe hors cible = ratée. Objectif : 24+/30.",
+        "maxScore": 30,
+        "scoreUnit": "dans la cible",
+        "objective": "24+/30"
+      }
+    }
+  ]
+}

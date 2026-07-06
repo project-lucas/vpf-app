@@ -1,0 +1,42 @@
+{
+  "name": "vpf-centre-performance",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "migrate": "node --env-file=.env.local scripts/apply-migrations.mjs",
+    "seed": "node --env-file=.env.local --import=tsx scripts/seed.ts",
+    "seed:programmes": "node --env-file=.env.local --import=tsx scripts/seed-programmes.ts",
+    "vapid": "node scripts/generate-vapid.mjs",
+    "icons": "node scripts/generate-icons.mjs",
+    "splash": "node scripts/generate-splash.mjs"
+  },
+  "dependencies": {
+    "@supabase/ssr": "^0.6.1",
+    "@supabase/supabase-js": "^2.49.4",
+    "lucide-react": "^1.23.0",
+    "next": "^15.4.5",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "recharts": "^3.9.1",
+    "web-push": "^3.6.7"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3.3.1",
+    "@tailwindcss/postcss": "^4.1.11",
+    "@types/node": "^22.15.0",
+    "@types/react": "^19.1.8",
+    "@types/react-dom": "^19.1.6",
+    "@types/web-push": "^3.6.4",
+    "eslint": "^9.30.0",
+    "eslint-config-next": "^15.4.5",
+    "pg": "^8.16.0",
+    "tailwindcss": "^4.1.11",
+    "tsx": "^4.20.3",
+    "typescript": "^5.8.3"
+  }
+}

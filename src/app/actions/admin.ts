@@ -1,0 +1,275 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { getAuthProfile } from "@/lib/auth";
+import { CATEGORIES, POSITIONS } from "@/lib/constants";
+import type { ActionResult, SessionPole } from "@/lib/types";
+
+/** Vérifie que l'appelant est admin avant toute opération service_role. */
+async function requireAdmin(): Promise<{ ok: true; adminId: string } | { ok: false; error: string }> {
+  const { profile } = await getAuthProfile();
+  if (!profile || profile.role !== "admin") {
+    return { ok: false, error: "Accès réservé à l'admin." };
+  }
+  return { ok: true, adminId: profile.id };
+}
+
+// ---------------------------------------------------------------------------
+// Coachs
+// ---------------------------------------------------------------------------
+
+export async function createCoach(data: {
+  email: string;
+  password: string;
+  first_name: string;
+  last_name: string;
+  whatsapp_number: string;
+}): Promise<ActionResult> {
+  const guard = await requireAdmin();
+  if (!guard.ok) return guard;
+
+  const email = data.email.trim().toLowerCase();
+  if (!/^\S+@\S+\.\S+$/.test(email)) return { ok: false, error: "Email invalide." };
+  if (data.password.length < 8) {
+    return { ok: false, error: "Mot de passe : 8 caractères minimum." };
+  }
+  if (!data.first_name.trim() || !data.last_name.trim()) {
+    return { ok: false, error: "Prénom et nom obligatoires." };
+  }
+
+  const admin = createAdminClient();
+  const { data: created, error: createError } = await admin.auth.admin.createUser({
+    email,
+    password: data.password,
+    email_confirm: true,
+  });
+  if (createError || !created.user) {
+    return {
+      ok: false,
+      error: createError?.message.includes("already")
+        ? "Un compte existe déjà avec cet email."
+        : "Création impossible.",
+    };
+  }
+
+  const { error: profileError } = await admin.from("profiles").insert({
+    id: created.user.id,
+    role: "coach",
+    first_name: data.first_name.trim(),
+    last_name: data.last_name.trim(),
+    whatsapp_number: data.whatsapp_number.trim(),
+  });
+  if (profileError) {
+    await admin.auth.admin.deleteUser(created.user.id);
+    return { ok: false, error: "Création impossible." };
+  }
+
+  revalidatePath("/admin/coachs");
+  return { ok: true };
+}
+
+export async function updateCoach(
+  coachId: string,
+  data: { first_name: string; last_name: string; whatsapp_number: string; password?: string }
+): Promise<ActionResult> {
+  const guard = await requireAdmin();
+  if (!guard.ok) return guard;
+
+  const admin = createAdminClient();
+  const { error } = await admin
+    .from("profiles")
+    .update({
+      first_name: data.first_name.trim(),
+      last_name: data.last_name.trim(),
+      whatsapp_number: data.whatsapp_number.trim(),
+    })
+    .eq("id", coachId)
+    .eq("role", "coach");
+  if (error) return { ok: false, error: "Modification impossible." };
+
+  if (data.password) {
+    if (data.password.length < 8) return { ok: false, error: "Mot de passe : 8 caractères minimum." };
+    const { error: pwError } = await admin.auth.admin.updateUserById(coachId, {
+      password: data.password,
+    });
+    if (pwError) return { ok: false, error: "Mot de passe non modifié." };
+  }
+
+  revalidatePath("/admin/coachs");
+  return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// Invitations
+// ---------------------------------------------------------------------------
+
+export async function createInvitation(
+  coachId: string,
+  playerLabel: string
+): Promise<ActionResult & { token?: string }> {
+  const guard = await requireAdmin();
+  if (!guard.ok) return guard;
+
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from("invitations")
+    .insert({ coach_id: coachId, created_by: guard.adminId, player_label: playerLabel.trim() })
+    .select("id")
+    .single();
+  if (error || !data) return { ok: false, error: "Création impossible." };
+
+  revalidatePath("/admin/invitations");
+  return { ok: true, token: data.id };
+}
+
+export async function deleteInvitation(invitationId: string): Promise<ActionResult> {
+  const guard = await requireAdmin();
+  if (!guard.ok) return guard;
+
+  const admin = createAdminClient();
+  const { error } = await admin
+    .from("invitations")
+    .delete()
+    .eq("id", invitationId)
+    .is("used_at", null);
+  if (error) return { ok: false, error: "Suppression impossible." };
+  revalidatePath("/admin/invitations");
+  return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// Exclusion : archivage / réactivation
+// ---------------------------------------------------------------------------
+
+const BAN_FOREVER = "876000h"; // ~100 ans
+
+/**
+ * Archive un joueur : il ne peut plus se connecter (ban auth + contrôle
+ * middleware), ses statistiques sont conservées, ses notes coach sont
+ * supprimées par le trigger DB.
+ */
+export async function archivePlayer(playerId: string): Promise<ActionResult> {
+  const guard = await requireAdmin();
+  if (!guard.ok) return guard;
+
+  const admin = createAdminClient();
+  const { error } = await admin
+    .from("players")
+    .update({ status: "archived" })
+    .eq("id", playerId);
+  if (error) return { ok: false, error: "Archivage impossible." };
+
+  await admin.auth.admin.updateUserById(playerId, { ban_duration: BAN_FOREVER });
+  // supprime les subscriptions push pour couper les rappels immédiatement
+  await admin.from("push_subscriptions").delete().eq("user_id", playerId);
+
+  revalidatePath("/admin/exclusion");
+  revalidatePath("/admin");
+  return { ok: true };
+}
+
+export async function reactivatePlayer(playerId: string): Promise<ActionResult> {
+  const guard = await requireAdmin();
+  if (!guard.ok) return guard;
+
+  const admin = createAdminClient();
+  const { error } = await admin
+    .from("players")
+    .update({ status: "active" })
+    .eq("id", playerId);
+  if (error) return { ok: false, error: "Réactivation impossible." };
+
+  await admin.auth.admin.updateUserById(playerId, { ban_duration: "none" });
+
+  revalidatePath("/admin/exclusion");
+  revalidatePath("/admin");
+  return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// Bibliothèque de séances (CRUD admin)
+// ---------------------------------------------------------------------------
+
+interface SessionData {
+  name: string;
+  pole: SessionPole;
+  category: string;
+  youtube_url: string;
+  duration_minutes: number;
+  equipment: string;
+  /** postes concernés ; vide = tous les postes */
+  positions: string[];
+}
+
+function validateSession(data: SessionData): string | null {
+  if (!data.name.trim()) return "Le nom est obligatoire.";
+  if (!CATEGORIES[data.pole]?.includes(data.category)) return "Catégorie invalide pour ce pôle.";
+  if (!Number.isInteger(data.duration_minutes) || data.duration_minutes <= 0) {
+    return "Durée invalide.";
+  }
+  if (data.positions.some((p) => !POSITIONS.includes(p))) return "Poste invalide.";
+  return null;
+}
+
+export async function createLibrarySession(data: SessionData): Promise<ActionResult> {
+  const guard = await requireAdmin();
+  if (!guard.ok) return guard;
+  const invalid = validateSession(data);
+  if (invalid) return { ok: false, error: invalid };
+
+  const admin = createAdminClient();
+  const { error } = await admin.from("library_sessions").insert({
+    name: data.name.trim(),
+    pole: data.pole,
+    category: data.category,
+    youtube_url: data.youtube_url.trim(),
+    duration_minutes: data.duration_minutes,
+    equipment: data.equipment.trim(),
+    positions: data.positions,
+  });
+  if (error) return { ok: false, error: "Création impossible." };
+  revalidatePath("/admin/bibliotheque");
+  revalidatePath("/coach/bibliotheque");
+  return { ok: true };
+}
+
+export async function updateLibrarySession(
+  sessionId: string,
+  data: SessionData
+): Promise<ActionResult> {
+  const guard = await requireAdmin();
+  if (!guard.ok) return guard;
+  const invalid = validateSession(data);
+  if (invalid) return { ok: false, error: invalid };
+
+  const admin = createAdminClient();
+  const { error } = await admin
+    .from("library_sessions")
+    .update({
+      name: data.name.trim(),
+      pole: data.pole,
+      category: data.category,
+      youtube_url: data.youtube_url.trim(),
+      duration_minutes: data.duration_minutes,
+      equipment: data.equipment.trim(),
+      positions: data.positions,
+    })
+    .eq("id", sessionId);
+  if (error) return { ok: false, error: "Modification impossible." };
+  revalidatePath("/admin/bibliotheque");
+  revalidatePath("/coach/bibliotheque");
+  return { ok: true };
+}
+
+export async function deleteLibrarySession(sessionId: string): Promise<ActionResult> {
+  const guard = await requireAdmin();
+  if (!guard.ok) return guard;
+
+  const admin = createAdminClient();
+  const { error } = await admin.from("library_sessions").delete().eq("id", sessionId);
+  if (error) return { ok: false, error: "Suppression impossible." };
+  revalidatePath("/admin/bibliotheque");
+  revalidatePath("/coach/bibliotheque");
+  return { ok: true };
+}

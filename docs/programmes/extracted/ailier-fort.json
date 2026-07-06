@@ -1,0 +1,159 @@
+{
+  "poste": "ailier-fort",
+  "posteNumber": 4,
+  "posteLabel": "Ailier fort",
+  "seances": [
+    {
+      "number": 1,
+      "durationMinutes": 60,
+      "title": "POSTE BAS",
+      "subtitle": "Punir dedans",
+      "intro": "Sceller, sentir, finir. Le sac ou la chaise joue le défenseur dans ton dos.",
+      "exercises": [
+        {
+          "order": 1,
+          "title": "Mikan drill",
+          "durationMinutes": 10,
+          "tag": null,
+          "description": "Layups alternés gauche-droite sans que le ballon touche le sol, puis reverse. Toucher, rythme, deux mains. 4 × 30 secondes."
+        },
+        {
+          "order": 2,
+          "title": "Drop step & jump hook",
+          "durationMinutes": 20,
+          "tag": "ARME",
+          "description": "Auto-passe au poste bas, dos au panier contre le sac : drop step ligne de fond → power layup, ou jump hook vers le centre. Sceller d'abord, finir fort. 3 × 8 par côté."
+        },
+        {
+          "order": 3,
+          "title": "Up & under + feintes",
+          "durationMinutes": 20,
+          "tag": null,
+          "description": "Pivot face au panier, pump fake (le défenseur saute), passer dessous et finir. Puis feinte d'épaule → hook opposé. Les feintes gagnent les duels physiques perdus d'avance. 3 × 8."
+        }
+      ],
+      "challenge": {
+        "durationMinutes": 10,
+        "title": "20 moves au poste",
+        "description": "20 finitions au poste bas : drop step, hook, up & under mélangés, 10 par côté. Objectif : 14+/20.",
+        "maxScore": 20,
+        "scoreUnit": "réussites",
+        "objective": "14+/20"
+      }
+    },
+    {
+      "number": 2,
+      "durationMinutes": 60,
+      "title": "FACE AU PANIER",
+      "subtitle": "Le 4 qui écarte le jeu",
+      "intro": "Un ailier fort qui sanctionne à mi-distance et 3pts est impossible à défendre.",
+      "exercises": [
+        {
+          "order": 1,
+          "title": "Form shooting",
+          "durationMinutes": 10,
+          "tag": null,
+          "description": "15 tirs proches une main, puis 15 tirs aux coudes de la raquette. Release au sommet, jambes engagées."
+        },
+        {
+          "order": 2,
+          "title": "Pick & pop",
+          "durationMinutes": 20,
+          "tag": "ARME",
+          "description": "Simuler l'écran (chaise en tête de raquette), pop vers la ligne à 3pts ou mi-distance, auto-passe, réception pieds prêts, tir en 1 temps. 4 × 8 tirs."
+        },
+        {
+          "order": 3,
+          "title": "Elbow to elbow",
+          "durationMinutes": 20,
+          "tag": null,
+          "description": "Tir au coude droit, sprint vers le coude gauche, auto-passe, tir — et retour. Tirer en rythme malgré le déplacement. 4 × 10 tirs."
+        }
+      ],
+      "challenge": {
+        "durationMinutes": 10,
+        "title": "10 pops + 10 elbows",
+        "description": "10 tirs en pick & pop (mi-distance ou 3pts) puis 10 tirs elbow to elbow. Deux scores séparés — ton jeu face au panier en chiffres.",
+        "maxScore": 20,
+        "scoreUnit": "réussites",
+        "objective": null
+      }
+    },
+    {
+      "number": 3,
+      "durationMinutes": 60,
+      "title": "REBOND & PUISSANCE",
+      "subtitle": "Deuxième chance, points faciles",
+      "intro": "Le rebond offensif est une décision. Aller chercher haut, atterrir gainé, remonter plus vite.",
+      "exercises": [
+        {
+          "order": 1,
+          "title": "Planche & sauts",
+          "durationMinutes": 10,
+          "tag": null,
+          "description": "Ballon contre la planche : sauter le rattraper au plus haut, deux mains, atterrir gainé. Puis 2 × 10 tap contrôle (repousser le ballon sur la planche à chaque saut)."
+        },
+        {
+          "order": 2,
+          "title": "Rebond → power finish",
+          "durationMinutes": 20,
+          "tag": "ARME",
+          "description": "Lancer le ballon sur la planche, capter au plus haut, finir immédiatement : power layup deux mains, zéro dribble. Ajouter le sac au sol pour le contact. 4 × 6."
+        },
+        {
+          "order": 3,
+          "title": "Tip-in & deuxième saut",
+          "durationMinutes": 20,
+          "tag": null,
+          "description": "Ballon sur la planche : tip-in direct une main (droite puis gauche), puis série « deuxième saut » — rebond, atterrir, re-sauter finir sans redescendre le ballon. 3 × 8."
+        }
+      ],
+      "challenge": {
+        "durationMinutes": 10,
+        "title": "20 rebonds-finitions",
+        "description": "2 minutes chrono : lancer planche → rebond → power finish, en continu. Compter les réussites sur 20 tentatives max. Objectif : 14+/20.",
+        "maxScore": 20,
+        "scoreUnit": "réussites",
+        "objective": "14+/20"
+      }
+    },
+    {
+      "number": 4,
+      "durationMinutes": 60,
+      "title": "HANDLE DE GRAND",
+      "subtitle": "Le 4 qui sait driver",
+      "intro": "Deux dribbles utiles suffisent : attaquer un closeout, traverser, finir. Pas besoin d'être meneur.",
+      "exercises": [
+        {
+          "order": 1,
+          "title": "Dribble de progression",
+          "durationMinutes": 10,
+          "tag": null,
+          "description": "Aller-retour sur la longueur : dribble poussé main droite, retour main gauche, tête haute. Puis crossover simple à mi-terrain. Le grand qui dribble propre change une équipe."
+        },
+        {
+          "order": 2,
+          "title": "Face-up → drive court",
+          "durationMinutes": 20,
+          "tag": "ARME",
+          "description": "Auto-passe à mi-poste, pivot face au panier (chaise devant) : jab step puis 1-2 dribbles vers le cercle, finition puissante. Ligne de fond et centre, deux côtés. 4 × 8."
+        },
+        {
+          "order": 3,
+          "title": "Dribble → hook / floater court",
+          "durationMinutes": 20,
+          "tag": null,
+          "description": "Un dribble depuis le coude vers la raquette, finir jump hook ou floater court par-dessus la chaise. L'arme anti-aide quand la raquette se referme. 3 × 8 par côté."
+        }
+      ],
+      "challenge": {
+        "durationMinutes": 10,
+        "title": "15 attaques face-up",
+        "description": "15 attaques depuis le mi-poste : drive ligne de fond, drive centre, hook après dribble — 5 chacune. Objectif : 10+/15.",
+        "maxScore": 15,
+        "scoreUnit": "réussites",
+        "objective": "10+/15"
+      }
+    }
+  ]
+}

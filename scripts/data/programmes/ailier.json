@@ -1,0 +1,159 @@
+{
+  "poste": "ailier",
+  "posteNumber": 3,
+  "posteLabel": "Ailier",
+  "seances": [
+    {
+      "number": 1,
+      "durationMinutes": 60,
+      "title": "TIR EN MOUVEMENT",
+      "subtitle": "Se libérer pour recevoir",
+      "intro": "L'ailier reçoit en sortie de coupe ou de corner. Les pieds se préparent pendant la course.",
+      "exercises": [
+        {
+          "order": 1,
+          "title": "Footwork de sorties",
+          "durationMinutes": 10,
+          "tag": null,
+          "description": "Sans ballon : curl, straight cut, flare cut. Répéter les 3 types de sorties pour mettre en route les pieds — dernier appui orienté panier."
+        },
+        {
+          "order": 2,
+          "title": "Sorties de corner → C&S",
+          "durationMinutes": 20,
+          "tag": "ARME",
+          "description": "Ballon posé à l'aile : sprint depuis le corner, ramasser ou auto-passe, catch & shoot à 3pts en 1 temps. Les 3 types de sorties, des deux côtés. 3 × 8 tirs."
+        },
+        {
+          "order": 3,
+          "title": "Relocation",
+          "durationMinutes": 20,
+          "tag": null,
+          "description": "Tir, puis déplacement immédiat vers un autre spot (comme après une passe au drive), auto-passe, nouveau tir. Ne jamais admirer son tir — bouger. 3 × 8 séquences."
+        }
+      ],
+      "challenge": {
+        "durationMinutes": 10,
+        "title": "20 sorties 3pts",
+        "description": "20 tirs en sortie (côtés confondus, 3 types de sorties mélangés). Pieds OK + équilibre OK = tir compté. Objectif : 14+/20.",
+        "maxScore": 20,
+        "scoreUnit": "réussites",
+        "objective": "14+/20"
+      }
+    },
+    {
+      "number": 2,
+      "durationMinutes": 60,
+      "title": "ATTAQUE DE CLOSEOUT",
+      "subtitle": "Punir le défenseur qui monte",
+      "intro": "Catch à l'aile, défenseur qui arrive fort : tirer, driver, ou feinter. La chaise joue le défenseur.",
+      "exercises": [
+        {
+          "order": 1,
+          "title": "Jab step & triple menace",
+          "durationMinutes": 10,
+          "tag": null,
+          "description": "Catch à l'aile, position triple menace : jab step court, jab long, jab + regard panier. Le ballon protégé, les appuis vifs. 3 × 10."
+        },
+        {
+          "order": 2,
+          "title": "Jab → drive",
+          "durationMinutes": 20,
+          "tag": "ARME",
+          "description": "Auto-passe à l'aile, chaise devant toi : jab step puis drive ligne de fond ou centre, 2 dribbles max, finition. Attaquer l'épaule de la chaise, pas son centre. 4 × 8 drives."
+        },
+        {
+          "order": 3,
+          "title": "Pump fake → tir décalé",
+          "durationMinutes": 20,
+          "tag": null,
+          "description": "Catch, pump fake pour faire « sauter » le défenseur, un pas de côté pour se décaler, tir. Depuis corners et ailes. Ne pas charger — créer vers l'extérieur. 3 × 10."
+        }
+      ],
+      "challenge": {
+        "durationMinutes": 10,
+        "title": "10 drives + 10 fakes",
+        "description": "10 finitions sur drive après jab, puis 10 tirs après pump fake + décalage. Deux scores séparés — tes deux réponses au closeout.",
+        "maxScore": 20,
+        "scoreUnit": "réussites",
+        "objective": null
+      }
+    },
+    {
+      "number": 3,
+      "durationMinutes": 60,
+      "title": "TRANSITION",
+      "subtitle": "Courir, recevoir, finir",
+      "intro": "Les points faciles de l'ailier sont en transition : sprint, réception dans la course, finition en vitesse.",
+      "exercises": [
+        {
+          "order": 1,
+          "title": "Sprints + layups lancés",
+          "durationMinutes": 10,
+          "tag": null,
+          "description": "Ballon lancé devant soi depuis le milieu de terrain, sprint, rattraper, finir layup lancé sans ralentir. Couloir droit puis gauche. 8 allers."
+        },
+        {
+          "order": 2,
+          "title": "Tir en course — arrêt 1 temps",
+          "durationMinutes": 20,
+          "tag": "ARME",
+          "description": "Sprint depuis le milieu, auto-passe vers l'aile ou le top, arrêt 1 temps (hop), tir à 3pts ou pull-up. Tirer avec le cardio haut, comme en match. 4 × 6 tirs."
+        },
+        {
+          "order": 3,
+          "title": "Finitions en vitesse",
+          "durationMinutes": 20,
+          "tag": null,
+          "description": "Lancé pleine vitesse : euro-step, floater, reverse — décider tard, comme devant un défenseur qui recule. Alterner les trois, des deux côtés. 3 × 8 finitions."
+        }
+      ],
+      "challenge": {
+        "durationMinutes": 10,
+        "title": "Circuit transition",
+        "description": "10 allers chrono : sprint → réception → finition libre. Rater = recommencer l'aller. Note le temps ET les réussites. Objectif : 8+/10.",
+        "maxScore": 10,
+        "scoreUnit": "réussites",
+        "objective": "8+/10"
+      }
+    },
+    {
+      "number": 4,
+      "durationMinutes": 60,
+      "title": "MI-DISTANCE & FOOTWORK",
+      "subtitle": "Le jeu entre les lignes",
+      "intro": "Quand le 3pts est refusé et le cercle fermé, l'ailier score entre les deux.",
+      "exercises": [
+        {
+          "order": 1,
+          "title": "Form + jump stop",
+          "durationMinutes": 10,
+          "tag": null,
+          "description": "15 tirs proches, puis jump stop (arrêt simultané deux pieds) à mi-distance avec pivot avant/arrière. L'arrêt propre ouvre tout le reste."
+        },
+        {
+          "order": 2,
+          "title": "1 dribble pull-up des ailes",
+          "durationMinutes": 20,
+          "tag": "ARME",
+          "description": "Auto-passe à l'aile, 1 dribble vers le centre ou la ligne de fond, pull-up mi-distance. Les deux directions, les deux ailes. Arrêt identique à chaque tir. 4 × 10."
+        },
+        {
+          "order": 3,
+          "title": "Post moderne — mi-poste",
+          "durationMinutes": 20,
+          "tag": null,
+          "description": "Dos au panier à mi-poste (petit contre petit) : pivot face → tir, ou un dribble ligne de fond → fadeaway court. L'ailier qui poste les petits arrières a toujours une solution. 3 × 8."
+        }
+      ],
+      "challenge": {
+        "durationMinutes": 10,
+        "title": "15 mi-distance",
+        "description": "5 pull-ups aile droite + 5 aile gauche + 5 tirs après pivot au mi-poste. Objectif : 10+/15.",
+        "maxScore": 15,
+        "scoreUnit": "réussites",
+        "objective": "10+/15"
+      }
+    }
+  ]
+}
