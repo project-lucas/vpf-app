@@ -1,3 +1,4 @@
+import Image from "next/image";
 import { createClient } from "@/lib/supabase/server";
 import { addDays, currentWeekStart, isoWeekNumber, parisNow } from "@/lib/dates";
 import { completedDayStreak } from "@/lib/discipline";
@@ -164,9 +165,21 @@ export default async function PlanningPage() {
 
   return (
     <>
-      {/* Header rétro : surtitre semaine → titre varsity → filet double */}
-      <Overline>Planning · Semaine {weekNo}</Overline>
-      <DisplayTitle className="mt-2 text-[42px]">Ma Semaine</DisplayTitle>
+      {/* Header rétro : surtitre semaine → titre varsity → filet double.
+          Logo du club dans l'angle supérieur droit : blend multiply pour fondre
+          son fond blanc dans le papier + légère sépia pour la teinte rétro. */}
+      <div className="relative">
+        <Overline>Planning · Semaine {weekNo}</Overline>
+        <DisplayTitle className="mt-2 text-[42px]">Ma Semaine</DisplayTitle>
+        <Image
+          src="/vpf-embleme.png"
+          alt="Logo VPF"
+          width={53}
+          height={80}
+          className="pointer-events-none absolute -top-1 right-0 h-20 w-auto select-none"
+          style={{ mixBlendMode: "multiply" }}
+        />
+      </div>
 
       <DoubleRule className="mt-3" />
 
