@@ -172,7 +172,7 @@ export default async function PlanningPage() {
         <Overline>Planning · Semaine {weekNo}</Overline>
         <DisplayTitle className="mt-2 text-[42px]">Ma Semaine</DisplayTitle>
         <Image
-          src="/vpf-embleme.png"
+          src="/vpf-embleme-v2.png"
           alt="Logo VPF"
           width={53}
           height={80}
