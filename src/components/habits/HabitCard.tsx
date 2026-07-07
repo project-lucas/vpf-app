@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { TrendingUp } from "lucide-react";
 import { toggleHabitCheck } from "@/app/actions/habits";
 import { HABIT_COLORS, habitPale } from "@/lib/constants";
@@ -31,7 +30,6 @@ export function HabitCard({
   readOnly?: boolean;
   onEdit?: () => void;
 }) {
-  const router = useRouter();
   const [, startTransition] = useTransition();
   const [checks, setChecks] = useState(() => new Set(habit.checkDates));
   const [detailOpen, setDetailOpen] = useState(false);
@@ -68,7 +66,6 @@ export function HabitCard({
           return next;
         });
       }
-      router.refresh();
     });
   }
 

@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
@@ -29,3 +30,15 @@ export async function createClient() {
     }
   );
 }
+
+/**
+ * Utilisateur courant, dédupliqué par requête (React cache) : layout et page
+ * se partagent UN SEUL appel réseau auth.getUser() au lieu d'un chacun.
+ */
+export const getCachedUser = cache(async () => {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  return user;
+});

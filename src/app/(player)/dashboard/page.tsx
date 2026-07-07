@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { TrendingUp } from "lucide-react";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getCachedUser } from "@/lib/supabase/server";
 import { addDays, currentWeekStart, formatDateFr, parisNow } from "@/lib/dates";
 import { EVENT_TYPES } from "@/lib/constants";
 import {
@@ -51,9 +51,7 @@ export default async function DashboardPage({
   const initialSection: SectionKey = requestedSection ?? "progression";
 
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCachedUser();
   if (!user) return null;
 
   const weekStart = currentWeekStart();

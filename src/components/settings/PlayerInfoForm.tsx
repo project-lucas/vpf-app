@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { updateMyPlayerInfo } from "@/app/actions/player";
 import { PLAYER_CATEGORIES, POSITIONS } from "@/lib/constants";
 import { EdButton, EdField, EdInput, EdSelect, EdTextarea } from "@/components/editorial/forms";
@@ -13,7 +12,6 @@ export function PlayerInfoForm({
 }: {
   initial: { category: string; position: string; club: string; season_goal: string };
 }) {
-  const router = useRouter();
   const [category, setCategory] = useState(initial.category);
   const [position, setPosition] = useState(initial.position);
   const [club, setClub] = useState(initial.club);
@@ -37,7 +35,6 @@ export function PlayerInfoForm({
       return;
     }
     setMessage({ ok: true, text: "Fiche mise à jour" });
-    router.refresh();
   }
 
   return (

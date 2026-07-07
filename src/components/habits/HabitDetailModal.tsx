@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { createPortal } from "react-dom";
-import { useRouter } from "next/navigation";
 import { Pencil, Settings, TrendingUp } from "lucide-react";
 import { deleteHabit } from "@/app/actions/habits";
 import { addDays } from "@/lib/dates";
@@ -53,7 +52,6 @@ export function HabitDetailModal({
   onClose,
   onEdit,
 }: Props) {
-  const router = useRouter();
   const [month, setMonth] = useState(today.slice(0, 7)); // "YYYY-MM"
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -74,7 +72,6 @@ export function HabitDetailModal({
   async function handleDelete() {
     await deleteHabit(habit.id);
     onClose();
-    router.refresh();
   }
 
   if (typeof document === "undefined") return null;

@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { addMatchStat } from "@/app/actions/player";
 import type { MatchRecords, RecordKey } from "@/lib/gamification";
 import { EdButton, EdField, EdInput } from "@/components/editorial/forms";
@@ -14,7 +13,6 @@ export function MatchStatForm({
   records?: MatchRecords;
   onSuccess?: (beaten: RecordKey[]) => void;
 }) {
-  const router = useRouter();
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -80,7 +78,6 @@ export function MatchStatForm({
 
     (e.target as HTMLFormElement).reset?.();
     setIsStarter(true);
-    router.refresh();
     onSuccess?.(beaten);
   }
 

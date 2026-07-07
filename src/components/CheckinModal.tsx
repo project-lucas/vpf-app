@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { Hand } from "lucide-react";
 import { submitCheckin } from "@/app/actions/player";
 import { Modal } from "@/components/ui/Modal";
@@ -19,7 +18,6 @@ const HINTS: Record<CheckinQuestion, [string, string]> = {
 };
 
 export function CheckinModal({ question }: { question: CheckinQuestion }) {
-  const router = useRouter();
   const [open, setOpen] = useState(true);
   const [score, setScore] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
@@ -30,7 +28,6 @@ export function CheckinModal({ question }: { question: CheckinQuestion }) {
     const result = await submitCheckin(question, score);
     if (result.ok) {
       setOpen(false);
-      router.refresh();
     } else {
       setLoading(false);
     }

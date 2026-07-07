@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getCachedUser } from "@/lib/supabase/server";
 import { LogoutButton } from "@/components/LogoutButton";
 import { AvatarUploader } from "@/components/settings/AvatarUploader";
 import { NotificationsToggle } from "@/components/settings/NotificationsToggle";
@@ -23,9 +23,7 @@ function clubTag(club: string | null | undefined): string | undefined {
 
 export default async function ProfilPage() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCachedUser();
   if (!user) return null;
 
   const [{ data: profile }, { data: playerRow }] = await Promise.all([

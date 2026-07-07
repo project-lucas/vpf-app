@@ -1,5 +1,5 @@
 import Image from "next/image";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getCachedUser } from "@/lib/supabase/server";
 import { addDays, currentWeekStart, isoWeekNumber, parisNow } from "@/lib/dates";
 import { completedDayStreak } from "@/lib/discipline";
 import { PlanningView } from "@/components/planning/PlanningView";
@@ -19,15 +19,15 @@ export const dynamic = "force-dynamic";
 
 export default async function PlanningPage() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCachedUser();
   if (!user) return null;
 
   const weekStart = currentWeekStart();
   const prevWeekStart = addDays(weekStart, -7);
   const now = parisNow();
 
+  // Une seule vague de requêtes parallèles : chaque batch séquentiel ajoute
+  // un aller-retour complet vers Supabase au temps de chargement de l'onglet.
   const [
     { data: events },
     { data: completions },
@@ -35,6 +35,10 @@ export default async function PlanningPage() {
     { data: habits },
     { data: todayChecks },
     { data: coachRow },
+    { data: lastReview },
+    { data: coachFocusRow },
+    { data: thisWeekReview },
+    { data: matchStats },
   ] = await Promise.all([
     supabase
       .from("planned_events")
@@ -67,6 +71,24 @@ export default async function PlanningPage() {
       .select("coach:profiles!players_coach_id_fkey(first_name, last_name, whatsapp_number)")
       .eq("id", user.id)
       .maybeSingle(),
+    supabase
+      .from("weekly_reviews")
+      .select("to_improve")
+      .eq("player_id", user.id)
+      .eq("week_start", prevWeekStart)
+      .maybeSingle(),
+    supabase.from("coach_focus").select("content").eq("player_id", user.id).maybeSingle(),
+    supabase
+      .from("weekly_reviews")
+      .select("went_well, to_improve")
+      .eq("player_id", user.id)
+      .eq("week_start", weekStart)
+      .maybeSingle(),
+    supabase
+      .from("match_stats")
+      .select("*")
+      .eq("player_id", user.id)
+      .order("match_date", { ascending: false }),
   ]);
 
   // Contact coach : gardé pour l'intitulé du bouton (l'équipe échange sur Discord)
@@ -115,34 +137,6 @@ export default async function PlanningPage() {
       dayHistory[date] = e.done === e.total ? "complete" : e.done > 0 ? "partial" : "missed";
     }
   }
-
-  // Focus de la semaine : le message écrit par le coach (coach_focus) prime,
-  // sinon le « à améliorer » du dernier bilan du joueur
-  const [
-    { data: lastReview },
-    { data: coachFocusRow },
-    { data: thisWeekReview },
-    { data: matchStats },
-  ] = await Promise.all([
-    supabase
-      .from("weekly_reviews")
-      .select("to_improve")
-      .eq("player_id", user.id)
-      .eq("week_start", prevWeekStart)
-      .maybeSingle(),
-    supabase.from("coach_focus").select("content").eq("player_id", user.id).maybeSingle(),
-    supabase
-      .from("weekly_reviews")
-      .select("went_well, to_improve")
-      .eq("player_id", user.id)
-      .eq("week_start", weekStart)
-      .maybeSingle(),
-    supabase
-      .from("match_stats")
-      .select("*")
-      .eq("player_id", user.id)
-      .order("match_date", { ascending: false }),
-  ]);
 
   // Feuille de match + bilan déplacés dans le planning (pastilles en bas). Un
   // « ? » jaune apparaît le week-end (samedi/dimanche) tant que NI le bilan NI

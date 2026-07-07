@@ -1,7 +1,6 @@
 "use client";
 
 import { useOptimistic, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { checkEvent, setCompletionComment } from "@/app/actions/planning";
 import { successFeedback, tapFeedback } from "@/lib/feedback";
 import { EVENT_TYPE_LABELS, formatDuration } from "@/lib/constants";
@@ -23,7 +22,6 @@ interface Props {
 }
 
 export function EventCheckRow({ event, completion, weekStart, canCheck, onChecked }: Props) {
-  const router = useRouter();
   const [, startTransition] = useTransition();
   const [commentOpen, setCommentOpen] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -48,8 +46,8 @@ export function EventCheckRow({ event, completion, weekStart, canCheck, onChecke
     onChecked?.(event.id, newStatus);
     startTransition(async () => {
       setOptStatus(newStatus);
+      // le revalidatePath de l'action rafraîchit la page dans la même réponse
       await checkEvent(event.id, weekStart, newStatus);
-      router.refresh();
     });
   }
 
@@ -58,7 +56,6 @@ export function EventCheckRow({ event, completion, weekStart, canCheck, onChecke
     startTransition(async () => {
       await setCompletionComment(completion.id, comment);
       setCommentOpen(false);
-      router.refresh();
     });
   }
 

@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getCachedUser } from "@/lib/supabase/server";
 import { daysBetween, parisNow } from "@/lib/dates";
 import { CHECKIN_INTERVAL_DAYS } from "@/lib/constants";
 import { BottomNav } from "@/components/BottomNav";
@@ -14,9 +14,7 @@ import type { CheckinQuestion } from "@/lib/types";
 
 export default async function PlayerLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCachedUser();
 
   let checkinQuestion: CheckinQuestion | null = null;
   let notificationsEnabled = false;

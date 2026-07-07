@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { markSessionCompletion, saveChallengeScore } from "@/app/actions/player";
 import { successFeedback } from "@/lib/feedback";
 import { YouTubeEmbed } from "@/components/YouTubeEmbed";
@@ -19,7 +18,6 @@ export function SessionCard({
   assignment: SessionAssignmentWithSession;
   index: number;
 }) {
-  const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [commentOpen, setCommentOpen] = useState(false);
   const [comment, setComment] = useState(assignment.completion?.comment ?? "");
@@ -43,7 +41,6 @@ export function SessionCard({
     }
     startTransition(async () => {
       await markSessionCompletion(assignment.id, status, completion?.comment ?? "");
-      router.refresh();
     });
   }
 
@@ -51,7 +48,6 @@ export function SessionCard({
     startTransition(async () => {
       await markSessionCompletion(assignment.id, completion?.status ?? "done", comment);
       setCommentOpen(false);
-      router.refresh();
     });
   }
 
@@ -61,7 +57,6 @@ export function SessionCard({
     startTransition(async () => {
       await saveChallengeScore(assignment.id, parsed);
       setScoreOpen(false);
-      router.refresh();
     });
   }
 

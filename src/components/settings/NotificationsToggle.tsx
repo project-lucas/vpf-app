@@ -1,13 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import { setNotificationsEnabled } from "@/app/actions/settings";
 import { subscribeToPush } from "@/components/PushPrompt";
 import { EditorialSwitch } from "@/components/editorial/EditorialSwitch";
 
 export function NotificationsToggle({ enabled }: { enabled: boolean }) {
-  const router = useRouter();
   const [isEnabled, setIsEnabled] = useState(enabled);
   const [permission, setPermission] = useState<NotificationPermission | null>(null);
   const [loading, setLoading] = useState(false);
@@ -28,7 +26,6 @@ export function NotificationsToggle({ enabled }: { enabled: boolean }) {
       const result = await setNotificationsEnabled(next);
       if (result.ok) {
         setIsEnabled(next);
-        router.refresh();
       }
     } finally {
       setLoading(false);

@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { addPlannedEvent, deletePlannedEvent } from "@/app/actions/planning";
 import {
   DEFAULT_EVENT_MINUTES,
@@ -35,7 +34,6 @@ export function PlanningEditor({
   playerId: string;
   events: PlannedEvent[];
 }) {
-  const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [eventType, setEventType] = useState<EventType>("training_basket");
   const [weekday, setWeekday] = useState(1);
@@ -55,14 +53,12 @@ export function PlanningEditor({
         duration_minutes: duration,
       });
       if (!result.ok) setError(result.error);
-      router.refresh();
     });
   }
 
   function remove(eventId: string) {
     startTransition(async () => {
       await deletePlannedEvent(eventId, playerId);
-      router.refresh();
     });
   }
 

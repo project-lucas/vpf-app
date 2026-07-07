@@ -61,6 +61,8 @@ export async function addMatchStat(data: {
   });
   if (error) return { ok: false, error: "Enregistrement impossible." };
   revalidatePath("/dashboard");
+  // la feuille de match se saisit aussi depuis le planning (pastille + rappel week-end)
+  revalidatePath("/planning");
   return { ok: true };
 }
 
@@ -121,6 +123,8 @@ export async function submitWeeklyReview(
   );
   if (error) return { ok: false, error: "Enregistrement impossible." };
   revalidatePath("/dashboard");
+  // le bilan se remplit depuis le planning (pastille + rappel week-end)
+  revalidatePath("/planning");
   return { ok: true };
 }
 
@@ -142,7 +146,9 @@ export async function submitCheckin(
     .from("checkins")
     .insert({ player_id: user.id, question, score });
   if (error) return { ok: false, error: "Enregistrement impossible." };
-  revalidatePath("/planning");
+  // le check-in vit dans le layout joueur (toutes les pages) : purge globale
+  // pour qu'un onglet en cache client ne ré-affiche pas le pop-up
+  revalidatePath("/", "layout");
   return { ok: true };
 }
 
@@ -182,6 +188,8 @@ export async function markSessionCompletion(
     if (error) return { ok: false, error: "Enregistrement impossible." };
   }
   revalidatePath("/seances");
+  // les séances validées nourrissent XP, badges et courbe du dashboard
+  revalidatePath("/dashboard");
   return { ok: true };
 }
 
@@ -226,6 +234,7 @@ export async function saveChallengeScore(
     if (error) return { ok: false, error: "Enregistrement impossible." };
   }
   revalidatePath("/seances");
+  revalidatePath("/dashboard");
   return { ok: true };
 }
 

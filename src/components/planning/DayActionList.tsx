@@ -2,7 +2,6 @@
 
 import { useOptimistic, useState, useTransition } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { checkEvent } from "@/app/actions/planning";
 import { toggleHabitCheck } from "@/app/actions/habits";
 import { EVENT_TYPE_LABELS, formatDuration } from "@/lib/constants";
@@ -52,14 +51,14 @@ export function DayActionList({
   today,
   onEventChecked,
 }: Props) {
-  const router = useRouter();
   const [, startTransition] = useTransition();
   const [tab, setTab] = useState<"todo" | "done">("todo");
   const [detailEvent, setDetailEvent] = useState<PlannedEvent | null>(null);
 
   // UI optimiste : le pointage bascule instantanément (aucune attente serveur,
-  // aucun bouton gelé). Les props fraîches du router.refresh() reprennent la
-  // main une fois l'action terminée ; en cas d'échec, l'état revient tout seul.
+  // aucun bouton gelé). Les props fraîches du revalidatePath de l'action
+  // reprennent la main une fois l'action terminée ; en cas d'échec, l'état
+  // revient tout seul.
   const [optCompletions, applyCompletion] = useOptimistic(
     completions,
     (curr: EventCompletion[], u: { eventId: string; status: CompletionStatus }) => {
@@ -96,8 +95,9 @@ export function DayActionList({
     }
     startTransition(async () => {
       applyCompletion({ eventId: event.id, status });
+      // le revalidatePath de l'action renvoie la page fraîche dans la même
+      // réponse — pas de router.refresh() (ce serait un 2e rendu complet)
       await checkEvent(event.id, weekStart, status);
-      router.refresh();
     });
   }
 
@@ -107,7 +107,6 @@ export function DayActionList({
     startTransition(async () => {
       applyHabit(habit.id);
       await toggleHabitCheck(habit.id, today);
-      router.refresh();
     });
   }
 

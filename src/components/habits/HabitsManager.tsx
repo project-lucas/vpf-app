@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { createHabit, deleteHabit, updateHabit } from "@/app/actions/habits";
 import { HABIT_COLORS, HABIT_ICON_NAMES } from "@/lib/constants";
 import { HabitIcon } from "./HabitIcon";
@@ -27,7 +26,6 @@ export function HabitsManager({
   habits: HabitWithChecks[];
   today: string;
 }) {
-  const router = useRouter();
   const [formTarget, setFormTarget] = useState<HabitWithChecks | "new" | null>(null);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -76,8 +74,8 @@ export function HabitsManager({
       setError(result.error);
       return;
     }
+    // le revalidatePath de l'action rafraîchit la liste dans la même réponse
     setFormTarget(null);
-    router.refresh();
   }
 
   async function remove() {
@@ -86,7 +84,6 @@ export function HabitsManager({
     await deleteHabit(formTarget.id);
     setLoading(false);
     setFormTarget(null);
-    router.refresh();
   }
 
   return (

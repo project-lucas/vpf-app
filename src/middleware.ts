@@ -17,6 +17,24 @@ const PLAYER_PREFIXES = [
   "/parametres",
 ];
 
+// Cache court du rôle dans un cookie httpOnly : évite la requête `profiles`
+// à CHAQUE navigation (le middleware est sur le chemin critique de toutes les
+// pages). Lié à l'id utilisateur ; seuls les états stables sont mis en cache
+// (coach/admin, joueur actif et onboardé) — les états transitoires
+// (onboarding, archivage) re-vérifient la base à chaque requête.
+const NAV_COOKIE = "vpf-nav";
+const NAV_TTL_SECONDS = 15 * 60;
+
+type NavState = { role: "admin" | "coach" | "player" };
+
+function parseNavCookie(value: string | undefined, userId: string): NavState | null {
+  if (!value) return null;
+  const [uid, role] = value.split("|");
+  if (uid !== userId) return null;
+  if (role !== "admin" && role !== "coach" && role !== "player") return null;
+  return { role };
+}
+
 export async function middleware(request: NextRequest) {
   let response = NextResponse.next({ request });
 
@@ -63,28 +81,48 @@ export async function middleware(request: NextRequest) {
     return isPublic ? response : redirect("/login");
   }
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role, players!players_id_fkey(status, onboarding_completed)")
-    .eq("id", user.id)
-    .single();
+  const cached = parseNavCookie(request.cookies.get(NAV_COOKIE)?.value, user.id);
+  let role: "admin" | "coach" | "player";
 
-  if (!profile) {
-    await supabase.auth.signOut();
-    return redirect("/login");
-  }
+  if (cached) {
+    role = cached.role;
+  } else {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("role, players!players_id_fkey(status, onboarding_completed)")
+      .eq("id", user.id)
+      .single();
 
-  const role = profile.role as "admin" | "coach" | "player";
-
-  if (role === "player") {
-    const player = Array.isArray(profile.players) ? profile.players[0] : profile.players;
-    if (!player || player.status === "archived") {
+    if (!profile) {
       await supabase.auth.signOut();
       return redirect("/login");
     }
-    if (!player.onboarding_completed) {
-      return path === "/onboarding" ? response : redirect("/onboarding");
+
+    role = profile.role as "admin" | "coach" | "player";
+
+    if (role === "player") {
+      const player = Array.isArray(profile.players) ? profile.players[0] : profile.players;
+      if (!player || player.status === "archived") {
+        await supabase.auth.signOut();
+        return redirect("/login");
+      }
+      if (!player.onboarding_completed) {
+        // état transitoire : pas de cache, pour que la fin de l'onboarding
+        // soit prise en compte immédiatement
+        return path === "/onboarding" ? response : redirect("/onboarding");
+      }
     }
+
+    response.cookies.set(NAV_COOKIE, `${user.id}|${role}`, {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      maxAge: NAV_TTL_SECONDS,
+      path: "/",
+    });
+  }
+
+  if (role === "player") {
     const isPlayerPath = PLAYER_PREFIXES.some((p) => path === p || path.startsWith(p + "/"));
     return isPlayerPath ? response : redirect(PLAYER_HOME);
   }

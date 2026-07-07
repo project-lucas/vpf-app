@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { Check } from "lucide-react";
 import { submitWeeklyReview } from "@/app/actions/player";
 import { EdButton, EdField, EdTextarea } from "@/components/editorial/forms";
@@ -16,7 +15,6 @@ export function WeeklyReviewForm({
   /** appelé après un enregistrement réussi (ex. fermeture de la modale) */
   onDone?: () => void;
 }) {
-  const router = useRouter();
   const [wentWell, setWentWell] = useState(initialWentWell);
   const [toImprove, setToImprove] = useState(initialToImprove);
   const [error, setError] = useState("");
@@ -32,7 +30,6 @@ export function WeeklyReviewForm({
       setError(result.error);
       return;
     }
-    router.refresh();
     onDone?.();
   }
 
