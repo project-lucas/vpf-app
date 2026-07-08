@@ -45,9 +45,9 @@ const STATUS_BADGE: Record<EntryStatus, { tone: "success" | "danger" | "warning"
 export default async function CoachPlanningPage({
   searchParams,
 }: {
-  searchParams: Promise<{ w?: string }>;
+  searchParams: Promise<{ w?: string; j?: string }>;
 }) {
-  const { w } = await searchParams;
+  const { w, j } = await searchParams;
   const thisWeek = currentWeekStart();
   // Semaine affichée : paramètre ?w= (ramené au lundi), sinon semaine courante
   const weekStart =
@@ -57,6 +57,8 @@ export default async function CoachPlanningPage({
 
   const supabase = await createClient();
   const players = await getPlayersWithDiscipline(supabase);
+  // Filtre par joueur : ?j=<id>, ignoré s'il ne correspond à aucun joueur actif
+  const selectedPlayer = players.find((p) => p.id === j)?.id ?? null;
   const ids = players.map((p) => p.id);
   const nameOf = new Map(players.map((p) => [p.id, `${p.first_name} ${p.last_name}`]));
 
@@ -125,8 +127,13 @@ export default async function CoachPlanningPage({
     day.sort((a, b) => (a.time === b.time ? a.playerName.localeCompare(b.playerName, "fr") : a.time < b.time ? -1 : 1));
   }
 
-  const totalEntries = byDay.reduce((s, d) => s + d.length, 0);
-  const doneCount = byDay.flat().filter((e) => e.status === "done").length;
+  // Vue filtrée sur un joueur : le détail jour par jour et les compteurs suivent
+  const shownByDay = selectedPlayer
+    ? byDay.map((d) => d.filter((e) => e.playerId === selectedPlayer))
+    : byDay;
+
+  const totalEntries = shownByDay.reduce((s, d) => s + d.length, 0);
+  const doneCount = shownByDay.flat().filter((e) => e.status === "done").length;
 
   // Suivi par joueur : pointages, feuille de match et bilan de la semaine affichée
   const sheetByPlayer = new Map(
@@ -136,8 +143,10 @@ export default async function CoachPlanningPage({
   );
   const reviewedPlayers = new Set((reviews ?? []).map((r) => r.player_id));
 
-  const prevHref = `/coach/planning?w=${addDays(weekStart, -7)}`;
-  const nextHref = `/coach/planning?w=${addDays(weekStart, 7)}`;
+  const weekHref = (week: string) =>
+    `/coach/planning?w=${week}${selectedPlayer ? `&j=${selectedPlayer}` : ""}`;
+  const prevHref = weekHref(addDays(weekStart, -7));
+  const nextHref = weekHref(addDays(weekStart, 7));
 
   return (
     <>
@@ -169,6 +178,44 @@ export default async function CoachPlanningPage({
         </Link>
       </div>
 
+      {!isCurrentWeek && (
+        <Link
+          href={weekHref(thisWeek)}
+          className="mb-4 block rounded-xl border border-navy-200 bg-white py-2 text-center text-xs font-bold text-navy-600 hover:bg-navy-50"
+        >
+          ↩ Revenir à la semaine en cours
+        </Link>
+      )}
+
+      {/* Filtre par joueur */}
+      {players.length > 1 && (
+        <div className="mb-4 flex gap-1.5 overflow-x-auto pb-1">
+          <Link
+            href={`/coach/planning?w=${weekStart}`}
+            className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-bold ${
+              selectedPlayer === null
+                ? "bg-navy-800 text-white"
+                : "border border-navy-200 bg-white text-navy-500"
+            }`}
+          >
+            Tous
+          </Link>
+          {players.map((p) => (
+            <Link
+              key={p.id}
+              href={`/coach/planning?w=${weekStart}&j=${p.id}`}
+              className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-bold ${
+                selectedPlayer === p.id
+                  ? "bg-navy-800 text-white"
+                  : "border border-navy-200 bg-white text-navy-500"
+              }`}
+            >
+              {p.first_name}
+            </Link>
+          ))}
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-2.5">
         <StatCard label="Événements" value={`${totalEntries}`} hint="tous joueurs confondus" />
         <StatCard
@@ -185,7 +232,9 @@ export default async function CoachPlanningPage({
           <p className="text-sm text-navy-400">Aucun joueur actif pour le moment.</p>
         ) : (
           <div className="divide-y divide-navy-50">
-            {players.map((p) => {
+            {players
+              .filter((p) => !selectedPlayer || p.id === selectedPlayer)
+              .map((p) => {
               const entries = byDay.flat().filter((e) => e.playerId === p.id);
               const done = entries.filter((e) => e.status === "done").length;
               const sheet = sheetByPlayer.get(p.id);
@@ -221,7 +270,7 @@ export default async function CoachPlanningPage({
 
       {/* Détail jour par jour */}
       <div className="mt-5 space-y-3">
-        {byDay.map((entries, i) => {
+        {shownByDay.map((entries, i) => {
           const dayDate = addDays(weekStart, i);
           const isToday = dayDate === today;
           return (

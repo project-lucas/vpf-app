@@ -2,15 +2,20 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import {
-  addDays,
   ageFromBirthdate,
   currentWeekStart,
   formatDateFr,
   formatTime,
   parisNow,
 } from "@/lib/dates";
-import { HABIT_HEATMAP_WEEKS } from "@/lib/constants";
+import {
+  computeBadges,
+  computeXp,
+  levelTitle,
+  longestRun,
+} from "@/lib/gamification";
 import { HabitCard } from "@/components/habits/HabitCard";
+import { PlayerRadar } from "@/app/(player)/dashboard/PlayerRadar";
 import { MessageCircle, Star } from "lucide-react";
 import { EVENT_TYPE_LABELS, WEEKDAY_LABELS } from "@/lib/constants";
 import { EventTypeIcon } from "@/components/planning/EventIcon";
@@ -73,6 +78,7 @@ export default async function PlayerDetailPage({
     { data: habits },
     { data: habitChecks },
     { data: weekFocus },
+    { count: eventsDoneCount },
   ] = await Promise.all([
     supabase
       .from("planned_events")
@@ -91,8 +97,7 @@ export default async function PlayerDetailPage({
       .from("weekly_summaries")
       .select("*")
       .eq("player_id", id)
-      .order("week_start", { ascending: false })
-      .limit(8),
+      .order("week_start", { ascending: false }),
     supabase
       .from("session_assignments")
       .select("*, session:library_sessions(*), completion:session_completions(*)")
@@ -123,12 +128,17 @@ export default async function PlayerDetailPage({
       .limit(1)
       .maybeSingle(),
     supabase.from("habits").select("*").eq("player_id", id).order("position"),
+    // toutes les coches (heatmap + calcul XP/badges : séries, totaux)
     supabase
       .from("habit_checks")
       .select("habit_id, check_date")
-      .eq("player_id", id)
-      .gte("check_date", addDays(parisNow().date, -7 * HABIT_HEATMAP_WEEKS)),
+      .eq("player_id", id),
     supabase.from("coach_focus").select("content").eq("player_id", id).maybeSingle(),
+    supabase
+      .from("event_completions")
+      .select("id", { count: "exact", head: true })
+      .eq("player_id", id)
+      .eq("status", "done"),
   ]);
 
   const today = parisNow().date;
@@ -158,6 +168,58 @@ export default async function PlayerDetailPage({
     matchStats.length > 0 ? Math.max(...matchStats.map((m) => m.points)) : null;
   const checkin = lastCheckin as Checkin | null;
   const age = ageFromBirthdate(playerRaw.birthdate);
+
+  // ---- Gamification : mêmes calculs que le dashboard joueur (XP, niveau,
+  // badges) — le coach voit exactement ce que voit son joueur ----
+  const allHabitChecks = (habitChecks ?? []) as { habit_id: string; check_date: string }[];
+  const checksByHabit = new Map<string, string[]>();
+  for (const c of allHabitChecks) {
+    if (!checksByHabit.has(c.habit_id)) checksByHabit.set(c.habit_id, []);
+    checksByHabit.get(c.habit_id)!.push(c.check_date);
+  }
+  const bestHabitRun = Math.max(
+    0,
+    ...[...checksByHabit.values()].map((dates) => longestRun(dates))
+  );
+  const sessionsDone = allAssignments.filter((a) => a.completion?.status === "done").length;
+  const eventsDone = eventsDoneCount ?? 0;
+  const xp = computeXp({
+    eventsDone,
+    habitChecks: allHabitChecks.length,
+    sessionsDone,
+    matches: matchStats.length,
+  });
+  const allSummaries = (summaries ?? []) as WeeklySummary[];
+  const maxPointsMatch = [...matchStats]
+    .reverse()
+    .reduce<MatchStat | null>((max, m) => (max === null || m.points > max.points ? m : max), null);
+  const oldestMatch = matchStats[matchStats.length - 1];
+  const badges = computeBadges({
+    bestHabitRun,
+    matchCount: matchStats.length,
+    recordBeaten:
+      matchStats.length >= 2 && maxPointsMatch !== null && maxPointsMatch.id !== oldestMatch.id,
+    perfectWeekCount: allSummaries.filter(
+      (s) => s.planned_count > 0 && s.done_count >= s.planned_count
+    ).length,
+    sessionsDone,
+    habitChecks: allHabitChecks.length,
+    eventsDone,
+    hasBigGame: matchStats.some((m) => m.points >= 20),
+    bestThreesInMatch: Math.max(0, ...matchStats.map((m) => m.threes_made)),
+    level: xp.level,
+  });
+  const earnedBadges = badges.filter((b) => b.earned);
+
+  const radarMatches = matchStats.map((s) => ({
+    points: s.points,
+    minutes: s.minutes,
+    threes_made: s.threes_made,
+    twos_inside_made: s.twos_inside_made,
+    twos_outside_made: s.twos_outside_made,
+    free_throws_made: s.free_throws_made,
+    fouls: s.fouls,
+  }));
 
   const weekCompletions = (completions ?? []) as EventCompletion[];
   const weekEvents = (events ?? []) as PlannedEvent[];
@@ -326,7 +388,7 @@ export default async function PlayerDetailPage({
                   <Card>
                     <CardTitle>Historique des semaines</CardTitle>
                     <div className="divide-y divide-navy-50">
-                      {((summaries ?? []) as WeeklySummary[]).map((s) => (
+                      {allSummaries.slice(0, 8).map((s) => (
                         <div key={s.id} className="flex items-center justify-between py-2">
                           <span className="text-sm text-navy-500">
                             Semaine du {formatDateFr(s.week_start)}
@@ -382,10 +444,70 @@ export default async function PlayerDetailPage({
             ),
           },
           {
+            label: "Routine",
+            content: (
+              <AssignedSessionsManager
+                playerId={id}
+                pole="routine"
+                assignments={allAssignments.filter((a) => a.session.pole === "routine")}
+                library={((library ?? []) as LibrarySession[]).filter((s) => s.pole === "routine")}
+                visibleNote={
+                  (visibleNotes ?? []).find((n) => n.pole === "routine")?.content ?? ""
+                }
+              />
+            ),
+          },
+          {
             label: "Stats",
             content: (
-              <Card>
-                <CardTitle>Statistiques match</CardTitle>
+              <div className="space-y-5">
+                {/* Progression gamifiée : ce que le joueur voit dans son dashboard */}
+                <Card>
+                  <CardTitle>Progression du joueur</CardTitle>
+                  <p className="text-lg font-extrabold text-navy-900">
+                    Niveau {xp.level} · {levelTitle(xp.level)}
+                  </p>
+                  <p className="mt-0.5 text-xs text-navy-400">
+                    {xp.xp} XP au total · {xp.levelXp}/{xp.levelTarget} XP vers le niveau{" "}
+                    {xp.level + 1}
+                  </p>
+                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-navy-50">
+                    <div
+                      className="h-full rounded-full bg-gold"
+                      style={{ width: `${Math.min(100, (xp.levelXp / xp.levelTarget) * 100)}%` }}
+                    />
+                  </div>
+                  <p className="mt-4 text-xs font-bold uppercase tracking-wide text-navy-400">
+                    Badges obtenus ({earnedBadges.length}/{badges.length})
+                  </p>
+                  {earnedBadges.length === 0 ? (
+                    <p className="mt-1 text-sm text-navy-400">Aucun badge pour le moment.</p>
+                  ) : (
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      {earnedBadges.map((b) => (
+                        <span
+                          key={b.key}
+                          title={b.description}
+                          className="rounded-full bg-navy-100 px-2.5 py-1 text-[11px] font-semibold text-navy-700"
+                        >
+                          <Star size={11} className="-mt-0.5 mr-1 inline text-gold" />
+                          {b.label}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </Card>
+
+                {/* Radar : profil du joueur sur ses matchs (même vue que côté joueur) */}
+                {matchStats.length > 0 && (
+                  <Card>
+                    <CardTitle>Radar du joueur</CardTitle>
+                    <PlayerRadar matches={radarMatches} />
+                  </Card>
+                )}
+
+                <Card>
+                  <CardTitle>Statistiques match</CardTitle>
                 {matchStats.length === 0 ? (
                   <p className="text-sm text-navy-400">Aucun match saisi par le joueur.</p>
                 ) : (
@@ -454,7 +576,8 @@ export default async function PlayerDetailPage({
                     </div>
                   </>
                 )}
-              </Card>
+                </Card>
+              </div>
             ),
           },
           {

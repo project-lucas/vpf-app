@@ -5,6 +5,7 @@ import {
   ClipboardList,
   HeartPulse,
   NotebookPen,
+  Zap,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -17,7 +18,7 @@ import {
 } from "@/lib/coach-data";
 import { formatPercent } from "@/lib/discipline";
 import { LOW_DISCIPLINE_THRESHOLD } from "@/lib/constants";
-import { addDays, currentWeekStart, formatAgoFr, formatDateFr } from "@/lib/dates";
+import { addDays, currentWeekStart, formatAgoFr, formatDateFr, parisNow } from "@/lib/dates";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatCard } from "@/components/ui/StatCard";
 import { Card, CardTitle } from "@/components/ui/Card";
@@ -96,6 +97,11 @@ function ReviewCard({ review }: { review: ReviewWithPlayer }) {
   );
 }
 
+interface HealthEntry {
+  energy: { score: number; at: string } | null;
+  pain: { score: number; at: string } | null;
+}
+
 export default async function CoachDashboardPage() {
   const supabase = await createClient();
   const players = await getPlayersWithDiscipline(supabase);
@@ -109,6 +115,34 @@ export default async function CoachDashboardPage() {
     (p) => p.discipline !== null && p.discipline < LOW_DISCIPLINE_THRESHOLD
   );
   const emptyPlanning = players.filter((p) => p.planningEmpty);
+
+  // ---- Santé : dernier check-in énergie et douleurs de chaque joueur ----
+  const { data: checkinRows } =
+    players.length === 0
+      ? { data: [] }
+      : await supabase
+          .from("checkins")
+          .select("player_id, question, score, created_at")
+          .in(
+            "player_id",
+            players.map((p) => p.id)
+          )
+          .order("created_at", { ascending: false })
+          .limit(200);
+
+  const health = new Map<string, HealthEntry>();
+  for (const c of checkinRows ?? []) {
+    const entry = health.get(c.player_id) ?? { energy: null, pain: null };
+    const key = c.question === "energy" ? "energy" : "pain";
+    if (!entry[key]) entry[key] = { score: c.score, at: c.created_at };
+    health.set(c.player_id, entry);
+  }
+  // Alerte douleur : score >= 5 sur un check-in de moins de 7 jours
+  const painAlertLimit = addDays(parisNow().date, -7);
+  const painAlerts = players.filter((p) => {
+    const pain = health.get(p.id)?.pain;
+    return pain !== null && pain !== undefined && pain.score >= 5 && pain.at >= painAlertLimit;
+  });
 
   // Feuilles de match : semaine en cours / semaine passée + joueurs sans feuille
   const sheetsThisWeek = overview.matchSheets.filter((s) => s.match_date >= weekStart);
@@ -142,10 +176,24 @@ export default async function CoachDashboardPage() {
         />
       </div>
 
-      {(emptyPlanning.length > 0 || lowDiscipline.length > 0) && (
+      {(emptyPlanning.length > 0 || lowDiscipline.length > 0 || painAlerts.length > 0) && (
         <Card className="mt-5">
           <CardTitle>Alertes</CardTitle>
           <div className="space-y-2">
+            {painAlerts.map((p) => (
+              <Link
+                key={`pain-${p.id}`}
+                href={`/coach/joueurs/${p.id}`}
+                className="flex items-center justify-between rounded-xl bg-danger-soft px-3 py-2.5"
+              >
+                <span className="text-sm font-semibold text-navy-800">
+                  {p.first_name} {p.last_name}
+                </span>
+                <Badge tone="danger">
+                  <HeartPulse size={11} /> Douleurs {health.get(p.id)!.pain!.score}/10
+                </Badge>
+              </Link>
+            ))}
             {emptyPlanning.map((p) => (
               <Link
                 key={`empty-${p.id}`}
@@ -174,11 +222,51 @@ export default async function CoachDashboardPage() {
         </Card>
       )}
 
-      {lowDiscipline.length === 0 && emptyPlanning.length === 0 && players.length > 0 && (
+      {lowDiscipline.length === 0 &&
+        emptyPlanning.length === 0 &&
+        painAlerts.length === 0 &&
+        players.length > 0 && (
         <Card className="mt-5">
           <p className="flex items-center gap-1.5 text-sm font-medium text-success">
             <CircleCheck size={15} className="shrink-0" /> Aucune alerte — tous tes joueurs sont
             dans les clous.
+          </p>
+        </Card>
+      )}
+
+      {/* Santé : dernier check-in énergie / douleurs de chaque joueur */}
+      {players.length > 0 && (
+        <Card className="mt-5">
+          <CardTitle>Santé des joueurs</CardTitle>
+          <div className="divide-y divide-navy-50">
+            {players.map((p) => {
+              const h = health.get(p.id);
+              return (
+                <Link
+                  key={p.id}
+                  href={`/coach/joueurs/${p.id}`}
+                  className="flex items-center justify-between gap-2 py-2.5"
+                >
+                  <span className="min-w-0 truncate text-sm font-semibold text-navy-800">
+                    {p.first_name} {p.last_name}
+                  </span>
+                  <span className="flex shrink-0 items-center gap-1.5">
+                    <Badge
+                      tone={h?.energy ? (h.energy.score <= 4 ? "warning" : "success") : "neutral"}
+                    >
+                      <Zap size={11} /> {h?.energy ? `${h.energy.score}/10` : "—"}
+                    </Badge>
+                    <Badge tone={h?.pain ? (h.pain.score >= 5 ? "danger" : "success") : "neutral"}>
+                      <HeartPulse size={11} /> {h?.pain ? `${h.pain.score}/10` : "—"}
+                    </Badge>
+                  </span>
+                </Link>
+              );
+            })}
+          </div>
+          <p className="mt-2 text-[11px] text-navy-300">
+            Dernier check-in de chaque joueur : <Zap size={11} className="-mt-0.5 inline" /> énergie
+            · <HeartPulse size={11} className="-mt-0.5 inline" /> douleurs.
           </p>
         </Card>
       )}

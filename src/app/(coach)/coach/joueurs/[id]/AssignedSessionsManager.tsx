@@ -44,6 +44,7 @@ export function AssignedSessionsManager({
   const [note, setNote] = useState(visibleNote);
   const [noteSaved, setNoteSaved] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const active = assignments.filter((a) => !a.removed_at);
   const removed = assignments.filter((a) => a.removed_at && a.completion);
@@ -54,33 +55,37 @@ export function AssignedSessionsManager({
     const ids = active.map((a) => a.id);
     [ids[index], ids[target]] = [ids[target], ids[index]];
     startTransition(async () => {
-      await reorderAssignments(playerId, ids);
-      router.refresh();
+      const result = await reorderAssignments(playerId, ids);
+      setError(result.ok ? null : result.error);
+      if (result.ok) router.refresh();
     });
   }
 
   function remove(assignmentId: string) {
     startTransition(async () => {
-      await removeAssignment(assignmentId, playerId);
-      router.refresh();
+      const result = await removeAssignment(assignmentId, playerId);
+      setError(result.ok ? null : result.error);
+      if (result.ok) router.refresh();
     });
   }
 
   function add(sessionId: string) {
     startTransition(async () => {
-      await assignSession(sessionId, [playerId]);
-      router.refresh();
+      const result = await assignSession(sessionId, [playerId]);
+      setError(result.ok ? null : result.error);
+      if (result.ok) router.refresh();
     });
   }
 
   function saveNote() {
     startTransition(async () => {
       const result = await setVisibleNote(playerId, pole, note);
+      setError(result.ok ? null : result.error);
       if (result.ok) {
         setNoteSaved(true);
         setTimeout(() => setNoteSaved(false), 2000);
+        router.refresh();
       }
-      router.refresh();
     });
   }
 
@@ -88,13 +93,24 @@ export function AssignedSessionsManager({
     !a.completion ? (
       <Badge tone="neutral">En attente</Badge>
     ) : a.completion.status === "done" ? (
-      <Badge tone="success">Faite</Badge>
+      <span className="flex shrink-0 items-center gap-1">
+        {a.completion.challenge_score !== null && (
+          <Badge tone="navy">Challenge {a.completion.challenge_score}</Badge>
+        )}
+        <Badge tone="success">Faite</Badge>
+      </span>
     ) : (
       <Badge tone="danger">Pas faite</Badge>
     );
 
   return (
     <div className="space-y-4">
+      {error && (
+        <p className="rounded-xl bg-danger-soft px-3 py-2 text-sm font-semibold text-danger">
+          {error}
+        </p>
+      )}
+
       {/* Note visible par le joueur */}
       <Card>
         <CardTitle>Note visible par le joueur</CardTitle>

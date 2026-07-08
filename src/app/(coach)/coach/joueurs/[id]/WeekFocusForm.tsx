@@ -24,15 +24,17 @@ export function WeekFocusForm({
   const [content, setContent] = useState(initialContent);
   const [isPending, startTransition] = useTransition();
   const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   function save() {
     startTransition(async () => {
       const result = await setWeekFocus(playerId, content);
+      setError(result.ok ? null : result.error);
       if (result.ok) {
         setSaved(true);
         setTimeout(() => setSaved(false), 2000);
+        router.refresh();
       }
-      router.refresh();
     });
   }
 
@@ -49,6 +51,11 @@ export function WeekFocusForm({
         rows={2}
         className="w-full rounded-xl border border-navy-200 px-3.5 py-2.5 text-sm focus:border-navy-600 focus:outline-none"
       />
+      {error && (
+        <p className="mt-2 rounded-xl bg-danger-soft px-3 py-2 text-sm font-semibold text-danger">
+          {error}
+        </p>
+      )}
       <div className="mt-2 flex items-center justify-between">
         <span className="text-xs text-navy-300">
           {content.length}/{MAX_LENGTH}

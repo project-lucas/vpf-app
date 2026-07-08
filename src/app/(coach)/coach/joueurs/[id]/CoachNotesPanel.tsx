@@ -7,6 +7,7 @@ import { formatDateFr } from "@/lib/dates";
 import { Button } from "@/components/ui/Button";
 import { Card, CardTitle } from "@/components/ui/Card";
 import { IconButton } from "@/components/ui/IconButton";
+import { Modal } from "@/components/ui/Modal";
 import { TrashIcon } from "@/components/icons";
 import type { CoachNote } from "@/lib/types";
 
@@ -14,20 +15,28 @@ export function CoachNotesPanel({ playerId, notes }: { playerId: string; notes: 
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [content, setContent] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<CoachNote | null>(null);
 
   function add() {
     if (!content.trim()) return;
     startTransition(async () => {
       const result = await addCoachNote(playerId, content);
-      if (result.ok) setContent("");
-      router.refresh();
+      setError(result.ok ? null : result.error);
+      if (result.ok) {
+        setContent("");
+        router.refresh();
+      }
     });
   }
 
-  function remove(noteId: string) {
+  function confirmDelete() {
+    if (!deleteTarget) return;
     startTransition(async () => {
-      await deleteCoachNote(noteId, playerId);
-      router.refresh();
+      const result = await deleteCoachNote(deleteTarget.id, playerId);
+      setError(result.ok ? null : result.error);
+      setDeleteTarget(null);
+      if (result.ok) router.refresh();
     });
   }
 
@@ -37,6 +46,11 @@ export function CoachNotesPanel({ playerId, notes }: { playerId: string; notes: 
       <p className="mb-3 text-xs text-navy-400">
         Visibles uniquement par toi et l&apos;admin VPF. Supprimées si le joueur est archivé.
       </p>
+      {error && (
+        <p className="mb-3 rounded-xl bg-danger-soft px-3 py-2 text-sm font-semibold text-danger">
+          {error}
+        </p>
+      )}
       <div className="space-y-2">
         <textarea
           value={content}
@@ -58,7 +72,7 @@ export function CoachNotesPanel({ playerId, notes }: { playerId: string; notes: 
                 <p className="whitespace-pre-wrap text-sm text-navy-800">{n.content}</p>
                 <IconButton
                   tone="danger"
-                  onClick={() => remove(n.id)}
+                  onClick={() => setDeleteTarget(n)}
                   disabled={isPending}
                   aria-label="Supprimer la note"
                   className="shrink-0"
@@ -73,6 +87,24 @@ export function CoachNotesPanel({ playerId, notes }: { playerId: string; notes: 
           ))}
         </div>
       )}
+
+      {/* Confirmation de suppression */}
+      <Modal
+        open={deleteTarget !== null}
+        onClose={() => setDeleteTarget(null)}
+        title="Supprimer cette note ?"
+      >
+        <p className="whitespace-pre-wrap text-sm text-navy-500">{deleteTarget?.content}</p>
+        <p className="mt-2 text-xs text-navy-400">Cette action est définitive.</p>
+        <div className="mt-4 flex gap-2">
+          <Button variant="secondary" full onClick={() => setDeleteTarget(null)}>
+            Annuler
+          </Button>
+          <Button variant="danger" full onClick={confirmDelete} disabled={isPending}>
+            Supprimer
+          </Button>
+        </div>
+      </Modal>
     </Card>
   );
 }

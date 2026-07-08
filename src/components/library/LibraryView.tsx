@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Check, Eye, Timer, Wrench } from "lucide-react";
+import { Check, Eye, Search, Timer, Wrench } from "lucide-react";
 import { setSessionVisibility } from "@/app/actions/coach";
 import { deleteLibrarySession } from "@/app/actions/admin";
 import { CATEGORIES, POLE_LABELS } from "@/lib/constants";
@@ -39,8 +39,14 @@ export function LibraryView({ sessions, players, visibility, editable }: Props) 
   const [assignMessage, setAssignMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [formTarget, setFormTarget] = useState<LibrarySession | "new" | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<LibrarySession | null>(null);
+  const [query, setQuery] = useState("");
 
-  const poleSessions = sessions.filter((s) => s.pole === pole);
+  const q = query.trim().toLowerCase();
+  const poleSessions = sessions.filter(
+    (s) =>
+      s.pole === pole &&
+      (!q || s.name.toLowerCase().includes(q) || s.category.toLowerCase().includes(q))
+  );
 
   function togglePlayer(id: string) {
     setSelectedPlayers((prev) =>
@@ -101,8 +107,25 @@ export function LibraryView({ sessions, players, visibility, editable }: Props) 
         </Button>
       )}
 
+      <div className="relative mb-4">
+        <Search
+          size={15}
+          className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-navy-300"
+        />
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Rechercher une séance…"
+          className="w-full rounded-xl border border-navy-200 bg-white py-2.5 pl-9 pr-3.5 text-sm focus:border-navy-600 focus:outline-none"
+        />
+      </div>
+
       {poleSessions.length === 0 ? (
-        <EmptyState>Aucune séance dans ce pôle pour le moment.</EmptyState>
+        <EmptyState>
+          {q
+            ? `Aucune séance ne correspond à « ${query} » dans ce pôle.`
+            : "Aucune séance dans ce pôle pour le moment."}
+        </EmptyState>
       ) : (
         <div className="space-y-5">
           {CATEGORIES[pole]
