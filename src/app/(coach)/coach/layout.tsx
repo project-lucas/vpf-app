@@ -1,5 +1,5 @@
 import { BottomNav } from "@/components/BottomNav";
-import { GearIcon, HomeIcon, LibraryIcon, UsersIcon } from "@/components/icons";
+import { CalendarIcon, GearIcon, HomeIcon, LibraryIcon, UsersIcon } from "@/components/icons";
 
 export default function CoachLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -8,7 +8,8 @@ export default function CoachLayout({ children }: { children: React.ReactNode })
       <BottomNav
         items={[
           { href: "/coach", label: "Dashboard", icon: <HomeIcon />, exact: true },
-          { href: "/coach/joueurs", label: "Mes joueurs", icon: <UsersIcon /> },
+          { href: "/coach/planning", label: "Planning", icon: <CalendarIcon /> },
+          { href: "/coach/joueurs", label: "Joueurs", icon: <UsersIcon /> },
           { href: "/coach/bibliotheque", label: "Bibliothèque", icon: <LibraryIcon /> },
           { href: "/coach/parametres", label: "Réglages", icon: <GearIcon /> },
         ]}

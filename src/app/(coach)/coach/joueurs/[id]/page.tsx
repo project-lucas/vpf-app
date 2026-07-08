@@ -150,6 +150,12 @@ export default async function PlayerDetailPage({
     matchStats.length > 0
       ? matchStats.reduce((s, m) => s + m.points, 0) / matchStats.length
       : null;
+  const avgMinutes =
+    matchStats.length > 0
+      ? matchStats.reduce((s, m) => s + m.minutes, 0) / matchStats.length
+      : null;
+  const recordPoints =
+    matchStats.length > 0 ? Math.max(...matchStats.map((m) => m.points)) : null;
   const checkin = lastCheckin as Checkin | null;
   const age = ageFromBirthdate(playerRaw.birthdate);
 
@@ -379,32 +385,74 @@ export default async function PlayerDetailPage({
             label: "Stats",
             content: (
               <Card>
-                <CardTitle>
-                  Statistiques match
-                  {avgPoints !== null && ` — ${avgPoints.toFixed(1)} pts/match`}
-                </CardTitle>
+                <CardTitle>Statistiques match</CardTitle>
                 {matchStats.length === 0 ? (
                   <p className="text-sm text-navy-400">Aucun match saisi par le joueur.</p>
                 ) : (
-                  <div className="divide-y divide-navy-50">
-                    {matchStats.map((s) => (
-                      <div key={s.id} className="flex items-center justify-between py-2.5">
-                        <div>
-                          <p className="text-sm font-semibold text-navy-800">
-                            {formatDateFr(s.match_date)}
+                  <>
+                    {/* Vue d'ensemble de la saison */}
+                    <div className="mb-4 grid grid-cols-4 gap-1.5">
+                      {[
+                        { label: "Matchs", value: `${matchStats.length}` },
+                        { label: "Pts/match", value: avgPoints?.toFixed(1) ?? "—" },
+                        { label: "Min/match", value: avgMinutes?.toFixed(0) ?? "—" },
+                        { label: "Record", value: recordPoints !== null ? `${recordPoints}` : "—" },
+                      ].map((s) => (
+                        <div key={s.label} className="rounded-xl bg-navy-50 px-1 py-2 text-center">
+                          <p className="text-[10px] font-semibold uppercase tracking-wide text-navy-400">
+                            {s.label}
                           </p>
-                          <p className="text-xs text-navy-400">
-                            {s.minutes} min · {s.is_starter ? "titulaire" : "remplaçant"} ·{" "}
-                            {s.threes_made} × 3 pts · {s.free_throws_made} LF
-                          </p>
+                          <p className="mt-0.5 text-base font-extrabold text-navy-800">{s.value}</p>
                         </div>
-                        <p className="text-lg font-extrabold text-navy-800">
-                          {s.points}{" "}
-                          <span className="text-xs font-semibold text-navy-400">pts</span>
-                        </p>
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
+
+                    <div className="divide-y divide-navy-50">
+                      {matchStats.map((s) => (
+                        <div key={s.id} className="py-2.5">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="text-sm font-semibold text-navy-800">
+                              {formatDateFr(s.match_date)}
+                              <Badge
+                                tone={s.is_starter ? "navy" : "neutral"}
+                                className="ml-1.5 align-middle"
+                              >
+                                {s.is_starter ? "Titulaire" : "Remplaçant"}
+                              </Badge>
+                            </p>
+                            <p className="shrink-0 text-lg font-extrabold text-navy-800">
+                              {s.points}{" "}
+                              <span className="text-xs font-semibold text-navy-400">pts</span>
+                            </p>
+                          </div>
+                          <p className="mt-0.5 text-xs text-navy-400">
+                            {s.minutes} min · {s.shots_made} tir{s.shots_made > 1 ? "s" : ""}{" "}
+                            réussi{s.shots_made > 1 ? "s" : ""} · {s.fouls} faute
+                            {s.fouls > 1 ? "s" : ""}
+                          </p>
+                          <div className="mt-1.5 flex flex-wrap gap-1.5">
+                            {[
+                              { label: "2 pts int.", value: s.twos_inside_made },
+                              { label: "2 pts ext.", value: s.twos_outside_made },
+                              { label: "3 pts", value: s.threes_made },
+                              { label: "LF", value: s.free_throws_made },
+                            ].map((c) => (
+                              <span
+                                key={c.label}
+                                className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                                  c.value > 0
+                                    ? "bg-navy-100 text-navy-600"
+                                    : "bg-navy-50 text-navy-300"
+                                }`}
+                              >
+                                {c.label} ×{c.value}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
                 )}
               </Card>
             ),

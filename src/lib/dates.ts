@@ -119,6 +119,17 @@ export function ageFromBirthdate(birthdate: string | null): number | null {
   return age;
 }
 
+/** Temps relatif court : « à l'instant », « il y a 25 min », « il y a 3 h », « hier », « il y a 4 j ». */
+export function formatAgoFr(iso: string, now: Date = new Date()): string {
+  const diffMin = Math.max(0, Math.round((now.getTime() - new Date(iso).getTime()) / 60_000));
+  if (diffMin < 1) return "à l'instant";
+  if (diffMin < 60) return `il y a ${diffMin} min`;
+  const hours = Math.floor(diffMin / 60);
+  if (hours < 24) return `il y a ${hours} h`;
+  const days = Math.floor(hours / 24);
+  return days === 1 ? "hier" : `il y a ${days} j`;
+}
+
 /** Nombre de jours entre deux dates "YYYY-MM-DD" (b - a). */
 export function daysBetween(a: string, b: string): number {
   const toUtc = (s: string) => {
