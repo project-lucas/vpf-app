@@ -193,31 +193,93 @@ function Eyelet() {
   );
 }
 
+/** Compteur animé : la valeur monte de l'ancienne à la nouvelle (ease-out). */
+function useCountUp(target: number, reduce: boolean, delay: number, duration = 900) {
+  const [val, setVal] = useState(reduce ? target : 0);
+  const from = useRef(0);
+  useEffect(() => {
+    if (reduce) {
+      from.current = target;
+      setVal(target);
+      return;
+    }
+    const start = from.current;
+    from.current = target;
+    if (start === target) {
+      setVal(target);
+      return;
+    }
+    let raf = 0;
+    let t0: number | null = null;
+    const timer = setTimeout(() => {
+      const step = (ts: number) => {
+        if (t0 === null) t0 = ts;
+        const p = Math.min(1, (ts - t0) / duration);
+        const eased = 1 - Math.pow(1 - p, 3);
+        setVal(Math.round(start + (target - start) * eased));
+        if (p < 1) raf = requestAnimationFrame(step);
+      };
+      raf = requestAnimationFrame(step);
+    }, delay);
+    return () => {
+      clearTimeout(timer);
+      cancelAnimationFrame(raf);
+    };
+  }, [target, reduce, delay, duration]);
+  return val;
+}
+
 function StatCol({
   value,
+  suffix,
   label,
+  sublabel,
   color,
+  reduce,
+  delay,
 }: {
-  value: string | number;
+  value: number | null;
+  suffix?: string;
   label: string;
+  sublabel: string;
   color: string;
+  reduce: boolean;
+  delay: number;
 }) {
+  const count = useCountUp(value ?? 0, reduce, delay);
   return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-1 px-2 py-3">
+    <div aria-hidden className="flex flex-1 flex-col items-center justify-center gap-1 px-2 py-3">
       <span style={{ fontFamily: ARCHIVO, fontWeight: 900, fontSize: 24, lineHeight: 1, color }}>
-        {value}
+        {value === null ? "—" : `${count}${suffix ?? ""}`}
       </span>
       <span
         style={{
           fontFamily: MONO,
           fontWeight: 700,
-          fontSize: 8,
-          letterSpacing: "1.5px",
+          fontSize: 9,
+          letterSpacing: "1.2px",
           textTransform: "uppercase",
-          color: "rgba(240,228,204,.55)",
+          color: "rgba(240,228,204,.6)",
+          textAlign: "center",
+          lineHeight: 1.3,
         }}
       >
         {label}
+      </span>
+      <span
+        style={{
+          fontFamily: MONO,
+          fontWeight: 700,
+          fontSize: 7.5,
+          letterSpacing: "1px",
+          textTransform: "uppercase",
+          color: "rgba(240,228,204,.38)",
+          textAlign: "center",
+          lineHeight: 1.3,
+          marginTop: -2,
+        }}
+      >
+        {sublabel}
       </span>
     </div>
   );
@@ -337,20 +399,44 @@ export function ScoreBoard({
         </p>
       </div>
 
-      {/* Bandeau 3 stats */}
+      {/* Bandeau 3 stats : cumuls carrière + temps de jeu moyen */}
       <div
         className="mt-2.5 flex items-stretch"
         style={{ borderRadius: 8, background: NAVY, overflow: "hidden" }}
       >
-        <StatCol value={technique} label="Tech." color={CREAM} />
-        <div style={{ width: 1.5, background: HAIR }} aria-hidden />
+        <span className="sr-only">
+          {technique} séances technique réalisées au total,
+          {jeuMoy !== null ? ` ${Math.round(jeuMoy)} minutes de jeu en moyenne par match,` : ""}
+          {" "}
+          {physique} séances physique réalisées au total
+        </span>
         <StatCol
-          value={jeuMoy !== null ? `${Math.round(jeuMoy)}′` : "—"}
-          label="Jeu moy."
-          color={PEACH}
+          value={technique}
+          label="Séances tech."
+          sublabel="Total réalisé"
+          color={CREAM}
+          reduce={reduce}
+          delay={0}
         />
         <div style={{ width: 1.5, background: HAIR }} aria-hidden />
-        <StatCol value={physique} label="Phys." color={RED} />
+        <StatCol
+          value={jeuMoy !== null ? Math.round(jeuMoy) : null}
+          suffix="′"
+          label="Temps de jeu"
+          sublabel="Moy. par match"
+          color={PEACH}
+          reduce={reduce}
+          delay={150}
+        />
+        <div style={{ width: 1.5, background: HAIR }} aria-hidden />
+        <StatCol
+          value={physique}
+          label="Séances phys."
+          sublabel="Total réalisé"
+          color={RED}
+          reduce={reduce}
+          delay={300}
+        />
       </div>
     </div>
   );
