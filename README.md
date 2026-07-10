@@ -9,6 +9,28 @@ Postgres, RLS) · Web Push (VAPID) · Vercel.
 
 ---
 
+## 🔗 Liens (à garder sous la main)
+
+| Quoi | URL |
+| --- | --- |
+| **Production (la vraie app)** | **<https://vpf-app.vercel.app>** |
+| Local (dev) | <http://localhost:3000> — ou **3001** si un autre projet occupe déjà le 3000 (le terminal `npm run dev` affiche le bon port) |
+| Repo GitHub | <https://github.com/project-lucas/vpf-app> |
+| Dashboard Vercel | <https://vercel.com/leviva-s-projects/vpf-app> |
+| Dashboard Supabase | <https://supabase.com/dashboard/project/epjylrcwdnqtyvcgempl> |
+
+> ⚠️ **Pièges connus**
+> - L'URL de prod est bien `vpf-app.vercel.app` — **pas** `vpf.vercel.app` (ce domaine
+>   appartient à quelqu'un d'autre : 404 garanti, et ne jamais y saisir ses identifiants).
+> - La prod et le local utilisent **la même base Supabase** : mêmes comptes, mêmes données.
+> - Un `git push` **ne déploie pas** la prod (projet Vercel non connecté au repo). Déployer =
+>   `vercel deploy --prod` puis `vercel alias set <url-du-déploiement> vpf-app.vercel.app`.
+
+Comptes de démo : voir [Comptes de test](#3-appliquer-le-schéma-et-les-données-de-test)
+(mot de passe commun `vpf-demo-2026`).
+
+---
+
 ## Mise en place (première fois)
 
 ### 1. Créer le projet Supabase
@@ -53,34 +75,50 @@ Comptes de test (mot de passe commun : `vpf-demo-2026`) :
 
 ```bash
 npm run dev
-# http://localhost:3000
+# http://localhost:3000  (ou 3001 si le port 3000 est occupé — lire la sortie du terminal)
 ```
 
 > Les notifications push nécessitent HTTPS (elles fonctionnent en production, et sur
 > `localhost` avec Chrome).
+>
+> ⚠️ Ne jamais lancer `npm run build` pendant que `npm run dev` tourne (corrompt `.next`) —
+> valider avec `npm run typecheck` + `npm run lint`.
 
 ---
 
 ## Déploiement sur Vercel
 
-1. Pousser le repo sur GitHub et importer le projet dans Vercel.
-2. Renseigner **toutes** les variables de `.env.local.example` dans
-   *Project → Settings → Environment Variables* (sauf `DATABASE_URL`, optionnelle),
-   avec `NEXT_PUBLIC_APP_URL` = l'URL de production (ex. `https://vpf.vercel.app`).
-3. Déployer.
+Le projet est déjà déployé (voir [Liens](#-liens-à-garder-sous-la-main)). Pour mettre la
+prod à jour :
 
-### Tâche planifiée (rappels push + clôture de semaine)
+```bash
+vercel deploy --prod
+vercel alias set <url-du-nouveau-deploiement> vpf-app.vercel.app
+```
 
-La route `GET /api/cron/notifications` doit être appelée **toutes les 10 minutes** :
+(Le push GitHub ne déclenche **aucun** déploiement : le projet Vercel n'est pas connecté
+au repo. L'alias public est manuel, il ne suit pas la production tout seul.)
 
-- **Vercel Pro** : le fichier `vercel.json` configure le cron automatiquement.
-  Ajouter la variable `CRON_SECRET` (Vercel l'envoie en header `Authorization`).
-- **Gratuit** : créer un job sur [cron-job.org](https://cron-job.org) qui appelle
-  `https://VOTRE-URL/api/cron/notifications?secret=VOTRE_CRON_SECRET` toutes les 10 min.
+Première installation ailleurs : importer le repo dans Vercel, renseigner **toutes** les
+variables de `.env.local.example` dans *Project → Settings → Environment Variables*
+(sauf `DATABASE_URL`, optionnelle), avec `NEXT_PUBLIC_APP_URL` = l'URL de production
+(ex. `https://vpf-app.vercel.app`).
+
+### Tâche planifiée (rappels push + clôture des jours)
+
+La route `GET /api/cron/notifications` doit être appelée **toutes les 10 minutes**.
+
+✅ **Déjà en place** : le job tourne dans Supabase via `pg_cron` + `pg_net` (la base
+appelle elle-même l'endpoint de prod). Scripts :
+
+```bash
+npm run setup:cron   # (ré)installe le job pg_cron + test bout en bout
+npm run check:cron   # dernières exécutions + codes HTTP
+```
 
 Ce cron gère : rappel 30 min avant chaque événement, rappel bilan du dimanche 18h45,
-et la clôture hebdomadaire (matérialisation des événements non pointés + résumé de
-discipline), calculés en heure de Paris.
+clôture quotidienne à minuit (un jour ignoré casse la série) et résumé hebdo du lundi,
+calculés en heure de Paris.
 
 ### Auth Supabase (production)
 
@@ -102,8 +140,8 @@ src/
   components/        UI réutilisable (BottomNav, planning, sessions, library…)
   lib/               dates Paris, discipline, supabase clients, push, constantes FR
   middleware.ts      session + garde par rôle + blocage joueurs archivés
-supabase/migrations/ 0001 schéma · 0002 RLS · 0003 triggers
-scripts/             migrate, seed, vapid, icons
+supabase/migrations/ 0001 schéma · 0002 RLS · 0003 triggers · … · 0021 (appliquées via npm run migrate)
+scripts/             migrate, seed, seed-programmes, vapid, icons, setup-pg-cron, check-pg-cron
 ```
 
 ### Sécurité (RLS)
@@ -135,3 +173,6 @@ logo : remplacer le bloc dans `src/app/(auth)/login/page.tsx` et écraser
 | `npm run seed`      | données de test                         |
 | `npm run vapid`     | génère les clés VAPID                   |
 | `npm run icons`     | régénère les icônes PWA placeholder     |
+| `npm run seed:programmes` | séances programmes par poste (contenu de prod) |
+| `npm run setup:cron` | installe le cron pg_cron dans Supabase |
+| `npm run check:cron` | vérifie les exécutions du cron          |
