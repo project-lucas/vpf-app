@@ -11,6 +11,8 @@
     "migrate": "node --env-file=.env.local scripts/apply-migrations.mjs",
     "seed": "node --env-file=.env.local --import=tsx scripts/seed.ts",
     "seed:programmes": "node --env-file=.env.local --import=tsx scripts/seed-programmes.ts",
+    "setup:cron": "node --env-file=.env.local scripts/setup-pg-cron.mjs",
+    "check:cron": "node --env-file=.env.local scripts/check-pg-cron.mjs",
     "vapid": "node scripts/generate-vapid.mjs",
     "icons": "node scripts/generate-icons.mjs",
     "splash": "node scripts/generate-splash.mjs"
