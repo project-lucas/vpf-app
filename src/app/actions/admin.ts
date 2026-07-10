@@ -65,7 +65,7 @@ export async function createCoach(data: {
     return { ok: false, error: "Création impossible." };
   }
 
-  revalidatePath("/admin/coachs");
+  revalidatePath("/coach/club", "layout");
   return { ok: true };
 }
 
@@ -77,6 +77,7 @@ export async function updateCoach(
   if (!guard.ok) return guard;
 
   const admin = createAdminClient();
+  // les deux admins apparaissent aussi dans le Club (ils coachent leurs joueurs)
   const { error } = await admin
     .from("profiles")
     .update({
@@ -85,7 +86,7 @@ export async function updateCoach(
       whatsapp_number: data.whatsapp_number.trim(),
     })
     .eq("id", coachId)
-    .eq("role", "coach");
+    .in("role", ["coach", "admin"]);
   if (error) return { ok: false, error: "Modification impossible." };
 
   if (data.password) {
@@ -96,7 +97,7 @@ export async function updateCoach(
     if (pwError) return { ok: false, error: "Mot de passe non modifié." };
   }
 
-  revalidatePath("/admin/coachs");
+  revalidatePath("/coach/club", "layout");
   return { ok: true };
 }
 
@@ -119,7 +120,7 @@ export async function createInvitation(
     .single();
   if (error || !data) return { ok: false, error: "Création impossible." };
 
-  revalidatePath("/admin/invitations");
+  revalidatePath("/coach/club", "layout");
   return { ok: true, token: data.id };
 }
 
@@ -134,7 +135,7 @@ export async function deleteInvitation(invitationId: string): Promise<ActionResu
     .eq("id", invitationId)
     .is("used_at", null);
   if (error) return { ok: false, error: "Suppression impossible." };
-  revalidatePath("/admin/invitations");
+  revalidatePath("/coach/club", "layout");
   return { ok: true };
 }
 
@@ -164,8 +165,8 @@ export async function archivePlayer(playerId: string): Promise<ActionResult> {
   // supprime les subscriptions push pour couper les rappels immédiatement
   await admin.from("push_subscriptions").delete().eq("user_id", playerId);
 
-  revalidatePath("/admin/exclusion");
-  revalidatePath("/admin");
+  revalidatePath("/coach/club", "layout");
+  revalidatePath("/coach");
   return { ok: true };
 }
 
@@ -182,8 +183,8 @@ export async function reactivatePlayer(playerId: string): Promise<ActionResult> 
 
   await admin.auth.admin.updateUserById(playerId, { ban_duration: "none" });
 
-  revalidatePath("/admin/exclusion");
-  revalidatePath("/admin");
+  revalidatePath("/coach/club", "layout");
+  revalidatePath("/coach");
   return { ok: true };
 }
 
@@ -263,7 +264,6 @@ export async function createLibrarySession(data: SessionData): Promise<ActionRes
     created_by: guard.userId,
   });
   if (error) return { ok: false, error: "Création impossible." };
-  revalidatePath("/admin/bibliotheque");
   revalidatePath("/coach/bibliotheque");
   return { ok: true };
 }
@@ -293,7 +293,6 @@ export async function updateLibrarySession(
     })
     .eq("id", sessionId);
   if (error) return { ok: false, error: "Modification impossible." };
-  revalidatePath("/admin/bibliotheque");
   revalidatePath("/coach/bibliotheque");
   return { ok: true };
 }
@@ -307,7 +306,6 @@ export async function deleteLibrarySession(sessionId: string): Promise<ActionRes
   const admin = createAdminClient();
   const { error } = await admin.from("library_sessions").delete().eq("id", sessionId);
   if (error) return { ok: false, error: "Suppression impossible." };
-  revalidatePath("/admin/bibliotheque");
   revalidatePath("/coach/bibliotheque");
   return { ok: true };
 }

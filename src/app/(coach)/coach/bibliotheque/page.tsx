@@ -1,4 +1,5 @@
 import { createClient, getCachedUser } from "@/lib/supabase/server";
+import { getNavRole } from "@/lib/auth";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { LibraryView } from "@/components/library/LibraryView";
 import type { LibrarySession } from "@/lib/types";
@@ -9,6 +10,7 @@ export const dynamic = "force-dynamic";
 export default async function CoachLibraryPage() {
   const supabase = await createClient();
   const user = await getCachedUser();
+  const isAdmin = (await getNavRole()) === "admin";
 
   const [{ data: sessions }, { data: players }, { data: assignments }] = await Promise.all([
     supabase.from("library_sessions").select("*").order("name"),
@@ -35,9 +37,11 @@ export default async function CoachLibraryPage() {
   }
 
   // le coach crée ses propres séances et ne peut modifier que celles-ci ;
-  // les séances de l'admin (dont les programmes) restent en lecture seule
+  // l'admin gère toute la bibliothèque (dont les programmes)
   const allSessions = (sessions ?? []) as LibrarySession[];
-  const ownSessionIds = allSessions.filter((s) => s.created_by === user?.id).map((s) => s.id);
+  const manageableIds = isAdmin
+    ? allSessions.map((s) => s.id)
+    : allSessions.filter((s) => s.created_by === user?.id).map((s) => s.id);
 
   return (
     <>
@@ -50,7 +54,7 @@ export default async function CoachLibraryPage() {
         players={assignablePlayers}
         visibility={visibility}
         editable
-        manageableIds={ownSessionIds}
+        manageableIds={manageableIds}
       />
     </>
   );

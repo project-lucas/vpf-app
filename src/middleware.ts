@@ -5,7 +5,6 @@ type CookieToSet = { name: string; value: string; options?: CookieOptions };
 
 const PLAYER_HOME = "/planning";
 const COACH_HOME = "/coach";
-const ADMIN_HOME = "/admin";
 
 const PLAYER_PREFIXES = [
   "/planning",
@@ -127,12 +126,9 @@ export async function middleware(request: NextRequest) {
     return isPlayerPath ? response : redirect(PLAYER_HOME);
   }
 
-  if (role === "coach") {
-    return path.startsWith("/coach") ? response : redirect(COACH_HOME);
-  }
-
-  // admin
-  return path.startsWith("/admin") ? response : redirect(ADMIN_HOME);
+  // coach et admin partagent l'interface /coach ; l'onglet Club (supervision)
+  // est réservé à l'admin, gardé côté page (le middleware ne distingue pas).
+  return path.startsWith("/coach") ? response : redirect(COACH_HOME);
 }
 
 export const config = {

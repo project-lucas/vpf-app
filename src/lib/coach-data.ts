@@ -19,19 +19,26 @@ export interface PlayerDiscipline {
  * Joueurs actifs visibles par l'utilisateur courant (RLS : ses joueurs pour un
  * coach, tous pour l'admin) avec leur score de discipline hebdomadaire :
  * la dernière semaine clôturée si disponible, sinon la semaine en cours.
+ *
+ * `coachId` restreint aux joueurs de ce coach : indispensable pour les écrans
+ * « mes joueurs » d'un admin (la RLS lui renvoie TOUS les joueurs du club).
  */
 export async function getPlayersWithDiscipline(
-  supabase: SupabaseClient
+  supabase: SupabaseClient,
+  coachId?: string
 ): Promise<PlayerDiscipline[]> {
   const weekStart = currentWeekStart();
   const prevWeekStart = addDays(weekStart, -7);
 
-  const { data: players } = await supabase
+  let query = supabase
     .from("players")
     .select(
       "id, coach_id, season_goal, availability, profile:profiles!players_id_fkey(first_name, last_name)"
     )
     .eq("status", "active");
+  if (coachId) query = query.eq("coach_id", coachId);
+
+  const { data: players } = await query;
 
   if (!players || players.length === 0) return [];
   const playerIds = players.map((p) => p.id);

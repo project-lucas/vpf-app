@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getCachedUser } from "@/lib/supabase/server";
 import { getPlayersWithDiscipline } from "@/lib/coach-data";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -10,7 +10,9 @@ export const dynamic = "force-dynamic";
 
 export default async function CoachPlayersPage() {
   const supabase = await createClient();
-  const players = await getPlayersWithDiscipline(supabase);
+  const user = await getCachedUser();
+  // filtre coach_id explicite : un admin ne voit ici QUE ses propres joueurs
+  const players = await getPlayersWithDiscipline(supabase, user?.id);
 
   // Avancement par pôle : séances visibles (cochées) et faites, pour chaque joueur
   const { data: assignments } = await supabase

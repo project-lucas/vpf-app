@@ -133,8 +133,9 @@ src/
   app/
     (auth)/          login, invitation/[token], onboarding
     (player)/        planning, dashboard, basket, physique, parametres
-    (coach)/coach/   dashboard, joueurs, joueurs/[id], bibliotheque, parametres
-    (admin)/admin/   dashboard, coachs, bibliotheque, invitations, exclusion, parametres
+    (coach)/coach/   dashboard, planning, joueurs, joueurs/[id], bibliotheque,
+                     club (admin uniquement : supervision des coachs, création de
+                     coach, invitations, archivage), parametres
     actions/         server actions (auth, planning, player, coach, admin, settings)
     api/cron/notifications/  route cron sécurisée
   components/        UI réutilisable (BottomNav, planning, sessions, library…)
@@ -143,6 +144,10 @@ src/
 supabase/migrations/ 0001 schéma · 0002 RLS · 0003 triggers · … · 0021 (appliquées via npm run migrate)
 scripts/             migrate, seed, seed-programmes, vapid, icons, setup-pg-cron, check-pg-cron
 ```
+
+> Les admins utilisent l'interface coach (ils encadrent leurs propres joueurs) avec un
+> onglet **Club** en plus : vue par coach (discipline, alertes, bilans) + fiche coach
+> détaillée qui regroupe la gestion des coachs, les invitations et l'archivage.
 
 ### Sécurité (RLS)
 

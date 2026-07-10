@@ -93,7 +93,6 @@ export async function setSessionVisibility(
   }
 
   revalidatePath("/coach/bibliotheque");
-  revalidatePath("/admin/bibliotheque");
   return { ok: true };
 }
 

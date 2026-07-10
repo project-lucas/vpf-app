@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { ClipboardList, NotebookPen } from "lucide-react";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getCachedUser } from "@/lib/supabase/server";
 import { getPlayersWithDiscipline } from "@/lib/coach-data";
 import {
   addDays,
@@ -36,7 +36,9 @@ export default async function CoachPlanningPage({
   const { date: today, isoWeekday: todayWeekday } = parisNow();
 
   const supabase = await createClient();
-  const players = await getPlayersWithDiscipline(supabase);
+  const user = await getCachedUser();
+  // filtre coach_id explicite : un admin ne voit ici QUE ses propres joueurs
+  const players = await getPlayersWithDiscipline(supabase, user?.id);
   // Filtre par joueur : ?j=<id>, ignoré s'il ne correspond à aucun joueur actif
   const selectedPlayer = players.find((p) => p.id === j)?.id ?? null;
   const ids = players.map((p) => p.id);

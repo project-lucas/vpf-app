@@ -7,7 +7,7 @@ import {
   NotebookPen,
   Zap,
 } from "lucide-react";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getCachedUser } from "@/lib/supabase/server";
 import {
   averageDiscipline,
   getCoachOverview,
@@ -108,7 +108,9 @@ interface HealthEntry {
 
 export default async function CoachDashboardPage() {
   const supabase = await createClient();
-  const players = await getPlayersWithDiscipline(supabase);
+  const user = await getCachedUser();
+  // filtre coach_id explicite : un admin ne voit ici QUE ses propres joueurs
+  const players = await getPlayersWithDiscipline(supabase, user?.id);
   const overview = await getCoachOverview(supabase, players);
 
   const weekStart = currentWeekStart();
