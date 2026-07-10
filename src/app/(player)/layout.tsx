@@ -6,6 +6,7 @@ import { CheckinModal } from "@/components/CheckinModal";
 import { PushPrompt } from "@/components/PushPrompt";
 import { InstallPrompt } from "@/components/InstallPrompt";
 import {
+  BallIcon,
   CalendarIcon,
   ChartIcon,
   UserIcon,
@@ -31,10 +32,13 @@ export default async function PlayerLayout({ children }: { children: React.React
       supabase.from("profiles").select("notifications_enabled").eq("id", user.id).maybeSingle(),
     ]);
 
-    notificationsEnabled = profile?.notifications_enabled ?? false;
+    // ?? true : aligné sur le défaut de la colonne (0001) et sur la page profil
+    notificationsEnabled = profile?.notifications_enabled ?? true;
 
+    // date Paris du dernier check-in : created_at est en UTC, sa date tronquée
+    // ferait revenir le pop-up un jour trop tôt pour un check-in fait après minuit
     const daysSince = lastCheckin
-      ? daysBetween(lastCheckin.created_at.slice(0, 10), parisNow().date)
+      ? daysBetween(parisNow(new Date(lastCheckin.created_at)).date, parisNow().date)
       : Infinity;
     if (daysSince >= CHECKIN_INTERVAL_DAYS) {
       // alterne les deux questions de la V1
@@ -56,10 +60,10 @@ export default async function PlayerLayout({ children }: { children: React.React
       <BottomNav
         variant="editorial"
         items={[
-          // Onglet « Séances » temporairement caché (à réactiver plus tard) —
-          // la route /seances reste accessible, seul l'onglet est masqué.
-          // { href: "/seances", label: "Séances", icon: <BallIcon size={22} /> },
           { href: "/planning", label: "Planning", icon: <CalendarIcon size={22} /> },
+          // Séances : seul accès au programme préparé par le coach — sans cet
+          // onglet, la page n'était joignable que depuis la fiche de 2 types d'événements
+          { href: "/seances", label: "Séances", icon: <BallIcon size={22} /> },
           { href: "/dashboard", label: "Dashboard", icon: <ChartIcon size={22} /> },
           { href: "/parametres", label: "Profil", icon: <UserIcon size={22} /> },
         ]}

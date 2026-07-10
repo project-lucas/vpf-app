@@ -1,13 +1,14 @@
 import Link from "next/link";
 import { TrendingUp } from "lucide-react";
 import { createClient, getCachedUser } from "@/lib/supabase/server";
-import { addDays, currentWeekStart, formatDateFr, parisNow } from "@/lib/dates";
-import { EVENT_TYPES } from "@/lib/constants";
+import { addDays, currentWeekStart, formatDateFr, parisNow, seasonLabel } from "@/lib/dates";
+import { EVENT_TYPES, SEASON_START } from "@/lib/constants";
 import {
   computeBadges,
   computeMatchRecords,
   computeXp,
   longestRun,
+  XP_VALUES,
 } from "@/lib/gamification";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { BallIcon } from "@/components/icons";
@@ -19,7 +20,6 @@ import {
   SectionHead,
   Badge,
 } from "@/components/editorial/primitives";
-import { HabitsManager } from "@/components/habits/HabitsManager";
 import { GamificationCard } from "@/components/gamification/GamificationCard";
 import { HonorBoard } from "@/components/gamification/HonorBoard";
 import { ScoreBoard } from "./ScoreBoard";
@@ -30,12 +30,13 @@ import { PlayerRadar } from "./PlayerRadar";
 import { ProgressChart, type ProgressPoint } from "./ProgressChart";
 import { MatchList, type MatchRow } from "./MatchList";
 import { ActivityTrackerCard } from "./ActivityTrackerCard";
-import type { EventType, Habit, HabitWithChecks, MatchStat } from "@/lib/types";
+import { GoalsCard } from "./GoalsCard";
+import type { EventType, MatchStat, PlayerGoal } from "@/lib/types";
 
 export const metadata = { title: "Dashboard — VPF" };
 export const dynamic = "force-dynamic";
 
-const SECTION_KEYS = ["progression", "stats", "records", "matchs", "habitudes"] as const;
+const SECTION_KEYS = ["progression", "stats", "records", "matchs", "historique"] as const;
 type SectionKey = (typeof SECTION_KEYS)[number];
 
 export default async function DashboardPage({
@@ -61,16 +62,18 @@ export default async function DashboardPage({
     { data: completions },
     { data: stats },
     { data: player },
-    { data: habits },
     { data: allChecks },
     { data: sessionsData },
     { data: summaries },
     { data: plannedEvents },
     { data: profile },
+    { data: goals },
   ] = await Promise.all([
     supabase
       .from("event_completions")
-      .select("status, week_start, weekday, event_time, event_type, duration_minutes")
+      .select(
+        "status, week_start, weekday, event_time, event_type, duration_minutes, custom_name, custom_icon, custom_color"
+      )
       .eq("player_id", user.id),
     supabase
       .from("match_stats")
@@ -82,11 +85,6 @@ export default async function DashboardPage({
       .select("season_goal, position, club")
       .eq("id", user.id)
       .maybeSingle(),
-    supabase
-      .from("habits")
-      .select("*")
-      .eq("player_id", user.id)
-      .order("position"),
     supabase
       .from("habit_checks")
       .select("habit_id, check_date")
@@ -102,12 +100,20 @@ export default async function DashboardPage({
       .from("weekly_summaries")
       .select("week_start, planned_count, done_count")
       .eq("player_id", user.id),
-    supabase.from("planned_events").select("event_type").eq("player_id", user.id),
+    supabase
+      .from("planned_events")
+      .select("event_type, custom_name, custom_icon, custom_color")
+      .eq("player_id", user.id),
     supabase
       .from("profiles")
       .select("first_name, last_name, avatar_url")
       .eq("id", user.id)
       .maybeSingle(),
+    supabase
+      .from("player_goals")
+      .select("*")
+      .eq("player_id", user.id)
+      .order("created_at", { ascending: false }),
   ]);
 
   const allCompletions = completions ?? [];
@@ -147,9 +153,14 @@ export default async function DashboardPage({
   // ---- Suivi automatique des activités planifiées : dès qu'un type
   // d'événement est au planning, sa carte apparaît dans la section Habitudes,
   // alimentée par les pointages « fait » ----
+  // union planning actuel + historique : retirer un type du planning ne fait
+  // pas disparaître son historique cumulé (« sur toute l'année »)
   const plannedTypeSet = new Set(
     ((plannedEvents ?? []) as { event_type: EventType }[]).map((e) => e.event_type)
   );
+  for (const c of allCompletions) {
+    if (c.status === "done") plannedTypeSet.add(c.event_type as EventType);
+  }
   const activityTrackers = EVENT_TYPES.filter((t) => plannedTypeSet.has(t)).map((type) => {
     const done = allCompletions.filter((c) => c.event_type === type && c.status === "done");
     return {
@@ -159,18 +170,51 @@ export default async function DashboardPage({
     };
   });
 
-  // ---- Habitudes : cumulatives (compteurs + historique, badges/XP) ----
-  const habitList = (habits ?? []) as Habit[];
+  // Activités perso (« autre ») : suivies elles aussi, groupées par nom —
+  // l'icône/couleur du planning fait foi, les pointages viennent du snapshot
+  const customPlanned = (
+    (plannedEvents ?? []) as {
+      event_type: EventType;
+      custom_name: string;
+      custom_icon: string;
+      custom_color: string;
+    }[]
+  ).filter((e) => e.event_type === "autre" && e.custom_name);
+  const customMeta = new Map<string, { icon: string; color: string }>();
+  for (const e of customPlanned) {
+    if (!customMeta.has(e.custom_name)) {
+      customMeta.set(e.custom_name, { icon: e.custom_icon, color: e.custom_color });
+    }
+  }
+  // activités perso retirées du planning : l'historique reste visible via le
+  // snapshot (icône/couleur) porté par les pointages
+  for (const c of allCompletions) {
+    if (c.event_type === "autre" && c.custom_name && c.status === "done" && !customMeta.has(c.custom_name)) {
+      customMeta.set(c.custom_name, { icon: c.custom_icon || "flame", color: c.custom_color || "red" });
+    }
+  }
+  const customTrackers = [...customMeta.entries()].map(([name, meta]) => {
+    const done = allCompletions.filter(
+      (c) => c.event_type === "autre" && c.custom_name === name && c.status === "done"
+    );
+    return {
+      name,
+      icon: meta.icon,
+      color: meta.color,
+      total: done.length,
+      checkDates: [...new Set(done.map((c) => addDays(c.week_start, c.weekday - 1)))],
+    };
+  });
+
+  // ---- Anciennes habitudes manuelles : la fonctionnalité est retirée (les
+  // activités perso du planning la remplacent) mais les checks historiques
+  // continuent de compter pour l'XP et les badges — personne ne perd rien ----
   const allHabitChecks = (allChecks ?? []) as { habit_id: string; check_date: string }[];
   const allChecksByHabit = new Map<string, string[]>();
   for (const c of allHabitChecks) {
     if (!allChecksByHabit.has(c.habit_id)) allChecksByHabit.set(c.habit_id, []);
     allChecksByHabit.get(c.habit_id)!.push(c.check_date);
   }
-  const habitsWithChecks: HabitWithChecks[] = habitList.map((h) => ({
-    ...h,
-    checkDates: allChecksByHabit.get(h.id) ?? [],
-  }));
 
   // ---- Séances terminées, avec leur pôle (courbe de croissance) ----
   const sessionRows = (sessionsData ?? []).map((r) => {
@@ -203,8 +247,13 @@ export default async function DashboardPage({
     sessionsDone: sessionRows.length,
     matches: matchStats.length,
   });
+  // Badges « Série de N » : meilleure suite de jours actifs — jours avec au
+  // moins un pointage « fait » au planning, ou runs des anciennes habitudes
+  // (conservés pour ne pas retirer un badge déjà gagné)
+  const activeDayDates = new Set(doneEvents.map((c) => addDays(c.week_start, c.weekday - 1)));
   const bestHabitRun = Math.max(
     0,
+    longestRun(activeDayDates),
     ...[...allChecksByHabit.values()].map((dates) => longestRun(dates))
   );
   const oldestMatch = matchStats[matchStats.length - 1];
@@ -233,8 +282,8 @@ export default async function DashboardPage({
     (summaries ?? []).find((s) => s.week_start === addDays(weekStart, -7)) ?? null;
 
   // ---- Courbe de croissance : XP cumulés JOUR PAR JOUR, par dimension.
-  // Chaque action validée pose un point le jour même ; le scoring d'un match
-  // nourrit la courbe à hauteur des points marqués. La courbe ne redescend
+  // Mêmes barèmes que computeXp (XP_VALUES) : le total de la courbe recolle
+  // exactement avec l'XP de « Ma progression ». La courbe ne redescend
   // jamais — chaque jour d'activité ajoute son incrément au cumul. ----
   const daily = new Map<string, { technique: number; physique: number; vie: number }>();
   const bump = (date: string, dim: "technique" | "physique" | "vie", amount: number) => {
@@ -250,16 +299,19 @@ export default async function DashboardPage({
         ? "physique"
         : "vie";
     // date réelle du pointage : lundi de la semaine + (jour - 1)
-    bump(addDays(c.week_start, c.weekday - 1), dim, 10);
+    bump(addDays(c.week_start, c.weekday - 1), dim, XP_VALUES.eventDone);
   }
   for (const s of sessionRows) {
     // updated_at est un timestamp UTC → converti en date Paris
-    bump(parisNow(new Date(s.updated_at)).date, s.pole === "basket" ? "technique" : "physique", 20);
+    bump(
+      parisNow(new Date(s.updated_at)).date,
+      s.pole === "basket" ? "technique" : "physique",
+      XP_VALUES.sessionDone
+    );
   }
-  for (const c of allHabitChecks) bump(c.check_date, "vie", 5);
-  // scoring : chaque match nourrit la courbe à hauteur des points marqués
-  // (bump même à 0 point → le jour de match reste un point sur la courbe)
-  for (const m of matchStats) bump(m.match_date, "technique", m.points);
+  for (const c of allHabitChecks) bump(c.check_date, "vie", XP_VALUES.habitCheck);
+  // chaque match crédite le même XP que computeXp (le jour reste un point sur la courbe)
+  for (const m of matchStats) bump(m.match_date, "technique", XP_VALUES.match);
 
   // jours où un record est strictement battu (le 1er match établit, ne bat pas)
   const recordDays = new Set<string>();
@@ -302,6 +354,7 @@ export default async function DashboardPage({
       cumulative.vie += inc.vie;
       const total = cumulative.technique + cumulative.physique + cumulative.vie;
       progressData.push({
+        iso: day,
         label: day.slice(8, 10) + "/" + day.slice(5, 7),
         technique: cumulative.technique,
         physique: cumulative.physique,
@@ -337,9 +390,8 @@ export default async function DashboardPage({
   });
 
   // ---- Hero rétro : saison, écusson, méta, trophées phares ----
-  const [seasonY, seasonM] = today.split("-").map(Number);
-  const startYear = seasonM >= 8 ? seasonY : seasonY - 1;
-  const season = `${String(startYear).slice(2)}/${String(startYear + 1).slice(2)}`;
+  // (dérivée de SEASON_START : bascule le 1er septembre, comme « Jour X de ta saison »)
+  const season = seasonLabel(today, SEASON_START);
   const initials =
     `${profile?.first_name?.[0] ?? ""}${profile?.last_name?.[0] ?? ""}`.toUpperCase();
   const clubSkip = new Set(["as", "us", "es", "sc", "bc", "club", "basket", "de", "la", "le"]);
@@ -402,6 +454,7 @@ export default async function DashboardPage({
                   : null
               }
             />
+            <GoalsCard goals={(goals ?? []) as PlayerGoal[]} />
             <GamificationCard xp={xp} badges={badges} storageScope={user.id} />
           </>
         }
@@ -424,7 +477,7 @@ export default async function DashboardPage({
                 >
                   <p className="ed-value text-base text-ink">Ta courbe démarre bientôt.</p>
                   <p className="mt-1 font-body text-sm text-meta">
-                    Pointe tes événements, tiens tes habitudes : dès ta deuxième semaine
+                    Pointe tes événements, tiens tes habitudes : dès ton deuxième jour
                     d&apos;activité, ta croissance s&apos;affiche ici.
                   </p>
                 </EmptyState>
@@ -469,34 +522,48 @@ export default async function DashboardPage({
             )}
           </>
         }
-        habitudes={
-          <>
-            {activityTrackers.length > 0 && (
-              <>
-                <div className="mb-3">
-                  <p className="ed-value text-lg text-ink">Mes activités</p>
-                  <p className="mt-1 font-body text-xs text-meta">
-                    Suivies automatiquement depuis ton planning : chaque pointage
-                    s&apos;additionne.
-                  </p>
-                </div>
-                <div className="space-y-3">
-                  {activityTrackers.map((t) => (
-                    <ActivityTrackerCard
-                      key={t.type}
-                      type={t.type}
-                      checkDates={t.checkDates}
-                      total={t.total}
-                      today={today}
-                    />
-                  ))}
-                </div>
-                <div className="my-4 border-t border-hair" />
-              </>
-            )}
-
-            <HabitsManager habits={habitsWithChecks} today={today} />
-          </>
+        historique={
+          activityTrackers.length > 0 || customTrackers.length > 0 ? (
+            <>
+              <div className="mb-3">
+                <p className="ed-value text-lg text-ink">Mon historique</p>
+                <p className="mt-1 font-body text-xs text-meta">
+                  Chaque tâche de ton planning a sa carte : les pointages
+                  «&nbsp;fait&nbsp;» s&apos;additionnent automatiquement, sur toute
+                  l&apos;année.
+                </p>
+              </div>
+              <div className="space-y-3">
+                {activityTrackers.map((t) => (
+                  <ActivityTrackerCard
+                    key={t.type}
+                    type={t.type}
+                    checkDates={t.checkDates}
+                    today={today}
+                  />
+                ))}
+                {customTrackers.map((t) => (
+                  <ActivityTrackerCard
+                    key={`custom-${t.name}`}
+                    type="autre"
+                    custom={{ name: t.name, icon: t.icon, color: t.color }}
+                    checkDates={t.checkDates}
+                    today={today}
+                  />
+                ))}
+              </div>
+            </>
+          ) : (
+            <EmptyState icon={<TrendingUp size={28} />}>
+              <p className="ed-value text-base text-ink">
+                Ton historique se construit depuis ton planning.
+              </p>
+              <p className="mt-1 font-body text-sm text-meta">
+                Ajoute des tâches à ta semaine (onglet Planning → Modifier ma
+                semaine) : chacune aura sa carte ici, avec son historique annuel.
+              </p>
+            </EmptyState>
+          )
         }
       />
     </>

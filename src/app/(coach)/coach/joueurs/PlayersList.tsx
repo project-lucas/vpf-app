@@ -4,8 +4,8 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Search, Target } from "lucide-react";
 import { formatPercent } from "@/lib/discipline";
-import { LOW_DISCIPLINE_THRESHOLD } from "@/lib/constants";
-import type { SessionPole } from "@/lib/types";
+import { AVAILABILITY_LABELS, LOW_DISCIPLINE_THRESHOLD } from "@/lib/constants";
+import type { PlayerAvailability, SessionPole } from "@/lib/types";
 
 const POLE_CHIPS: { pole: SessionPole; label: string }[] = [
   { pole: "basket", label: "Technique" },
@@ -20,6 +20,7 @@ export interface PlayerListItem {
   first_name: string;
   last_name: string;
   season_goal: string;
+  availability: PlayerAvailability;
   discipline: number | null;
   progress: PoleProgress | null;
 }
@@ -100,6 +101,17 @@ export function PlayersList({ players }: { players: PlayerListItem[] }) {
               <div className="flex items-center justify-between gap-3">
                 <p className="font-bold text-navy-900">
                   {p.first_name} {p.last_name}
+                  {p.availability !== "available" && (
+                    <span
+                      className={`ml-1.5 rounded-full px-2 py-0.5 align-middle text-[11px] font-semibold ${
+                        p.availability === "injured"
+                          ? "bg-danger-soft text-danger"
+                          : "bg-navy-100 text-navy-600"
+                      }`}
+                    >
+                      {AVAILABILITY_LABELS[p.availability]}
+                    </span>
+                  )}
                 </p>
                 <span
                   className={`shrink-0 rounded-full px-2.5 py-0.5 text-sm font-bold ${

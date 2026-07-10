@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { addDays, currentWeekStart, formatDateFr } from "./dates";
 import { POLE_LABELS } from "./constants";
-import type { MatchStat, SessionPole, WeeklyReview } from "./types";
+import type { MatchStat, PlayerAvailability, SessionPole, WeeklyReview } from "./types";
 
 export interface PlayerDiscipline {
   id: string;
@@ -9,6 +9,7 @@ export interface PlayerDiscipline {
   last_name: string;
   season_goal: string;
   coach_id: string;
+  availability: PlayerAvailability;
   /** null si aucune donnée exploitable */
   discipline: number | null;
   planningEmpty: boolean;
@@ -27,7 +28,9 @@ export async function getPlayersWithDiscipline(
 
   const { data: players } = await supabase
     .from("players")
-    .select("id, coach_id, season_goal, profile:profiles!players_id_fkey(first_name, last_name)")
+    .select(
+      "id, coach_id, season_goal, availability, profile:profiles!players_id_fkey(first_name, last_name)"
+    )
     .eq("status", "active");
 
   if (!players || players.length === 0) return [];
@@ -69,6 +72,7 @@ export async function getPlayersWithDiscipline(
         first_name: profile?.first_name ?? "",
         last_name: profile?.last_name ?? "",
         season_goal: p.season_goal,
+        availability: (p.availability ?? "available") as PlayerAvailability,
         discipline,
         planningEmpty: plannedCount === 0,
       };
@@ -76,8 +80,11 @@ export async function getPlayersWithDiscipline(
     .sort((a, b) => a.first_name.localeCompare(b.first_name, "fr"));
 }
 
+/** Moyenne de discipline — les joueurs blessés/en vacances n'entrent pas dans le calcul. */
 export function averageDiscipline(players: PlayerDiscipline[]): number | null {
-  const withScore = players.filter((p) => p.discipline !== null);
+  const withScore = players.filter(
+    (p) => p.discipline !== null && p.availability === "available"
+  );
   if (withScore.length === 0) return null;
   return withScore.reduce((sum, p) => sum + (p.discipline ?? 0), 0) / withScore.length;
 }

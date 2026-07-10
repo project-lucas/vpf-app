@@ -135,17 +135,19 @@ export function SessionsPoleTabs({
         </button>
       )}
 
-      {/* Relance XP du jour */}
+      {/* Relance XP : gain unique par séance validée (pas un cycle quotidien) */}
       <div className="mt-8 text-center">
         {pendingInPole > 0 ? (
-          <p className="ed-display text-[26px] text-orange">+{todayXp} XP aujourd&apos;hui</p>
+          <p className="ed-display text-[26px] text-orange">+{todayXp} XP à débloquer</p>
         ) : (
           <p className="ed-display text-[26px] text-ink">Séances validées</p>
         )}
         <p className="ed-meta mt-1.5 text-[10px] text-meta">
           {pendingInPole > 0
-            ? "Termine ta séance pour débloquer"
-            : "Bien joué — reviens demain"}
+            ? pendingInPole > 1
+              ? "Termine tes séances pour les gagner"
+              : "Termine ta séance pour les gagner"
+            : "Bien joué — ton coach ajoutera la suite"}
         </p>
       </div>
     </div>

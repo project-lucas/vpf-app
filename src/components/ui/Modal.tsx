@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 const FOCUSABLE =
@@ -22,6 +22,11 @@ export function Modal({
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
+  // le serveur rend null (pas de document) : on attend le montage client avant
+  // de rendre le portal, sinon le premier rendu client diffère du HTML serveur
+  // (mismatch d'hydratation quand une modale est ouverte au chargement)
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
   // onClose est presque toujours une fonction inline (identité changeante à
   // chaque rendu du parent) : on la lit via une ref pour NE PAS relancer l'effet
   // à chaque frappe (sinon le focus est volé du champ vers le bouton Fermer).
@@ -76,7 +81,7 @@ export function Modal({
     };
   }, [open]);
 
-  if (!open || typeof document === "undefined") return null;
+  if (!open || !mounted) return null;
 
   const retro = variant === "retro";
 

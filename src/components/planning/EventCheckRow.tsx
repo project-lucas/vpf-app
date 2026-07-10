@@ -3,14 +3,14 @@
 import { useOptimistic, useState, useTransition } from "react";
 import { checkEvent, setCompletionComment } from "@/app/actions/planning";
 import { successFeedback, tapFeedback } from "@/lib/feedback";
-import { EVENT_TYPE_LABELS, formatDuration } from "@/lib/constants";
+import { eventLabel, formatDuration, habitPale } from "@/lib/constants";
 import { formatTime } from "@/lib/dates";
 import { CheckIcon, XIcon } from "@/components/icons";
 import { XpBurst } from "@/components/ui/XpBurst";
 import { XP_VALUES } from "@/lib/gamification";
 import { SquareIconButton } from "@/components/editorial/primitives";
 import { EventDetailModal } from "./EventDetailModal";
-import { EventTypeIcon } from "./EventIcon";
+import { EventTypeIcon, eventColorHex } from "./EventIcon";
 import type { CompletionStatus, EventCompletion, PlannedEvent } from "@/lib/types";
 
 interface Props {
@@ -60,21 +60,36 @@ export function EventCheckRow({ event, completion, weekStart, canCheck, onChecke
   }
 
   const status = optStatus;
+  const hex = eventColorHex(event);
+  const awaiting = canCheck && status !== "done";
 
   return (
-    <div className="border-b border-hair py-3">
+    <div
+      className={`mb-2 rounded-md px-3 py-3 ${awaiting ? "task-breathe" : ""}`}
+      style={
+        {
+          backgroundColor: habitPale(hex, "bg"),
+          borderLeft: `6px solid ${hex}`,
+          "--task-glow": `${hex}59`,
+        } as React.CSSProperties
+      }
+    >
       <div className="flex items-center gap-3">
         {/* zone info tappable : ouvre la fiche détail de l'événement */}
         <button
           onClick={() => setDetailOpen(true)}
           className="flex min-w-0 flex-1 items-center gap-3 text-left"
         >
-          <span className="shrink-0 text-ink" aria-hidden>
-            <EventTypeIcon type={event.event_type} size={18} />
+          <span
+            className={`shrink-0 ${awaiting ? "task-icon-pulse" : ""}`}
+            aria-hidden
+            style={{ color: hex }}
+          >
+            <EventTypeIcon type={event.event_type} event={event} size={18} colored />
           </span>
           <span className="min-w-0 flex-1">
             <span className="ed-value block truncate text-lg text-ink">
-              {EVENT_TYPE_LABELS[event.event_type]}
+              {eventLabel(event)}
             </span>
             <span className="ed-meta block text-[9px] text-meta">
               {formatTime(event.event_time)} · {formatDuration(event.duration_minutes)}

@@ -65,7 +65,9 @@ export function StreakBanner({
         {streak}
       </span>
       <span>
-        <span className="ed-display block text-[21px] leading-[0.95] text-ink">Jours de suite</span>
+        <span className="ed-display block text-[21px] leading-[0.95] text-ink">
+          {streak > 1 ? "Jours de suite" : "Jour de suite"}
+        </span>
         <span className="ed-overline mt-1 block">De progression</span>
       </span>
     </div>

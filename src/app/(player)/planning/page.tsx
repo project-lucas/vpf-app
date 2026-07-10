@@ -1,7 +1,7 @@
 import Image from "next/image";
 import { createClient, getCachedUser } from "@/lib/supabase/server";
-import { addDays, currentWeekStart, isoWeekNumber, parisNow } from "@/lib/dates";
-import { completedDayStreak } from "@/lib/discipline";
+import { addDays, currentWeekStart, formatDateFr, isoWeekNumber, parisNow } from "@/lib/dates";
+import { activeDayStreak } from "@/lib/discipline";
 import { PlanningView } from "@/components/planning/PlanningView";
 import { WeeklyReviewLauncher } from "@/components/planning/WeeklyReviewLauncher";
 import { MatchSheetLauncher } from "@/components/planning/MatchSheetLauncher";
@@ -11,8 +11,7 @@ import { DiscordIcon } from "@/components/icons";
 import { DISCORD_INVITE_URL } from "@/lib/constants";
 import { computeMatchRecords } from "@/lib/gamification";
 import type { DayOutcome } from "@/components/planning/DisciplineCalendar";
-import type { DayHabit } from "@/components/planning/DayActionList";
-import type { EventCompletion, HabitColor, MatchStat, PlannedEvent } from "@/lib/types";
+import type { EventCompletion, MatchStat, PlannedEvent } from "@/lib/types";
 
 export const metadata = { title: "Planning — VPF" };
 export const dynamic = "force-dynamic";
@@ -32,8 +31,6 @@ export default async function PlanningPage() {
     { data: events },
     { data: completions },
     { data: allCompletions },
-    { data: habits },
-    { data: todayChecks },
     { data: coachRow },
     { data: lastReview },
     { data: coachFocusRow },
@@ -57,30 +54,22 @@ export default async function PlanningPage() {
       .select("status, week_start, weekday, event_time")
       .eq("player_id", user.id),
     supabase
-      .from("habits")
-      .select("id, name, icon, color")
-      .eq("player_id", user.id)
-      .order("position"),
-    supabase
-      .from("habit_checks")
-      .select("habit_id")
-      .eq("player_id", user.id)
-      .eq("check_date", now.date),
-    supabase
       .from("players")
-      .select("coach:profiles!players_coach_id_fkey(first_name, last_name, whatsapp_number)")
+      .select(
+        "availability, coach:profiles!players_coach_id_fkey(first_name, last_name, whatsapp_number)"
+      )
       .eq("id", user.id)
       .maybeSingle(),
     supabase
       .from("weekly_reviews")
-      .select("to_improve")
+      .select("to_improve, coach_reply, week_start")
       .eq("player_id", user.id)
       .eq("week_start", prevWeekStart)
       .maybeSingle(),
     supabase.from("coach_focus").select("content").eq("player_id", user.id).maybeSingle(),
     supabase
       .from("weekly_reviews")
-      .select("went_well, to_improve")
+      .select("went_well, to_improve, coach_reply, week_start")
       .eq("player_id", user.id)
       .eq("week_start", weekStart)
       .maybeSingle(),
@@ -100,28 +89,18 @@ export default async function PlanningPage() {
       } | null)
     : null;
 
-  // habitudes cumulatives : seul l'état du jour compte ici (le pointage) ;
-  // les totaux et l'historique vivent dans le dashboard
-  const checkedSet = new Set(
-    ((todayChecks ?? []) as { habit_id: string }[]).map((c) => c.habit_id)
-  );
-  const dayHabits: DayHabit[] = ((habits ?? []) as {
-    id: string;
-    name: string;
-    icon: string;
-    color: HabitColor;
-  }[]).map((h) => ({ ...h, checkedToday: checkedSet.has(h.id) }));
-
-  // série de jours entièrement bouclés (la chaîne casse sur un jour raté)
-  const streak = completedDayStreak(allCompletions ?? [], now.date);
+  // série de jours actifs : au moins un pointage "done" dans la journée — la
+  // chaîne ne casse que sur un jour où RIEN n'a été fait (matérialisé en
+  // not_done par le cron dès la nuit suivante)
+  const streak = activeDayStreak(allCompletions ?? [], now.date);
 
   // série que le joueur ATTEINT en bouclant aujourd'hui = série jusqu'à hier + 1.
   // Robuste au décalage : ne dépend pas de l'état de la journée en cours (donc
   // pas de double comptage si on dé-coche puis re-coche la dernière tâche).
-  const streakOnComplete = completedDayStreak(allCompletions ?? [], addDays(now.date, -1)) + 1;
+  const streakOnComplete = activeDayStreak(allCompletions ?? [], addDays(now.date, -1)) + 1;
 
-  // historique jour par jour (calendrier de discipline) : même définition que
-  // la série — complet quand tous les pointages du jour sont "done"
+  // historique jour par jour (calendrier de discipline) : complet quand tous
+  // les pointages du jour sont "done", partiel dès qu'un seul l'est
   const dayHistory: Record<string, DayOutcome> = {};
   {
     const byDate = new Map<string, { done: number; total: number }>();
@@ -134,6 +113,8 @@ export default async function PlanningPage() {
       byDate.set(date, entry);
     }
     for (const [date, e] of byDate) {
+      // la journée en cours n'est pas terminée : pas de « manqué » prématuré
+      if (date === now.date && e.done === 0) continue;
       dayHistory[date] = e.done === e.total ? "complete" : e.done > 0 ? "partial" : "missed";
     }
   }
@@ -147,6 +128,14 @@ export default async function PlanningPage() {
   const hasMatchThisWeek = (matchStats ?? []).some((m) => m.match_date >= weekStart);
   const isWeekend = now.isoWeekday >= 6;
   const remind = isWeekend && !hasReview && !hasMatchThisWeek;
+  // Réponse du coach au bilan : celle de la semaine en cours en priorité,
+  // sinon celle de la semaine passée (le coach répond souvent lundi/mardi)
+  const coachReply = thisWeekReview?.coach_reply?.trim()
+    ? { text: thisWeekReview.coach_reply.trim(), weekStart: thisWeekReview.week_start }
+    : lastReview?.coach_reply?.trim()
+      ? { text: lastReview.coach_reply.trim(), weekStart: lastReview.week_start }
+      : null;
+
   const coachFocus = coachFocusRow?.content?.trim() || null;
   const playerFocus = lastReview?.to_improve?.trim() || null;
   const focus = coachFocus
@@ -177,6 +166,21 @@ export default async function PlanningPage() {
 
       <DoubleRule className="mt-3" />
 
+      {/* Indisponibilité (posée par le coach) : la série et la discipline sont
+          gelées — pas de rappels ni de jours comptés ratés pendant l'absence */}
+      {coachRow?.availability && coachRow.availability !== "available" && (
+        <div className="mt-5 rounded-md border-2 border-ink bg-tan/50 px-4 py-3">
+          <p className="ed-overline">
+            {coachRow.availability === "injured" ? "Mode blessé" : "Mode vacances"}
+          </p>
+          <p className="mt-1.5 text-sm leading-relaxed text-ink">
+            {coachRow.availability === "injured"
+              ? "Ta série et ta discipline sont gelées le temps de te soigner. Récupère bien — le terrain t'attend. 💪"
+              : "Ta série et ta discipline sont gelées pendant tes vacances. Profite, et reviens en forme. ☀️"}
+          </p>
+        </div>
+      )}
+
       {/* Série de jours complets : fondu dans le papier. Scoreboard deux tons —
           éclair + chiffre rouge brique (le héros), « JOURS DE SUITE » navy,
           « DE PROGRESSION » en surtitre mono rouge pour la respiration. */}
@@ -193,7 +197,6 @@ export default async function PlanningPage() {
         playerId={user.id}
         events={(events ?? []) as PlannedEvent[]}
         completions={(completions ?? []) as EventCompletion[]}
-        habits={dayHabits}
         dayHistory={dayHistory}
         today={now.date}
         weekStart={weekStart}
@@ -202,6 +205,16 @@ export default async function PlanningPage() {
         focus={focus}
         streakOnComplete={streakOnComplete}
       />
+
+      {/* Réponse du coach au bilan hebdo : carte éditoriale sous le planning */}
+      {coachReply && (
+        <div className="mt-8 rounded-md border-2 border-ink bg-tan/50 px-4 py-3">
+          <p className="ed-overline">
+            Réponse du coach · bilan de la semaine du {formatDateFr(coachReply.weekStart)}
+          </p>
+          <p className="mt-1.5 text-sm leading-relaxed text-ink">{coachReply.text}</p>
+        </div>
+      )}
 
       {/* Feuille de match + bilan de la semaine : pastilles en bas à gauche.
           « ? » jaune de rappel le week-end tant que ni l'un ni l'autre n'est rempli. */}

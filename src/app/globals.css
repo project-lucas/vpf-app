@@ -688,3 +688,86 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     animation: none;
   }
 }
+
+/* Tableau d'affichage : célébration quand une stat MONTE — halo coloré qui
+   pulse derrière les cartons + « +N » qui s'envole au-dessus du panneau. */
+@keyframes sb-bump-rise {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 8px) scale(0.7);
+  }
+  18% {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1.1);
+  }
+  70% {
+    opacity: 1;
+    transform: translate(-50%, -16px) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -26px) scale(1);
+  }
+}
+.sb-bump-rise {
+  animation: sb-bump-rise 1.3s cubic-bezier(0.22, 0.9, 0.3, 1) both;
+}
+@keyframes sb-bump-glow {
+  0% {
+    opacity: 0;
+    transform: scale(0.5);
+  }
+  35% {
+    opacity: 0.9;
+    transform: scale(1.15);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.5);
+  }
+}
+.sb-bump-glow {
+  animation: sb-bump-glow 1.1s ease-out both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .sb-bump-rise,
+  .sb-bump-glow {
+    animation: none;
+    opacity: 0;
+  }
+}
+
+/* Tâches du planning : respiration continue des blocs « à faire » — halo de la
+   couleur de l'activité (var --task-glow) + icône qui pulse légèrement. Les
+   délais sont décalés bloc par bloc pour une vague le long de la liste. */
+@keyframes task-breathe {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+  50% {
+    box-shadow: 0 0 14px 1px var(--task-glow, rgba(0, 0, 0, 0.15));
+  }
+}
+.task-breathe {
+  animation: task-breathe 2.6s ease-in-out infinite;
+}
+@keyframes task-icon-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.14);
+  }
+}
+.task-icon-pulse {
+  display: inline-flex;
+  animation: task-icon-pulse 2.6s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .task-breathe,
+  .task-icon-pulse {
+    animation: none;
+  }
+}

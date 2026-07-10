@@ -13,13 +13,15 @@ import {
 } from "recharts";
 
 export interface ProgressPoint {
-  /** lundi de la semaine, format "dd/MM" */
+  /** date ISO "YYYY-MM-DD" du jour (clé stable, unique sur plusieurs années) */
+  iso: string;
+  /** jour, format "dd/MM" */
   label: string;
   technique: number;
   physique: number;
   vie: number;
   total: number;
-  /** semaine où au moins un record perso est tombé */
+  /** jour où au moins un record perso est tombé */
   recordDot: number | null;
 }
 
@@ -30,10 +32,10 @@ const DIMS = [
 ] as const;
 
 /**
- * Courbe de croissance de la saison : XP cumulés semaine par semaine, empilés
- * par dimension (technique basket / physique / vie & habitudes). Elle ne peut
- * que monter — chaque action validée la fait grimper. Les points dorés
- * marquent les semaines où un record perso est tombé.
+ * Courbe de croissance : XP cumulés jour par jour, empilés par dimension
+ * (technique basket / physique / vie & habitudes). Elle ne peut que monter —
+ * chaque action validée la fait grimper. Les points dorés marquent les jours
+ * où un record perso est tombé.
  */
 export function ProgressChart({ data, weekGain }: { data: ProgressPoint[]; weekGain: number }) {
   // dimensions masquées via les chips-filtres : cliquer isole/cache une courbe
@@ -59,7 +61,7 @@ export function ProgressChart({ data, weekGain }: { data: ProgressPoint[]; weekG
           {last.total}
         </span>
         <span className="text-xs font-medium text-meta">
-          XP cette saison
+          XP au total
           {weekGain > 0 && (
             <span className="ml-1.5 font-bold text-orange">+{weekGain} cette semaine</span>
           )}
@@ -139,7 +141,7 @@ export function ProgressChart({ data, weekGain }: { data: ProgressPoint[]; weekG
                       ? "Vie & habitudes"
                       : "Record battu",
               ]}
-              labelFormatter={(label) => `Semaine du ${label}`}
+              labelFormatter={(label) => `Le ${label}`}
               contentStyle={{
                 borderRadius: 6,
                 border: "2px solid #1C3A4B",
@@ -189,7 +191,7 @@ export function ProgressChart({ data, weekGain }: { data: ProgressPoint[]; weekG
         </thead>
         <tbody>
           {data.map((d) => (
-            <tr key={d.label}>
+            <tr key={d.iso}>
               <th scope="row">{d.label}</th>
               <td>{d.technique}</td>
               <td>{d.physique}</td>

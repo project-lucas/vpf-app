@@ -9,12 +9,16 @@ interface CompletionLike {
 }
 
 /**
- * Série de JOURS COMPLETS consécutifs : un jour compte quand tous ses
- * pointages sont "done". Un jour avec un événement raté casse la chaîne ;
- * un jour sans aucun pointage (repos) ne la casse pas et ne compte pas.
- * La journée en cours compte si elle est déjà bouclée, sinon elle est neutre.
+ * Série de JOURS ACTIFS consécutifs : un jour compte dès qu'au moins un de
+ * ses pointages est "done" — journée complète ou partielle, la nuance vit
+ * dans l'historique (calendrier de discipline). Un jour dont TOUS les
+ * pointages sont ratés casse la chaîne ; un jour sans aucun pointage (repos)
+ * est neutre : il ne casse pas et ne compte pas. Le cron matérialise chaque
+ * nuit les oublis de la veille en "not_done", donc un jour entièrement
+ * ignoré casse la série dès le lendemain. La journée en cours compte dès son
+ * premier pointage "done" et ne casse jamais (elle n'est pas finie).
  */
-export function completedDayStreak(
+export function activeDayStreak(
   completions: { status: CompletionStatus; week_start: string; weekday: number }[],
   today: string
 ): number {
@@ -33,13 +37,13 @@ export function completedDayStreak(
 
   let streak = 0;
   const todayEntry = byDate.get(today);
-  if (todayEntry && todayEntry.total > 0 && todayEntry.done === todayEntry.total) streak++;
+  if (todayEntry && todayEntry.done > 0) streak++;
 
   let cursor = addDays(today, -1);
   while (cursor >= earliest) {
     const entry = byDate.get(cursor);
     if (entry) {
-      if (entry.total > 0 && entry.done === entry.total) streak++;
+      if (entry.done > 0) streak++;
       else break;
     }
     cursor = addDays(cursor, -1);

@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Zap } from "lucide-react";
-import { BallIcon, ChartIcon, FlameIcon, TrophyIcon } from "@/components/icons";
+import { History, Zap } from "lucide-react";
+import { BallIcon, ChartIcon, TrophyIcon } from "@/components/icons";
 
-type SectionKey = "progression" | "stats" | "records" | "matchs" | "habitudes";
+type SectionKey = "progression" | "stats" | "records" | "matchs" | "historique";
 
 interface SectionDef {
   key: SectionKey;
@@ -17,7 +17,7 @@ const SECTIONS: SectionDef[] = [
   { key: "stats", label: "Stats", icon: <ChartIcon size={20} /> },
   { key: "records", label: "Records", icon: <TrophyIcon size={20} /> },
   { key: "matchs", label: "Matchs", icon: <BallIcon size={20} /> },
-  { key: "habitudes", label: "Habitudes", icon: <FlameIcon size={20} /> },
+  { key: "historique", label: "Historique", icon: <History size={20} strokeWidth={1.8} /> },
 ];
 
 /**
@@ -31,7 +31,7 @@ export function DashboardSections({
   stats,
   records,
   matchs,
-  habitudes,
+  historique,
   initialOpen = null,
   autoScroll = false,
 }: Record<SectionKey, React.ReactNode> & {
@@ -47,7 +47,7 @@ export function DashboardSections({
     stats,
     records,
     matchs,
-    habitudes,
+    historique,
   };
 
   // Arrivée via un raccourci (?section=…) : amène le panneau ouvert à l'écran.

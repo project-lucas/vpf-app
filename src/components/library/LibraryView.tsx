@@ -27,9 +27,11 @@ interface Props {
   /** séance → joueurs qui la voient actuellement */
   visibility: Record<string, string[]>;
   editable: boolean;
+  /** séances modifiables/supprimables ; absent = toutes (admin) */
+  manageableIds?: string[];
 }
 
-export function LibraryView({ sessions, players, visibility, editable }: Props) {
+export function LibraryView({ sessions, players, visibility, editable, manageableIds }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [pole, setPole] = useState<SessionPole>("basket");
@@ -40,6 +42,9 @@ export function LibraryView({ sessions, players, visibility, editable }: Props) 
   const [formTarget, setFormTarget] = useState<LibrarySession | "new" | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<LibrarySession | null>(null);
   const [query, setQuery] = useState("");
+
+  const manageable = manageableIds === undefined ? null : new Set(manageableIds);
+  const canManage = (s: LibrarySession) => editable && (manageable === null || manageable.has(s.id));
 
   const q = query.trim().toLowerCase();
   const poleSessions = sessions.filter(
@@ -166,7 +171,7 @@ export function LibraryView({ sessions, players, visibility, editable }: Props) 
                               </div>
                             )}
                           </div>
-                          {editable && (
+                          {canManage(s) && (
                             <div className="flex shrink-0 gap-1">
                               <button
                                 onClick={() => setFormTarget(s)}

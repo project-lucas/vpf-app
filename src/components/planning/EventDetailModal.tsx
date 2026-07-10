@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Clock, Dumbbell, MessageCircle } from "lucide-react";
 import {
   EVENT_TYPE_DETAILS,
-  EVENT_TYPE_LABELS,
+  eventLabel,
   formatDuration,
   WEEKDAY_LABELS,
 } from "@/lib/constants";
@@ -25,15 +25,16 @@ export function EventDetailModal({
   open: boolean;
   onClose: () => void;
 }) {
-  const details = EVENT_TYPE_DETAILS[event.event_type];
+  // ?? autre : un type ajouté en base avant le déploiement du client ne doit pas faire crasher la fiche
+  const details = EVENT_TYPE_DETAILS[event.event_type] ?? EVENT_TYPE_DETAILS.autre;
   const withSessions = event.event_type === "training_basket" || event.event_type === "prep_physique";
 
   return (
     <Modal open={open} onClose={onClose} variant="retro">
       <div className="flex items-center gap-3">
-        <EventIconBadge type={event.event_type} />
+        <EventIconBadge type={event.event_type} event={event} />
         <div className="min-w-0 flex-1">
-          <h2 className="ed-value text-xl text-ink">{EVENT_TYPE_LABELS[event.event_type]}</h2>
+          <h2 className="ed-value text-xl text-ink">{eventLabel(event)}</h2>
           <p className="ed-meta text-[10px] text-meta">
             {WEEKDAY_LABELS[event.weekday - 1]} · {formatTime(event.event_time)}
           </p>

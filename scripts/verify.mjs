@@ -207,10 +207,12 @@ console.log("\n6. Habitudes (heatmap)");
   });
   check("pointage dans le futur refusé", rf.status === 401 || rf.status === 403, `(${rf.status})`);
 
+  // /habitudes est devenue un redirect("/dashboard") : on vérifie que la
+  // redirection aboutit bien sur le dashboard (fetch suit les redirections)
   const page1 = await page(lucas, "/habitudes");
   check(
-    "page /habitudes rend pour le joueur",
-    page1.status === 200 && page1.body.includes("Mes habitudes")
+    "page /habitudes redirige vers le dashboard",
+    page1.status === 200 && page1.body.includes("Dashboard")
   );
 
   const page2 = await page(lucas, "/seances");

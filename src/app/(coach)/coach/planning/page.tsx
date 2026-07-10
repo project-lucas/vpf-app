@@ -1,46 +1,26 @@
 import Link from "next/link";
-import { ClipboardList, MessageCircle, NotebookPen } from "lucide-react";
+import { ClipboardList, NotebookPen } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { getPlayersWithDiscipline } from "@/lib/coach-data";
 import {
   addDays,
   currentWeekStart,
-  formatTime,
   formatWeekFr,
   parisNow,
   weekStartOf,
 } from "@/lib/dates";
-import { EVENT_TYPE_LABELS, WEEKDAY_LABELS, formatDuration } from "@/lib/constants";
-import { EventTypeIcon } from "@/components/planning/EventIcon";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatCard } from "@/components/ui/StatCard";
 import { Card, CardTitle } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { ChevronLeftIcon } from "@/components/icons";
-import type { EventCompletion, EventType, MatchStat, PlannedEvent } from "@/lib/types";
+import { DayView, type DayViewEntry } from "./DayView";
+import type { EventCompletion, MatchStat, PlannedEvent } from "@/lib/types";
 
 export const metadata = { title: "Planning coach — VPF" };
 export const dynamic = "force-dynamic";
 
-type EntryStatus = "done" | "not_done" | "missed" | "pending";
-
-interface DayEntry {
-  key: string;
-  playerId: string;
-  playerName: string;
-  eventType: EventType;
-  time: string; // "HH:MM:SS"
-  duration: number | null;
-  status: EntryStatus;
-  comment: string;
-}
-
-const STATUS_BADGE: Record<EntryStatus, { tone: "success" | "danger" | "warning" | "neutral"; label: string }> = {
-  done: { tone: "success", label: "Fait" },
-  not_done: { tone: "danger", label: "Pas fait" },
-  missed: { tone: "warning", label: "Non pointé" },
-  pending: { tone: "neutral", label: "À venir" },
-};
+type DayEntry = DayViewEntry;
 
 export default async function CoachPlanningPage({
   searchParams,
@@ -99,6 +79,9 @@ export default async function CoachPlanningPage({
       playerId: c.player_id,
       playerName: nameOf.get(c.player_id) ?? "",
       eventType: c.event_type,
+      customName: c.custom_name ?? "",
+      customIcon: c.custom_icon ?? "",
+      customColor: c.custom_color ?? "",
       time: c.event_time,
       duration: c.duration_minutes,
       status: c.status === "done" ? "done" : "not_done",
@@ -115,6 +98,9 @@ export default async function CoachPlanningPage({
         playerId: e.player_id,
         playerName: nameOf.get(e.player_id) ?? "",
         eventType: e.event_type,
+        customName: e.custom_name ?? "",
+        customIcon: e.custom_icon ?? "",
+        customColor: e.custom_color ?? "",
         time: e.event_time,
         duration: e.duration_minutes,
         status: isCurrentWeek && e.weekday < todayWeekday ? "missed" : "pending",
@@ -268,61 +254,17 @@ export default async function CoachPlanningPage({
         )}
       </Card>
 
-      {/* Détail jour par jour */}
-      <div className="mt-5 space-y-3">
-        {shownByDay.map((entries, i) => {
-          const dayDate = addDays(weekStart, i);
-          const isToday = dayDate === today;
-          return (
-            <Card key={i} className={isToday ? "border-navy-800" : ""}>
-              <div className="mb-2 flex items-center justify-between">
-                <h2 className="font-display text-[15px] font-semibold uppercase tracking-wide text-navy-800">
-                  {WEEKDAY_LABELS[i]}{" "}
-                  <span className="text-navy-300">{dayDate.slice(8, 10)}/{dayDate.slice(5, 7)}</span>
-                </h2>
-                {isToday && <Badge tone="navy">Aujourd&apos;hui</Badge>}
-              </div>
-              {entries.length === 0 ? (
-                <p className="text-sm text-navy-300">Rien de planifié.</p>
-              ) : (
-                <div className="space-y-1.5">
-                  {entries.map((e) => {
-                    const badge = STATUS_BADGE[e.status];
-                    return (
-                      <div key={e.key} className="rounded-xl bg-navy-50 px-3 py-2">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="min-w-0 truncate text-sm font-semibold text-navy-800">
-                            {e.playerName}
-                          </span>
-                          <Badge tone={badge.tone} className="shrink-0">
-                            {badge.label}
-                          </Badge>
-                        </div>
-                        <p className="mt-0.5 text-xs text-navy-500">
-                          <EventTypeIcon
-                            type={e.eventType}
-                            size={12}
-                            className="-mt-0.5 mr-1 inline"
-                            colored
-                          />
-                          {EVENT_TYPE_LABELS[e.eventType]} · {formatTime(e.time)}
-                          {e.duration ? ` · ${formatDuration(e.duration)}` : ""}
-                        </p>
-                        {e.comment && (
-                          <p className="mt-1 flex items-start gap-1.5 text-xs text-navy-500">
-                            <MessageCircle size={13} className="mt-0.5 shrink-0" />
-                            <span className="min-w-0">{e.comment}</span>
-                          </p>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </Card>
-          );
-        })}
-      </div>
+      {/* Détail par jour : barre de filtre Lun → Dim, le jour choisi est isolé.
+          key = semaine+filtre pour repartir sur le bon jour quand on navigue. */}
+      <DayView
+        key={`${weekStart}-${selectedPlayer ?? "all"}`}
+        days={shownByDay.map((entries, i) => ({
+          date: addDays(weekStart, i),
+          isToday: addDays(weekStart, i) === today,
+          entries,
+        }))}
+        initialDay={isCurrentWeek ? todayWeekday : 1}
+      />
     </>
   );
 }

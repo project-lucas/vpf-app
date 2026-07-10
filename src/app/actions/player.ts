@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { currentWeekStart } from "@/lib/dates";
+import { currentWeekStart, parisNow } from "@/lib/dates";
 import { PLAYER_CATEGORIES, POSITIONS } from "@/lib/constants";
 import type { ActionResult, CheckinQuestion } from "@/lib/types";
 
@@ -37,6 +37,10 @@ export async function addMatchStat(data: {
     data.minutes > 60
   ) {
     return { ok: false, error: "Valeurs invalides." };
+  }
+  // un match ne se joue pas dans le futur (il fausserait records et courbe)
+  if (data.match_date > parisNow().date) {
+    return { ok: false, error: "La date du match est dans le futur." };
   }
 
   // Source de vérité : points et tirs réussis (hors LF) recalculés côté serveur.
@@ -208,8 +212,24 @@ export async function saveChallengeScore(
   } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: "Session expirée." };
 
+  // borne au max du challenge de la séance (« 999/10 » impossible)
+  const { data: assignmentRow } = await supabase
+    .from("session_assignments")
+    .select("session:library_sessions!inner(challenge)")
+    .eq("id", assignmentId)
+    .eq("player_id", user.id)
+    .maybeSingle();
+  if (!assignmentRow) return { ok: false, error: "Séance introuvable." };
+  const sessionRow = Array.isArray(assignmentRow.session)
+    ? assignmentRow.session[0]
+    : assignmentRow.session;
+  const maxScore =
+    (sessionRow?.challenge as { maxScore?: number } | null)?.maxScore ?? 999;
+
   const cleanScore =
-    score === null || Number.isNaN(score) ? null : Math.min(999, Math.max(0, Math.round(score)));
+    score === null || Number.isNaN(score)
+      ? null
+      : Math.min(maxScore, Math.max(0, Math.round(score)));
 
   const { data: existing } = await supabase
     .from("session_completions")

@@ -139,6 +139,14 @@ export function daysBetween(a: string, b: string): number {
   return Math.round((toUtc(b) - toUtc(a)) / 86_400_000);
 }
 
+/** Libellé de saison « 25/26 » : bascule à la date de début de saison (pas avant). */
+export function seasonLabel(todayStr: string, start: { month: number; day: number }): string {
+  const [year, month, day] = todayStr.split("-").map(Number);
+  const startYear =
+    month > start.month || (month === start.month && day >= start.day) ? year : year - 1;
+  return `${String(startYear).slice(2)}/${String(startYear + 1).slice(2)}`;
+}
+
 /**
  * Numéro du jour de saison (croissant, sans limite) : jours écoulés depuis la
  * dernière occurrence du début de saison (mois/jour), en comptant à partir de 1.

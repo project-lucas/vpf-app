@@ -1,56 +1,32 @@
 "use client";
 
 import { useOptimistic, useState, useTransition } from "react";
-import Link from "next/link";
 import { checkEvent } from "@/app/actions/planning";
-import { toggleHabitCheck } from "@/app/actions/habits";
-import { EVENT_TYPE_LABELS, formatDuration } from "@/lib/constants";
+import { eventLabel, formatDuration, habitPale } from "@/lib/constants";
 import { formatTime } from "@/lib/dates";
 import { successFeedback, tapFeedback } from "@/lib/feedback";
 import { CheckIcon, XIcon } from "@/components/icons";
-import { HabitIcon } from "@/components/habits/HabitIcon";
 import { EditorialTabs } from "@/components/editorial/EditorialTabs";
 import { Overline } from "@/components/editorial/primitives";
 import { SquareIconButton } from "@/components/editorial/primitives";
 import { EventDetailModal } from "./EventDetailModal";
-import { EventTypeIcon } from "./EventIcon";
-import type {
-  CompletionStatus,
-  EventCompletion,
-  HabitColor,
-  PlannedEvent,
-} from "@/lib/types";
-
-export interface DayHabit {
-  id: string;
-  name: string;
-  icon: string;
-  color: HabitColor;
-  checkedToday: boolean;
-}
+import { EventTypeIcon, eventColorHex } from "./EventIcon";
+import type { CompletionStatus, EventCompletion, PlannedEvent } from "@/lib/types";
 
 interface Props {
   events: PlannedEvent[];
   completions: EventCompletion[];
-  habits: DayHabit[];
   weekStart: string;
-  today: string;
   /** remonte les pointages d'événements + si la journée est bouclée (célébrations) */
   onEventChecked?: (eventId: string, status: CompletionStatus, dayComplete: boolean) => void;
 }
 
 /**
- * Liste unifiée des actions du jour : événements du planning + habitudes,
- * filtrée par onglets « À faire » / « Fait » (langage Éditorial Sport).
+ * Liste des actions du jour — les tâches du planning, filtrées par onglets
+ * « À faire » / « Fait » (langage Éditorial Sport). Les envies personnelles
+ * passent par une activité perso de la semaine type, pas par une liste à part.
  */
-export function DayActionList({
-  events,
-  completions,
-  habits,
-  weekStart,
-  today,
-  onEventChecked,
-}: Props) {
+export function DayActionList({ events, completions, weekStart, onEventChecked }: Props) {
   const [, startTransition] = useTransition();
   const [tab, setTab] = useState<"todo" | "done">("todo");
   const [detailEvent, setDetailEvent] = useState<PlannedEvent | null>(null);
@@ -70,12 +46,6 @@ export function DayActionList({
       ];
     }
   );
-  const [optHabits, applyHabit] = useOptimistic(
-    habits,
-    (curr: DayHabit[], id: string) =>
-      curr.map((h) => (h.id === id ? { ...h, checkedToday: !h.checkedToday } : h))
-  );
-
   const completionOf = (eventId: string) =>
     optCompletions.find((c) => c.planned_event_id === eventId);
 
@@ -101,15 +71,6 @@ export function DayActionList({
     });
   }
 
-  function toggleHabit(habit: DayHabit) {
-    if (!habit.checkedToday) successFeedback();
-    else tapFeedback();
-    startTransition(async () => {
-      applyHabit(habit.id);
-      await toggleHabitCheck(habit.id, today);
-    });
-  }
-
   const eventDone = (e: PlannedEvent) => completionOf(e.id)?.status === "done";
 
   // Système binaire : « Fait » = fait (rayé) ; « À faire » = tout le reste
@@ -117,13 +78,10 @@ export function DayActionList({
   // % du jour, annuler le fait redescendre.
   const todoEvents = events.filter((e) => !eventDone(e));
   const doneEvents = events.filter((e) => eventDone(e));
-  const todoHabits = optHabits.filter((h) => !h.checkedToday);
-  const doneHabits = optHabits.filter((h) => h.checkedToday);
-  const doneCount = doneEvents.length + doneHabits.length;
-  const todoCount = todoEvents.length + todoHabits.length;
+  const doneCount = doneEvents.length;
+  const todoCount = todoEvents.length;
 
   const showEvents = tab === "todo" ? todoEvents : doneEvents;
-  const showHabits = tab === "todo" ? todoHabits : doneHabits;
 
   return (
     <div>
@@ -137,7 +95,7 @@ export function DayActionList({
         ]}
       />
 
-      {showEvents.length === 0 && showHabits.length === 0 ? (
+      {showEvents.length === 0 ? (
         <div className="py-8 text-center">
           <p className="ed-display text-[32px] text-ink">
             {tab === "todo" ? "Tout est fait" : "Rien de validé"}
@@ -152,19 +110,37 @@ export function DayActionList({
         <div>
           {/* Section planning : le cadre d'entraînement */}
           {showEvents.length > 0 && <Overline className="mb-2">Mon planning</Overline>}
-          {showEvents.map((event) => {
+          {showEvents.map((event, i) => {
             const done = eventDone(event);
+            const hex = eventColorHex(event);
             return (
               <div
                 key={event.id}
-                className="flex items-center gap-3 border-b border-hair py-3"
+                className={`mb-2 flex items-center gap-3 rounded-md px-3 py-3 ${
+                  done ? "" : "task-breathe"
+                }`}
+                style={
+                  {
+                    backgroundColor: habitPale(hex, done ? "future" : "bg"),
+                    borderLeft: `6px solid ${done ? `${hex}66` : hex}`,
+                    "--task-glow": `${hex}59`,
+                    animationDelay: `${i * 0.3}s`,
+                  } as React.CSSProperties
+                }
               >
                 <button
                   onClick={() => setDetailEvent(event)}
                   className="flex min-w-0 flex-1 items-center gap-3 text-left"
                 >
-                  <span className="shrink-0 text-ink" aria-hidden>
-                    <EventTypeIcon type={event.event_type} size={18} />
+                  <span
+                    className={`shrink-0 ${done ? "" : "task-icon-pulse"}`}
+                    aria-hidden
+                    style={{
+                      color: done ? `${hex}88` : hex,
+                      animationDelay: `${i * 0.3}s`,
+                    }}
+                  >
+                    <EventTypeIcon type={event.event_type} event={event} size={18} colored={!done} />
                   </span>
                   <span className="min-w-0 flex-1">
                     <span
@@ -172,7 +148,7 @@ export function DayActionList({
                         done ? "text-muted line-through" : "text-ink"
                       }`}
                     >
-                      {EVENT_TYPE_LABELS[event.event_type]}
+                      {eventLabel(event)}
                     </span>
                     <span className="ed-meta block text-[9px] text-meta">
                       {formatTime(event.event_time)} · {formatDuration(event.duration_minutes)}
@@ -204,40 +180,6 @@ export function DayActionList({
             );
           })}
 
-          {/* Section habitudes : l'engagement personnel du joueur */}
-          {showHabits.length > 0 && (
-            <div className="mt-5 mb-2 flex items-center justify-between">
-              <Overline>Mes habitudes</Overline>
-              <Link
-                href="/dashboard?section=habitudes"
-                className="ed-meta text-[10px] text-orange underline-offset-2 hover:underline"
-              >
-                Gérer →
-              </Link>
-            </div>
-          )}
-          {showHabits.map((habit) => (
-            <div key={habit.id} className="flex items-center gap-3 border-b border-hair py-3">
-              <span className="shrink-0 text-ink" aria-hidden>
-                <HabitIcon name={habit.icon} size={17} color="currentColor" />
-              </span>
-              <span
-                className={`ed-value min-w-0 flex-1 truncate text-lg ${
-                  habit.checkedToday ? "text-muted line-through" : "text-ink"
-                }`}
-              >
-                {habit.name}
-              </span>
-              <SquareIconButton
-                onClick={() => toggleHabit(habit)}
-                aria-label={habit.checkedToday ? "Décocher" : "Fait"}
-                filled={habit.checkedToday}
-                className="transition-transform active:scale-90"
-              >
-                <CheckIcon size={17} />
-              </SquareIconButton>
-            </div>
-          ))}
         </div>
       )}
 

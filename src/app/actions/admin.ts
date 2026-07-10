@@ -212,8 +212,41 @@ function validateSession(data: SessionData): string | null {
   return null;
 }
 
+/**
+ * Admin ou coach pour la bibliothèque : l'admin gère tout, un coach ne gère
+ * que les séances qu'il a créées (les programmes admin restent intouchables).
+ */
+async function requireLibrarian(): Promise<
+  { ok: true; userId: string; isAdmin: boolean } | { ok: false; error: string }
+> {
+  const { profile } = await getAuthProfile();
+  if (!profile || (profile.role !== "admin" && profile.role !== "coach")) {
+    return { ok: false, error: "Accès réservé au staff." };
+  }
+  return { ok: true, userId: profile.id, isAdmin: profile.role === "admin" };
+}
+
+/** Erreur si l'appelant n'a pas le droit de modifier/supprimer cette séance. */
+async function sessionWriteDenied(
+  sessionId: string,
+  guard: { userId: string; isAdmin: boolean }
+): Promise<string | null> {
+  if (guard.isAdmin) return null;
+  const admin = createAdminClient();
+  const { data } = await admin
+    .from("library_sessions")
+    .select("created_by")
+    .eq("id", sessionId)
+    .maybeSingle();
+  if (!data) return "Séance introuvable.";
+  if (data.created_by !== guard.userId) {
+    return "Tu ne peux modifier que les séances que tu as créées.";
+  }
+  return null;
+}
+
 export async function createLibrarySession(data: SessionData): Promise<ActionResult> {
-  const guard = await requireAdmin();
+  const guard = await requireLibrarian();
   if (!guard.ok) return guard;
   const invalid = validateSession(data);
   if (invalid) return { ok: false, error: invalid };
@@ -227,6 +260,7 @@ export async function createLibrarySession(data: SessionData): Promise<ActionRes
     duration_minutes: data.duration_minutes,
     equipment: data.equipment.trim(),
     positions: data.positions,
+    created_by: guard.userId,
   });
   if (error) return { ok: false, error: "Création impossible." };
   revalidatePath("/admin/bibliotheque");
@@ -238,10 +272,12 @@ export async function updateLibrarySession(
   sessionId: string,
   data: SessionData
 ): Promise<ActionResult> {
-  const guard = await requireAdmin();
+  const guard = await requireLibrarian();
   if (!guard.ok) return guard;
   const invalid = validateSession(data);
   if (invalid) return { ok: false, error: invalid };
+  const denied = await sessionWriteDenied(sessionId, guard);
+  if (denied) return { ok: false, error: denied };
 
   const admin = createAdminClient();
   const { error } = await admin
@@ -263,8 +299,10 @@ export async function updateLibrarySession(
 }
 
 export async function deleteLibrarySession(sessionId: string): Promise<ActionResult> {
-  const guard = await requireAdmin();
+  const guard = await requireLibrarian();
   if (!guard.ok) return guard;
+  const denied = await sessionWriteDenied(sessionId, guard);
+  if (denied) return { ok: false, error: denied };
 
   const admin = createAdminClient();
   const { error } = await admin.from("library_sessions").delete().eq("id", sessionId);

@@ -17,7 +17,7 @@ import {
 import { HabitCard } from "@/components/habits/HabitCard";
 import { PlayerRadar } from "@/app/(player)/dashboard/PlayerRadar";
 import { MessageCircle, Star } from "lucide-react";
-import { EVENT_TYPE_LABELS, WEEKDAY_LABELS } from "@/lib/constants";
+import { eventLabel, WEEKDAY_LABELS } from "@/lib/constants";
 import { EventTypeIcon } from "@/components/planning/EventIcon";
 import { formatPercent } from "@/lib/discipline";
 import { Tabs } from "@/components/ui/Tabs";
@@ -29,6 +29,10 @@ import { PlayerProfileForm } from "./PlayerProfileForm";
 import { WeekFocusForm } from "./WeekFocusForm";
 import { AssignedSessionsManager } from "./AssignedSessionsManager";
 import { CoachNotesPanel } from "./CoachNotesPanel";
+import { ReviewReplyBox } from "@/components/coach/ReviewReplyBox";
+import { AvailabilityControl } from "@/components/coach/AvailabilityControl";
+import { CopyWeekTemplate } from "@/components/coach/CopyWeekTemplate";
+import { GoalsManager } from "@/components/coach/GoalsManager";
 import type {
   Checkin,
   CoachNote,
@@ -38,6 +42,7 @@ import type {
   LibrarySession,
   MatchStat,
   PlannedEvent,
+  PlayerGoal,
   SessionAssignmentWithSession,
   WeeklyReview,
   WeeklySummary,
@@ -79,6 +84,7 @@ export default async function PlayerDetailPage({
     { data: habitChecks },
     { data: weekFocus },
     { count: eventsDoneCount },
+    { data: goals },
   ] = await Promise.all([
     supabase
       .from("planned_events")
@@ -139,7 +145,25 @@ export default async function PlayerDetailPage({
       .select("id", { count: "exact", head: true })
       .eq("player_id", id)
       .eq("status", "done"),
+    supabase
+      .from("player_goals")
+      .select("*")
+      .eq("player_id", id)
+      .order("created_at", { ascending: false }),
   ]);
+
+  // autres joueurs actifs du coach (RLS) — source de la copie de semaine type
+  const { data: otherPlayersRaw } = await supabase
+    .from("players")
+    .select("id, profile:profiles!players_id_fkey(first_name, last_name)")
+    .eq("status", "active")
+    .neq("id", id);
+  const otherPlayers = (otherPlayersRaw ?? [])
+    .map((p) => {
+      const pr = Array.isArray(p.profile) ? p.profile[0] : p.profile;
+      return { id: p.id, name: `${pr?.first_name ?? ""} ${pr?.last_name ?? ""}`.trim() };
+    })
+    .sort((a, b) => a.name.localeCompare(b.name, "fr"));
 
   const today = parisNow().date;
   const habitsWithChecks: HabitWithChecks[] = ((habits ?? []) as Habit[]).map((h) => ({
@@ -254,6 +278,14 @@ export default async function PlayerDetailPage({
             .filter(Boolean)
             .join(" · ")}
         </p>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <AvailabilityControl playerId={id} availability={playerRaw.availability ?? "available"} />
+          {playerRaw.availability !== "available" && playerRaw.availability_since && (
+            <span className="text-[11px] text-navy-400">
+              depuis le {formatDateFr(playerRaw.availability_since)} — série et discipline gelées
+            </span>
+          )}
+        </div>
         {checkin && (
           <div className="mt-2">
             <Badge tone={checkin.question === "pain" && checkin.score >= 5 ? "warning" : "neutral"}>
@@ -269,19 +301,25 @@ export default async function PlayerDetailPage({
           {
             label: "Profil",
             content: (
-              <PlayerProfileForm
-                playerId={id}
-                initial={{
-                  first_name: profile?.first_name ?? "",
-                  last_name: profile?.last_name ?? "",
-                  position: playerRaw.position,
-                  club: playerRaw.club,
-                  birthdate: playerRaw.birthdate,
-                  height_cm: playerRaw.height_cm,
-                  weight_kg: playerRaw.weight_kg,
-                  season_goal: playerRaw.season_goal,
-                }}
-              />
+              <div className="space-y-5">
+                <PlayerProfileForm
+                  playerId={id}
+                  initial={{
+                    first_name: profile?.first_name ?? "",
+                    last_name: profile?.last_name ?? "",
+                    position: playerRaw.position,
+                    club: playerRaw.club,
+                    birthdate: playerRaw.birthdate,
+                    height_cm: playerRaw.height_cm,
+                    weight_kg: playerRaw.weight_kg,
+                    season_goal: playerRaw.season_goal,
+                  }}
+                />
+                <Card>
+                  <CardTitle>Objectifs mesurables</CardTitle>
+                  <GoalsManager playerId={id} goals={(goals ?? []) as PlayerGoal[]} />
+                </Card>
+              </div>
             ),
           },
           {
@@ -359,11 +397,12 @@ export default async function PlayerDetailPage({
                             <span className="text-sm font-semibold text-navy-800">
                               <EventTypeIcon
                                 type={c.event_type}
+                                event={c}
                                 size={13}
                                 className="-mt-0.5 mr-1 inline"
                                 colored
                               />
-                              {EVENT_TYPE_LABELS[c.event_type]}
+                              {eventLabel(c)}
                               <span className="ml-1.5 text-xs font-medium text-navy-400">
                                 {WEEKDAY_LABELS[c.weekday - 1]} {formatTime(c.event_time)}
                               </span>
@@ -407,9 +446,16 @@ export default async function PlayerDetailPage({
                 )}
 
                 <div>
-                  <h3 className="mb-2 text-sm font-bold uppercase tracking-wide text-navy-500">
-                    Semaine type du joueur
-                  </h3>
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <h3 className="text-sm font-bold uppercase tracking-wide text-navy-500">
+                      Semaine type du joueur
+                    </h3>
+                    <CopyWeekTemplate
+                      playerId={id}
+                      playerName={profile?.first_name ?? "ce joueur"}
+                      otherPlayers={otherPlayers}
+                    />
+                  </div>
                   <PlanningEditor playerId={id} events={(events ?? []) as PlannedEvent[]} />
                 </div>
               </div>
@@ -602,6 +648,7 @@ export default async function PlayerDetailPage({
                         <span className="font-semibold text-warning">À améliorer : </span>
                         {r.to_improve || "—"}
                       </p>
+                      <ReviewReplyBox reviewId={r.id} initialReply={r.coach_reply} />
                     </Card>
                   ))
                 )}

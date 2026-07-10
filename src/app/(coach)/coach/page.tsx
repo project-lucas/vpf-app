@@ -17,12 +17,13 @@ import {
   type ReviewWithPlayer,
 } from "@/lib/coach-data";
 import { formatPercent } from "@/lib/discipline";
-import { LOW_DISCIPLINE_THRESHOLD } from "@/lib/constants";
+import { AVAILABILITY_LABELS, LOW_DISCIPLINE_THRESHOLD } from "@/lib/constants";
 import { addDays, currentWeekStart, formatAgoFr, formatDateFr, parisNow } from "@/lib/dates";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatCard } from "@/components/ui/StatCard";
 import { Card, CardTitle } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
+import { ReviewReplyBox } from "@/components/coach/ReviewReplyBox";
 
 export const metadata = { title: "Dashboard coach — VPF" };
 export const dynamic = "force-dynamic";
@@ -77,14 +78,16 @@ function MatchSheetCard({ sheet }: { sheet: MatchSheetWithPlayer }) {
   );
 }
 
-/** Carte compacte d'un bilan hebdo reçu. */
+/** Carte compacte d'un bilan hebdo reçu, avec la réponse du coach. */
 function ReviewCard({ review }: { review: ReviewWithPlayer }) {
   return (
-    <Link
-      href={`/coach/joueurs/${review.player_id}`}
-      className="block rounded-xl bg-navy-50 px-3 py-2.5"
-    >
-      <p className="text-sm font-semibold text-navy-800">{review.playerName}</p>
+    <div className="rounded-xl bg-navy-50 px-3 py-2.5">
+      <Link
+        href={`/coach/joueurs/${review.player_id}`}
+        className="text-sm font-semibold text-navy-800 hover:underline"
+      >
+        {review.playerName}
+      </Link>
       <p className="mt-1 text-xs text-navy-600">
         <span className="font-semibold text-success">Bien fait : </span>
         {review.went_well || "—"}
@@ -93,7 +96,8 @@ function ReviewCard({ review }: { review: ReviewWithPlayer }) {
         <span className="font-semibold text-warning">À améliorer : </span>
         {review.to_improve || "—"}
       </p>
-    </Link>
+      <ReviewReplyBox reviewId={review.id} initialReply={review.coach_reply} />
+    </div>
   );
 }
 
@@ -110,11 +114,16 @@ export default async function CoachDashboardPage() {
   const weekStart = currentWeekStart();
   const prevWeekStart = addDays(weekStart, -7);
 
+  // Les joueurs blessés / en vacances sortent des moyennes, alertes et listes
+  // « manquants » : leur absence est connue, elle ne doit pas polluer le suivi.
+  const availablePlayers = players.filter((p) => p.availability === "available");
+  const awayPlayers = players.filter((p) => p.availability !== "available");
+
   const avg = averageDiscipline(players);
-  const lowDiscipline = players.filter(
+  const lowDiscipline = availablePlayers.filter(
     (p) => p.discipline !== null && p.discipline < LOW_DISCIPLINE_THRESHOLD
   );
-  const emptyPlanning = players.filter((p) => p.planningEmpty);
+  const emptyPlanning = availablePlayers.filter((p) => p.planningEmpty);
 
   // ---- Santé : dernier check-in énergie et douleurs de chaque joueur ----
   const { data: checkinRows } =
@@ -148,14 +157,14 @@ export default async function CoachDashboardPage() {
   const sheetsThisWeek = overview.matchSheets.filter((s) => s.match_date >= weekStart);
   const sheetsLastWeek = overview.matchSheets.filter((s) => s.match_date < weekStart);
   const withSheetThisWeek = new Set(sheetsThisWeek.map((s) => s.player_id));
-  const withoutSheetThisWeek = players.filter((p) => !withSheetThisWeek.has(p.id));
+  const withoutSheetThisWeek = availablePlayers.filter((p) => !withSheetThisWeek.has(p.id));
 
   // Bilans hebdo : semaine en cours / semaine passée + joueurs en attente
   const reviewsThisWeek = overview.reviews.filter((r) => r.week_start === weekStart);
   const reviewsLastWeek = overview.reviews.filter((r) => r.week_start === prevWeekStart);
   const withReviewThisWeek = new Set(reviewsThisWeek.map((r) => r.player_id));
   const withReviewLastWeek = new Set(reviewsLastWeek.map((r) => r.player_id));
-  const pendingReviewLastWeek = players.filter((p) => !withReviewLastWeek.has(p.id));
+  const pendingReviewLastWeek = availablePlayers.filter((p) => !withReviewLastWeek.has(p.id));
 
   return (
     <>
@@ -234,6 +243,21 @@ export default async function CoachDashboardPage() {
         </Card>
       )}
 
+      {/* Joueurs indisponibles : rappel discret, exclus des moyennes et alertes */}
+      {awayPlayers.length > 0 && (
+        <Card className="mt-5">
+          <p className="text-sm text-navy-500">
+            {awayPlayers
+              .map(
+                (p) =>
+                  `${p.first_name} ${p.last_name} (${AVAILABILITY_LABELS[p.availability].toLowerCase()})`
+              )
+              .join(", ")}{" "}
+            — série et discipline gelées, hors moyennes et alertes.
+          </p>
+        </Card>
+      )}
+
       {/* Santé : dernier check-in énergie / douleurs de chaque joueur */}
       {players.length > 0 && (
         <Card className="mt-5">
@@ -249,6 +273,14 @@ export default async function CoachDashboardPage() {
                 >
                   <span className="min-w-0 truncate text-sm font-semibold text-navy-800">
                     {p.first_name} {p.last_name}
+                    {p.availability !== "available" && (
+                      <Badge
+                        tone={p.availability === "injured" ? "danger" : "neutral"}
+                        className="ml-1.5 align-middle"
+                      >
+                        {AVAILABILITY_LABELS[p.availability]}
+                      </Badge>
+                    )}
                   </span>
                   <span className="flex shrink-0 items-center gap-1.5">
                     <Badge

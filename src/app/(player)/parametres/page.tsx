@@ -6,7 +6,9 @@ import { PasswordForm } from "@/components/settings/PasswordForm";
 import { PlayerInfoForm } from "@/components/settings/PlayerInfoForm";
 import { RulesCard } from "@/components/settings/RulesCard";
 import { Overline, Serif, DoubleRule, SectionHead } from "@/components/editorial/primitives";
-import { BellIcon } from "@/components/icons";
+import { BellIcon, WhatsAppIcon } from "@/components/icons";
+import { parisNow, seasonLabel } from "@/lib/dates";
+import { SEASON_START } from "@/lib/constants";
 
 export const metadata = { title: "Profil — VPF" };
 export const dynamic = "force-dynamic";
@@ -60,21 +62,32 @@ export default async function ProfilPage() {
 
   return (
     <>
-      {/* En-tête : écusson + surtitre licence + nom serif */}
+      {/* En-tête : écusson + surtitre licence + nom serif + contact coach */}
       <div className="flex items-center gap-4">
         <AvatarUploader
           avatarUrl={profile?.avatar_url ?? null}
           initials={initials}
           tag={clubTag(playerRow?.club)}
         />
-        <div className="min-w-0">
-          <Overline>Profil · Licence 25/26</Overline>
+        <div className="min-w-0 flex-1">
+          <Overline>Profil · Licence {seasonLabel(parisNow().date, SEASON_START)}</Overline>
           <Serif className="mt-1 text-[32px] leading-[0.95]">
             {profile?.first_name}
             <br />
             {profile?.last_name}
           </Serif>
         </div>
+        {coach?.whatsapp_number && (
+          <a
+            href={`https://wa.me/${coach.whatsapp_number.replace(/[^\d]/g, "")}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={`Écrire à ton coach ${coach.first_name} sur WhatsApp`}
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border-2 border-ink text-ink transition-colors hover:bg-ink hover:text-paper"
+          >
+            <WhatsAppIcon size={20} />
+          </a>
+        )}
       </div>
 
       {metaParts.length > 0 && (

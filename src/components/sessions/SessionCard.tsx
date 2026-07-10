@@ -52,11 +52,17 @@ export function SessionCard({
   }
 
   function saveScore() {
-    const parsed = score.trim() === "" ? null : Number(score);
+    const raw = score.trim() === "" ? null : Number(score);
+    // borné au max du challenge : la saisie clavier peut dépasser l'attribut max de l'input
+    const parsed =
+      raw === null || Number.isNaN(raw)
+        ? null
+        : Math.min(session.challenge?.maxScore ?? 999, Math.max(0, Math.round(raw)));
     if (parsed !== null && parsed >= (session.challenge?.maxScore ?? 0) * 0.8) successFeedback();
     startTransition(async () => {
       await saveChallengeScore(assignment.id, parsed);
       setScoreOpen(false);
+      if (parsed !== null) setScore(String(parsed));
     });
   }
 
@@ -64,7 +70,8 @@ export function SessionCard({
     <div>
       {/* Bloc média : navy avec liseré crème, gros numéro, play rond rouge, tags */}
       <div className="rounded-lg border-2 border-ink bg-ink p-1.5">
-        <div className="relative aspect-video overflow-hidden rounded-md border border-warm/25 bg-ink">
+        {/* max-h quand pas de vidéo affichée : en pleine largeur desktop, un 16:9 ferait ~650px de navy vide */}
+        <div className={`relative aspect-video w-full overflow-hidden rounded-md border border-warm/25 bg-ink ${videoOpen && hasVideo ? "" : "max-h-72"}`}>
           {videoOpen && hasVideo ? (
             <YouTubeEmbed url={session.youtube_url} title={session.name} />
           ) : (

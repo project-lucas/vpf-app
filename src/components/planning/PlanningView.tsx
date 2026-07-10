@@ -3,13 +3,13 @@
 import { useState } from "react";
 import Link from "next/link";
 import { dayCompleteFeedback, perfectWeekFeedback } from "@/lib/feedback";
-import { EVENT_TYPE_LABELS, WEEKDAY_LABELS, WEEKDAY_LABELS_SHORT } from "@/lib/constants";
-import { formatTime, timeToMinutes } from "@/lib/dates";
+import { eventLabel, WEEKDAY_LABELS, WEEKDAY_LABELS_SHORT } from "@/lib/constants";
+import { addDays, formatTime, parisNow, timeToMinutes } from "@/lib/dates";
 import { Confetti } from "@/components/Confetti";
 import { CheckIcon, FlameIcon, TrophyIcon } from "@/components/icons";
 import { Overline, Rule, Quote, StarLine } from "@/components/editorial/primitives";
 import { EdButton } from "@/components/editorial/forms";
-import { DayActionList, type DayHabit } from "./DayActionList";
+import { DayActionList } from "./DayActionList";
 import { DisciplineCalendar, type DayOutcome } from "./DisciplineCalendar";
 import { EventCheckRow } from "./EventCheckRow";
 import { PlanningEditor } from "./PlanningEditor";
@@ -29,8 +29,6 @@ interface Props {
   playerId: string;
   events: PlannedEvent[];
   completions: EventCompletion[];
-  /** habitudes du joueur avec leur état du jour (liste unifiée) */
-  habits: DayHabit[];
   /** historique complet des journées pointées (calendrier de discipline) */
   dayHistory: Record<string, DayOutcome>;
   today: string;
@@ -47,7 +45,6 @@ export function PlanningView({
   playerId,
   events,
   completions,
-  habits,
   dayHistory,
   today,
   weekStart,
@@ -69,7 +66,14 @@ export function PlanningView({
   // composant. Complet = tout validé, partiel = fraction affichée.
   const dayStates = Array.from({ length: 7 }, (_, i) => {
     const day = i + 1;
-    const dayEvts = events.filter((e) => e.weekday === day);
+    const date = addDays(weekStart, i);
+    // un événement ajouté en cours de semaine ne compte pas pour les jours
+    // passés où il n'existait pas encore (cohérent avec la clôture du cron)
+    const dayEvts = events.filter(
+      (e) =>
+        e.weekday === day &&
+        (date >= today || !e.created_at || parisNow(new Date(e.created_at)).date <= date)
+    );
     const done = dayEvts.filter((e) => statusOf(e.id) === "done").length;
     const complete = dayEvts.length > 0 && done === dayEvts.length;
     return { day, total: dayEvts.length, done, complete };
@@ -220,7 +224,7 @@ export function PlanningView({
               ) : nextEvent ? (
                 <>
                   Aujourd&apos;hui {doneToday}/{todayEvents.length} · prochain{" "}
-                  <span className="text-ink">{EVENT_TYPE_LABELS[nextEvent.event_type]}</span> à{" "}
+                  <span className="text-ink">{eventLabel(nextEvent)}</span> à{" "}
                   {formatTime(nextEvent.event_time)}
                 </>
               ) : todayEvents.length > 0 ? (
@@ -244,7 +248,7 @@ export function PlanningView({
             </span>
             {focus.source === "player" && (
               <Link
-                href="/dashboard?section=habitudes"
+                href="/dashboard?section=historique"
                 className="ed-meta flex items-center gap-1 text-[10px] text-orange underline-offset-2 hover:underline"
               >
                 Ajuster ›
@@ -337,7 +341,7 @@ export function PlanningView({
             </button>
           </div>
 
-          {events.length === 0 && habits.length === 0 ? (
+          {events.length === 0 ? (
             <div className="border-2 border-hair px-5 py-10 text-center">
               <p className="ed-display text-[24px] text-ink">Planning vide</p>
               <p className="ed-meta mt-2 text-[10px] leading-relaxed text-meta">
@@ -348,13 +352,11 @@ export function PlanningView({
               </EdButton>
             </div>
           ) : selectedDay === todayWeekday ? (
-            /* Aujourd'hui : liste unifiée événements + habitudes, À faire / Fait */
+            /* Aujourd'hui : les tâches du planning, À faire / Fait */
             <DayActionList
               events={dayEvents}
               completions={completions}
-              habits={habits}
               weekStart={weekStart}
-              today={today}
               onEventChecked={handleChecked}
             />
           ) : dayEvents.length === 0 ? (

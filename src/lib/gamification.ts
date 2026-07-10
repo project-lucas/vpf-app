@@ -163,7 +163,8 @@ export function longestRun(dates: Iterable<string>): number {
 }
 
 export interface BadgeInput {
-  /** meilleure série (en jours) toutes habitudes confondues */
+  /** meilleure série de jours actifs : jours avec au moins un pointage « fait »
+   *  au planning, ou runs des anciennes habitudes manuelles (historique) */
   bestHabitRun: number;
   matchCount: number;
   /** vrai si le record de points n'est pas le tout premier match */
@@ -205,9 +206,9 @@ export function computeBadges(input: BadgeInput): BadgeStatus[] {
     counted("premier-match", "Premier match", "Ton premier match enregistré dans l'app.", input.matchCount, 1),
     counted("matchs-5", "5 matchs", "5 matchs enregistrés : la saison est lancée.", input.matchCount, 5),
     counted("matchs-20", "20 matchs", "20 matchs au compteur — un vrai compétiteur.", input.matchCount, 20),
-    counted("serie-7", "Série de 7", "7 jours d'affilée sur une habitude.", input.bestHabitRun, 7),
-    counted("serie-30", "Série de 30", "30 jours d'affilée — régularité de pro.", input.bestHabitRun, 30),
-    counted("serie-100", "Série de 100", "100 jours d'affilée. Niveau NBA.", input.bestHabitRun, 100),
+    counted("serie-7", "Série de 7", "7 jours actifs d'affilée.", input.bestHabitRun, 7),
+    counted("serie-30", "Série de 30", "30 jours actifs d'affilée — régularité de pro.", input.bestHabitRun, 30),
+    counted("serie-100", "Série de 100", "100 jours actifs d'affilée. Niveau NBA.", input.bestHabitRun, 100),
     {
       key: "record-battu",
       label: "Record battu",

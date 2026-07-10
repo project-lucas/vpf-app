@@ -1,5 +1,7 @@
 export type UserRole = "admin" | "coach" | "player";
 export type PlayerStatus = "active" | "archived";
+/** disponibilité gérée par le coach : blessé/vacances gèle série, rappels et moyennes */
+export type PlayerAvailability = "available" | "injured" | "vacation";
 export type EventType =
   | "entrainement_club"
   | "training_basket"
@@ -7,7 +9,11 @@ export type EventType =
   | "mobilite"
   | "revision_scolaire"
   | "dormir"
-  | "collation";
+  | "petit_dejeuner"
+  | "collation"
+  | "hydratation"
+  /** activité personnalisée du joueur (nom + icône + couleur libres) */
+  | "autre";
 export type CompletionStatus = "done" | "not_done";
 export type SessionPole = "basket" | "physique" | "routine";
 export type CheckinQuestion = "energy" | "pain";
@@ -32,6 +38,9 @@ export interface Player {
   weight_kg: number | null;
   season_goal: string;
   status: PlayerStatus;
+  availability: PlayerAvailability;
+  /** date de passage en blessé/vacances, null si disponible */
+  availability_since: string | null;
   onboarding_completed: boolean;
   created_at: string;
 }
@@ -57,6 +66,10 @@ export interface PlannedEvent {
   weekday: number; // 1 = lundi ... 7 = dimanche
   event_time: string; // "HH:MM:SS"
   duration_minutes: number;
+  /** activité perso (event_type = "autre") : nom, icône lucide, clé HabitColor */
+  custom_name: string;
+  custom_icon: string;
+  custom_color: string;
   created_at: string;
 }
 
@@ -72,6 +85,10 @@ export interface EventCompletion {
   status: CompletionStatus;
   comment: string;
   auto_filled: boolean;
+  /** snapshot de l'activité perso au moment du pointage */
+  custom_name: string;
+  custom_icon: string;
+  custom_color: string;
   created_at: string;
   updated_at: string;
 }
@@ -110,6 +127,9 @@ export interface WeeklyReview {
   week_start: string;
   went_well: string;
   to_improve: string;
+  /** réponse du coach (écrite côté serveur uniquement), "" tant qu'il n'a pas répondu */
+  coach_reply: string;
+  coach_reply_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -156,6 +176,8 @@ export interface LibrarySession {
   /** exercices détaillés (séances programme) ; vide = séance vidéo simple */
   exercises: SessionExercise[];
   challenge: SessionChallenge | null;
+  /** créateur : un coach ne gère que ses propres séances, null = admin/seed */
+  created_by: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -183,6 +205,23 @@ export interface SessionCompletion {
   comment: string;
   /** score obtenu au challenge noté de la séance (null = pas encore noté) */
   challenge_score: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PlayerGoal {
+  id: string;
+  player_id: string;
+  /** « 70 % aux lancers francs », « 15 pts de moyenne »… */
+  title: string;
+  target_value: number;
+  /** progression mise à jour par le coach */
+  current_value: number;
+  /** unité affichée après les valeurs (« % », « pts », vide…) */
+  unit: string;
+  deadline: string | null;
+  achieved_at: string | null;
+  created_by: string | null;
   created_at: string;
   updated_at: string;
 }

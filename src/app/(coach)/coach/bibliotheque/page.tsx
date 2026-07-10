@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getCachedUser } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { LibraryView } from "@/components/library/LibraryView";
 import type { LibrarySession } from "@/lib/types";
@@ -8,6 +8,7 @@ export const dynamic = "force-dynamic";
 
 export default async function CoachLibraryPage() {
   const supabase = await createClient();
+  const user = await getCachedUser();
 
   const [{ data: sessions }, { data: players }, { data: assignments }] = await Promise.all([
     supabase.from("library_sessions").select("*").order("name"),
@@ -33,17 +34,23 @@ export default async function CoachLibraryPage() {
     (visibility[a.session_id] ??= []).push(a.player_id);
   }
 
+  // le coach crée ses propres séances et ne peut modifier que celles-ci ;
+  // les séances de l'admin (dont les programmes) restent en lecture seule
+  const allSessions = (sessions ?? []) as LibrarySession[];
+  const ownSessionIds = allSessions.filter((s) => s.created_by === user?.id).map((s) => s.id);
+
   return (
     <>
       <PageHeader
         title="Bibliothèque"
-        subtitle="Coche pour chaque séance les joueurs qui peuvent la voir."
+        subtitle="Crée tes séances et coche pour chacune les joueurs qui peuvent la voir."
       />
       <LibraryView
-        sessions={(sessions ?? []) as LibrarySession[]}
+        sessions={allSessions}
         players={assignablePlayers}
         visibility={visibility}
-        editable={false}
+        editable
+        manageableIds={ownSessionIds}
       />
     </>
   );

@@ -30,11 +30,17 @@ function FlipCard({
   delay,
   reduce,
   mountedRef,
+  small = false,
+  color = CREAM,
 }: {
   char: string;
   delay: number;
   reduce: boolean;
   mountedRef: MutableRefObject<boolean>;
+  /** variante réduite pour le bandeau 3 stats */
+  small?: boolean;
+  /** couleur du chiffre (le bandeau code chaque stat par couleur) */
+  color?: string;
 }) {
   const [display, setDisplay] = useState(char);
   const [rot, setRot] = useState(0);
@@ -99,9 +105,9 @@ function FlipCard({
     <div
       className={entered ? "sb-card-enter" : undefined}
       style={{
-        perspective: "340px",
-        width: 58,
-        height: 76,
+        perspective: small ? "200px" : "340px",
+        width: small ? 30 : 58,
+        height: small ? 42 : 76,
         flex: "0 0 auto",
       }}
     >
@@ -110,13 +116,15 @@ function FlipCard({
           position: "relative",
           width: "100%",
           height: "100%",
-          borderRadius: 7,
-          border: "1.5px solid rgba(240,228,204,.25)",
+          borderRadius: small ? 5 : 7,
+          border: `${small ? 1 : 1.5}px solid rgba(240,228,204,.25)`,
           background:
             "linear-gradient(to bottom, #26414f 0%, #26414f 50%, #1e3541 50%, #1e3541 100%)",
           boxShadow: flipping
             ? "0 8px 16px rgba(0,0,0,.5)"
-            : "0 4px 8px rgba(0,0,0,.35)",
+            : small
+              ? "0 2px 5px rgba(0,0,0,.35)"
+              : "0 4px 8px rgba(0,0,0,.35)",
           transform: `rotateX(${rot}deg)`,
           transformOrigin: "center center",
           transition,
@@ -133,9 +141,9 @@ function FlipCard({
           style={{
             fontFamily: ARCHIVO,
             fontWeight: 900,
-            fontSize: 46,
+            fontSize: small ? 22 : 46,
             lineHeight: 1,
-            color: CREAM,
+            color,
           }}
         >
           {display}
@@ -193,42 +201,10 @@ function Eyelet() {
   );
 }
 
-/** Compteur animé : la valeur monte de l'ancienne à la nouvelle (ease-out). */
-function useCountUp(target: number, reduce: boolean, delay: number, duration = 900) {
-  const [val, setVal] = useState(reduce ? target : 0);
-  const from = useRef(0);
-  useEffect(() => {
-    if (reduce) {
-      from.current = target;
-      setVal(target);
-      return;
-    }
-    const start = from.current;
-    from.current = target;
-    if (start === target) {
-      setVal(target);
-      return;
-    }
-    let raf = 0;
-    let t0: number | null = null;
-    const timer = setTimeout(() => {
-      const step = (ts: number) => {
-        if (t0 === null) t0 = ts;
-        const p = Math.min(1, (ts - t0) / duration);
-        const eased = 1 - Math.pow(1 - p, 3);
-        setVal(Math.round(start + (target - start) * eased));
-        if (p < 1) raf = requestAnimationFrame(step);
-      };
-      raf = requestAnimationFrame(step);
-    }, delay);
-    return () => {
-      clearTimeout(timer);
-      cancelAnimationFrame(raf);
-    };
-  }, [target, reduce, delay, duration]);
-  return val;
-}
-
+/**
+ * Colonne du bandeau : la valeur en petits cartons à volet (même mécanique que
+ * le score moyen), libellé pêche + sous-libellé, chiffres codés par couleur.
+ */
 function StatCol({
   value,
   suffix,
@@ -237,6 +213,7 @@ function StatCol({
   color,
   reduce,
   delay,
+  mountedRef,
 }: {
   value: number | null;
   suffix?: string;
@@ -244,22 +221,119 @@ function StatCol({
   sublabel: string;
   color: string;
   reduce: boolean;
+  /** décalage de base de la colonne (les volets partent en vague g → d) */
   delay: number;
+  mountedRef: MutableRefObject<boolean>;
 }) {
-  const count = useCountUp(value ?? 0, reduce, delay);
+  const chars = value !== null ? String(value).split("") : [];
+
+  // Célébration quand la stat MONTE : halo coloré + « +N » qui s'envole,
+  // déclenchés au moment où le volet retombe (delay + demi-flip).
+  const [bump, setBump] = useState<number | null>(null);
+  const prevValue = useRef(value);
+  useEffect(() => {
+    const old = prevValue.current;
+    prevValue.current = value;
+    if (reduce || old === null || value === null || value <= old) return;
+    const delta = value - old;
+    const show = setTimeout(() => setBump(delta), delay + 600);
+    const hide = setTimeout(() => setBump(null), delay + 600 + 1400);
+    return () => {
+      clearTimeout(show);
+      clearTimeout(hide);
+    };
+  }, [value, reduce, delay]);
+
   return (
-    <div aria-hidden className="flex flex-1 flex-col items-center justify-center gap-1 px-2 py-3">
-      <span style={{ fontFamily: ARCHIVO, fontWeight: 900, fontSize: 24, lineHeight: 1, color }}>
-        {value === null ? "—" : `${count}${suffix ?? ""}`}
-      </span>
+    <div
+      aria-hidden
+      className="flex flex-1 flex-col items-center justify-center px-2 py-3.5"
+      style={{ gap: 7 }}
+    >
+      {value === null ? (
+        <span
+          style={{
+            fontFamily: ARCHIVO,
+            fontWeight: 900,
+            fontSize: 22,
+            lineHeight: "42px",
+            color: "rgba(240,228,204,.4)",
+          }}
+        >
+          —
+        </span>
+      ) : (
+        <div className="relative flex items-end justify-center" style={{ gap: 4 }}>
+          {bump !== null && (
+            <>
+              {/* halo coloré derrière les cartons */}
+              <span
+                className="sb-bump-glow"
+                style={{
+                  position: "absolute",
+                  inset: -10,
+                  borderRadius: 14,
+                  background: `radial-gradient(closest-side, ${color}55, transparent 72%)`,
+                  pointerEvents: "none",
+                }}
+              />
+              {/* « +N » qui s'envole au-dessus du panneau */}
+              <span
+                className="sb-bump-rise"
+                style={{
+                  position: "absolute",
+                  left: "50%",
+                  top: -14,
+                  zIndex: 2,
+                  fontFamily: MONO,
+                  fontWeight: 700,
+                  fontSize: 13,
+                  letterSpacing: "1px",
+                  color,
+                  textShadow: `0 0 12px ${color}`,
+                  pointerEvents: "none",
+                }}
+              >
+                +{bump}
+              </span>
+            </>
+          )}
+          {chars.map((ch, i) => (
+            <FlipCard
+              key={`d-${i}`}
+              char={ch}
+              delay={reduce ? 0 : delay + i * 150}
+              reduce={reduce}
+              mountedRef={mountedRef}
+              small
+              color={color}
+            />
+          ))}
+          {suffix && (
+            <span
+              style={{
+                fontFamily: ARCHIVO,
+                fontWeight: 900,
+                fontSize: 20,
+                lineHeight: 1,
+                color: PEACH,
+                alignSelf: "flex-end",
+                paddingBottom: 3,
+              }}
+            >
+              {suffix}
+            </span>
+          )}
+        </div>
+      )}
       <span
         style={{
           fontFamily: MONO,
           fontWeight: 700,
           fontSize: 9,
-          letterSpacing: "1.2px",
+          letterSpacing: "1.6px",
           textTransform: "uppercase",
-          color: "rgba(240,228,204,.6)",
+          color: PEACH,
           textAlign: "center",
           lineHeight: 1.3,
         }}
@@ -273,10 +347,10 @@ function StatCol({
           fontSize: 7.5,
           letterSpacing: "1px",
           textTransform: "uppercase",
-          color: "rgba(240,228,204,.38)",
+          color: "rgba(240,228,204,.45)",
           textAlign: "center",
           lineHeight: 1.3,
-          marginTop: -2,
+          marginTop: -4,
         }}
       >
         {sublabel}
@@ -307,7 +381,8 @@ export function ScoreBoard({
     mountedRef.current = true;
   }, []);
 
-  const text = (average ?? 0).toFixed(1); // ex. "12.0"
+  // pas de match : cartons « – » comme le « — » du bandeau, plutôt qu'un faux 0.0
+  const text = average === null ? "-.-" : average.toFixed(1); // ex. "12.0"
   const chars = text.split("");
   let digitIndex = 0;
 
@@ -336,7 +411,9 @@ export function ScoreBoard({
         />
 
         {/* texte accessible (lu par les lecteurs d'écran) */}
-        <span className="sr-only">{text} points par match</span>
+        <span className="sr-only">
+          {average === null ? "Pas encore de match enregistré" : `${text} points par match`}
+        </span>
 
         {/* En-tête : œillets + label */}
         <div
@@ -399,16 +476,30 @@ export function ScoreBoard({
         </p>
       </div>
 
-      {/* Bandeau 3 stats : cumuls carrière + temps de jeu moyen */}
+      {/* Bandeau 3 stats : cumuls carrière + temps de jeu moyen, même design
+          « tableau d'affichage » que le score moyen (cartons à volet) */}
+      {/* pas d'overflow:hidden : le « +N » de célébration s'envole au-dessus */}
       <div
-        className="mt-2.5 flex items-stretch"
-        style={{ borderRadius: 8, background: NAVY, overflow: "hidden" }}
+        className="relative mt-2.5 flex items-stretch"
+        style={{ borderRadius: 10, background: NAVY }}
       >
+        {/* liseré intérieur, comme le panneau du score */}
+        <span
+          aria-hidden
+          style={{
+            position: "absolute",
+            inset: 5,
+            border: "1px solid rgba(240,228,204,.28)",
+            borderRadius: 6,
+            pointerEvents: "none",
+            zIndex: 1,
+          }}
+        />
         <span className="sr-only">
-          {technique} séances technique réalisées au total,
+          {technique} {technique > 1 ? "séances techniques réalisées" : "séance technique réalisée"} au total,
           {jeuMoy !== null ? ` ${Math.round(jeuMoy)} minutes de jeu en moyenne par match,` : ""}
           {" "}
-          {physique} séances physique réalisées au total
+          {physique} {physique > 1 ? "séances physiques réalisées" : "séance physique réalisée"} au total
         </span>
         <StatCol
           value={technique}
@@ -417,8 +508,9 @@ export function ScoreBoard({
           color={CREAM}
           reduce={reduce}
           delay={0}
+          mountedRef={mountedRef}
         />
-        <div style={{ width: 1.5, background: HAIR }} aria-hidden />
+        <div className="my-3 w-px shrink-0" style={{ background: HAIR }} aria-hidden />
         <StatCol
           value={jeuMoy !== null ? Math.round(jeuMoy) : null}
           suffix="′"
@@ -427,8 +519,9 @@ export function ScoreBoard({
           color={PEACH}
           reduce={reduce}
           delay={150}
+          mountedRef={mountedRef}
         />
-        <div style={{ width: 1.5, background: HAIR }} aria-hidden />
+        <div className="my-3 w-px shrink-0" style={{ background: HAIR }} aria-hidden />
         <StatCol
           value={physique}
           label="Séances phys."
@@ -436,6 +529,7 @@ export function ScoreBoard({
           color={RED}
           reduce={reduce}
           delay={300}
+          mountedRef={mountedRef}
         />
       </div>
     </div>

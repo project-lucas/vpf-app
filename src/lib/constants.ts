@@ -1,4 +1,4 @@
-import type { EventType, HabitColor, SessionPole } from "./types";
+import type { EventType, HabitColor, PlayerAvailability, SessionPole } from "./types";
 
 export const APP_NAME = "VPF — Centre de Performance";
 
@@ -9,10 +9,24 @@ export const EVENT_TYPE_LABELS: Record<EventType, string> = {
   mobilite: "Mobilité",
   revision_scolaire: "Révision scolaire",
   dormir: "Aller dormir",
+  petit_dejeuner: "Petit déjeuner",
   collation: "Collation",
+  hydratation: "Hydratation",
+  autre: "Activité perso",
 };
 
-export const EVENT_TYPES = Object.keys(EVENT_TYPE_LABELS) as EventType[];
+// Types proposés tels quels (l'activité perso « autre » a son propre parcours :
+// nom + icône + couleur choisis par le joueur)
+export const EVENT_TYPES = (Object.keys(EVENT_TYPE_LABELS) as EventType[]).filter(
+  (t) => t !== "autre"
+);
+
+/** Libellé d'un événement : le nom perso prime pour une activité « autre ». */
+export function eventLabel(e: { event_type: EventType; custom_name?: string | null }): string {
+  return e.event_type === "autre" && e.custom_name
+    ? e.custom_name
+    : EVENT_TYPE_LABELS[e.event_type];
+}
 
 // Durée par défaut (minutes) proposée à la création d'un événement, par type.
 // Le joueur peut la modifier ; elle sert de base au calcul du temps de travail.
@@ -23,7 +37,10 @@ export const DEFAULT_EVENT_MINUTES: Record<EventType, number> = {
   mobilite: 10,
   revision_scolaire: 60,
   dormir: 480,
+  petit_dejeuner: 15,
   collation: 5,
+  hydratation: 5,
+  autre: 30,
 };
 
 // Types comptés comme du « temps de travail consacré à la progression »
@@ -69,7 +86,10 @@ export const EVENT_TYPE_BAR_COLORS: Record<EventType, string> = {
   collation: "#22c55e",
   mobilite: "#8b5cf6",
   dormir: "#8b5cf6",
+  petit_dejeuner: "#22c55e",
+  hydratation: "#22c55e",
   revision_scolaire: "#3b82f6",
+  autre: "#41668d",
 };
 
 // Fiche détail de chaque type d'événement (vue détail du planning)
@@ -143,6 +163,36 @@ export const EVENT_TYPE_DETAILS: Record<
       "Évite le sucré seul juste avant l'effort",
     ],
   },
+  petit_dejeuner: {
+    description:
+      "Le premier carburant de ta journée : un athlète ne démarre pas le réservoir vide.",
+    duration: "15 min, assis, sans écran",
+    exercises: [
+      "Une source de protéines : œufs, yaourt, fromage blanc",
+      "Des glucides qui tiennent : pain complet, flocons d'avoine",
+      "Un fruit ou un jus pressé + un grand verre d'eau",
+    ],
+  },
+  hydratation: {
+    description:
+      "1,5 à 2 L d'eau par jour : la première cause de baisse de régime, c'est la déshydratation.",
+    duration: "tout au long de la journée",
+    exercises: [
+      "Une gourde toujours dans le sac — remplis-la le matin",
+      "Bois avant d'avoir soif : un verre à chaque heure",
+      "Avant, pendant et après l'entraînement : quelques gorgées régulières",
+    ],
+  },
+  autre: {
+    description:
+      "Ton activité personnalisée : c'est toi qui l'as ajoutée à ta routine, tiens-la comme le reste.",
+    duration: "à ta main",
+    exercises: [
+      "Fixe-toi un objectif clair avant de commencer",
+      "Reste concentré du début à la fin",
+      "Pointe-la une fois faite : elle compte dans ta progression",
+    ],
+  },
 };
 
 export const WEEKDAY_LABELS = [
@@ -191,10 +241,20 @@ export const CHECKIN_INTERVAL_DAYS = 5;
 
 export const VISIBLE_NOTE_MAX_LENGTH = 80;
 
+// Réponse du coach à un bilan hebdomadaire
+export const REVIEW_REPLY_MAX_LENGTH = 500;
+
+// Disponibilité du joueur (gérée par le coach) : gèle série, rappels et moyennes
+export const AVAILABILITY_LABELS: Record<PlayerAvailability, string> = {
+  available: "Disponible",
+  injured: "Blessé",
+  vacation: "Vacances",
+};
+
 // Lien d'invitation du serveur Discord de l'équipe (bouton flottant du planning).
 // ⚠️ À REMPLACER par ta vraie invitation Discord (ex. https://discord.gg/aBcD1234).
-// Laisser vide ("") masque le bouton.
-export const DISCORD_INVITE_URL = "https://discord.gg/your-invite";
+// Vide ("") = bouton masqué — on ne montre jamais un lien cassé aux joueurs.
+export const DISCORD_INVITE_URL = "";
 
 // Suivi d'habitudes — chaque couleur est déclinée automatiquement en version
 // pâle (fond icône, carrés vides) et pleine (carrés remplis, bouton ✓)

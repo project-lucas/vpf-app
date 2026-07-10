@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { addMatchStat } from "@/app/actions/player";
+import { parisNow } from "@/lib/dates";
 import type { MatchRecords, RecordKey } from "@/lib/gamification";
 import { EdButton, EdField, EdInput } from "@/components/editorial/forms";
 
@@ -84,7 +85,8 @@ export function MatchStatForm({
   return (
     <form onSubmit={handleSubmit} className="space-y-4" onChange={() => setConfirming(false)}>
       <EdField label="Date du match">
-        <EdInput name="match_date" type="date" required />
+        {/* max = aujourd'hui : un match ne se joue pas dans le futur (validé aussi côté serveur) */}
+        <EdInput name="match_date" type="date" required max={parisNow().date} />
       </EdField>
 
       {/* Titulaire oui / non */}

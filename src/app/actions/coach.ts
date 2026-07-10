@@ -2,8 +2,11 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { VISIBLE_NOTE_MAX_LENGTH } from "@/lib/constants";
-import type { ActionResult, SessionPole } from "@/lib/types";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { sendPushToUser } from "@/lib/push";
+import { parisNow } from "@/lib/dates";
+import { REVIEW_REPLY_MAX_LENGTH, VISIBLE_NOTE_MAX_LENGTH } from "@/lib/constants";
+import type { ActionResult, PlayerAvailability, SessionPole } from "@/lib/types";
 
 function revalidatePlayer(playerId: string) {
   revalidatePath(`/coach/joueurs/${playerId}`);
@@ -217,6 +220,203 @@ export async function setWeekFocus(playerId: string, content: string): Promise<A
   }
   revalidatePlayer(playerId);
   revalidatePath("/planning");
+  return { ok: true };
+}
+
+/**
+ * Disponibilité du joueur (blessé / vacances / disponible). Réservé au coach
+ * référent et à l'admin ; écrit via service_role car aucun grant client
+ * n'existe sur ces colonnes (le joueur ne peut pas geler sa propre série).
+ */
+export async function setPlayerAvailability(
+  playerId: string,
+  availability: PlayerAvailability
+): Promise<ActionResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Session expirée." };
+  if (user.id === playerId) return { ok: false, error: "Réservé au coach." };
+
+  // lecture sous RLS : ne renvoie une ligne que si l'utilisateur est le coach
+  // référent (joueur actif) ou l'admin
+  const { data: row } = await supabase
+    .from("players")
+    .select("id, availability")
+    .eq("id", playerId)
+    .maybeSingle();
+  if (!row) return { ok: false, error: "Joueur introuvable." };
+
+  const admin = createAdminClient();
+  // availability_since porte toujours la date du changement : début d'absence
+  // quand le joueur devient indisponible, date de RETOUR quand il redevient
+  // disponible. Le cron s'en sert comme borne basse de la clôture quotidienne :
+  // les jours d'absence ne sont jamais matérialisés en not_done, la série
+  // survit à la blessure / aux vacances.
+  const { error } = await admin
+    .from("players")
+    .update({
+      availability,
+      availability_since: parisNow().date,
+    })
+    .eq("id", playerId);
+  if (error) return { ok: false, error: "Enregistrement impossible." };
+
+  revalidatePlayer(playerId);
+  revalidatePath("/planning");
+  return { ok: true };
+}
+
+/**
+ * Réponse du coach au bilan hebdo d'un joueur. L'autorisation passe par la
+ * lecture RLS (le coach ne voit que les bilans de ses joueurs) ; l'écriture par
+ * le service_role, les clients n'ayant aucun droit d'écriture sur coach_reply.
+ * Le joueur reçoit un push à la première réponse (pas sur les corrections).
+ */
+export async function setReviewReply(reviewId: string, content: string): Promise<ActionResult> {
+  const clean = content.trim().slice(0, REVIEW_REPLY_MAX_LENGTH);
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Session expirée." };
+
+  const { data: review } = await supabase
+    .from("weekly_reviews")
+    .select("id, player_id, coach_reply")
+    .eq("id", reviewId)
+    .maybeSingle();
+  if (!review) return { ok: false, error: "Bilan introuvable." };
+  if (review.player_id === user.id) return { ok: false, error: "Réservé au coach." };
+
+  const admin = createAdminClient();
+  const { error } = await admin
+    .from("weekly_reviews")
+    .update({
+      coach_reply: clean,
+      coach_reply_at: clean ? new Date().toISOString() : null,
+    })
+    .eq("id", reviewId);
+  if (error) return { ok: false, error: "Enregistrement impossible." };
+
+  if (clean && !review.coach_reply) {
+    const { data: profile } = await admin
+      .from("profiles")
+      .select("notifications_enabled")
+      .eq("id", review.player_id)
+      .maybeSingle();
+    if (profile?.notifications_enabled) {
+      await sendPushToUser(review.player_id, {
+        title: "Réponse de ton coach 💬",
+        body: clean.length > 120 ? `${clean.slice(0, 117)}…` : clean,
+        url: "/planning",
+      });
+    }
+  }
+
+  revalidatePlayer(review.player_id);
+  revalidatePath("/planning");
+  return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// Objectifs mesurables (fixés par le coach, jauge visible par le joueur)
+// ---------------------------------------------------------------------------
+
+/** Push au joueur si ses notifications sont activées. */
+async function pushToPlayerIfEnabled(
+  playerId: string,
+  payload: { title: string; body: string; url?: string }
+): Promise<void> {
+  const admin = createAdminClient();
+  const { data: profile } = await admin
+    .from("profiles")
+    .select("notifications_enabled")
+    .eq("id", playerId)
+    .maybeSingle();
+  if (profile?.notifications_enabled) await sendPushToUser(playerId, payload);
+}
+
+export async function addPlayerGoal(
+  playerId: string,
+  data: { title: string; target_value: number; unit: string; deadline: string | null }
+): Promise<ActionResult> {
+  const title = data.title.trim().slice(0, 80);
+  if (!title) return { ok: false, error: "Donne un titre à l'objectif." };
+  if (!(data.target_value > 0)) return { ok: false, error: "Cible invalide." };
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Session expirée." };
+
+  // RLS : seuls le coach référent et l'admin peuvent insérer
+  const { error } = await supabase.from("player_goals").insert({
+    player_id: playerId,
+    title,
+    target_value: data.target_value,
+    unit: data.unit.trim().slice(0, 16),
+    deadline: data.deadline || null,
+    created_by: user.id,
+  });
+  if (error) return { ok: false, error: "Création impossible." };
+
+  await pushToPlayerIfEnabled(playerId, {
+    title: "Nouvel objectif 🎯",
+    body: title,
+    url: "/dashboard",
+  });
+  revalidatePlayer(playerId);
+  revalidatePath("/dashboard");
+  return { ok: true };
+}
+
+/** Mise à jour de la progression ; push au joueur quand l'objectif est atteint. */
+export async function updatePlayerGoalProgress(
+  goalId: string,
+  playerId: string,
+  currentValue: number
+): Promise<ActionResult> {
+  if (!(currentValue >= 0)) return { ok: false, error: "Valeur invalide." };
+  const supabase = await createClient();
+
+  const { data: goal } = await supabase
+    .from("player_goals")
+    .select("title, target_value, achieved_at")
+    .eq("id", goalId)
+    .maybeSingle();
+  if (!goal) return { ok: false, error: "Objectif introuvable." };
+
+  const justAchieved = goal.achieved_at === null && currentValue >= Number(goal.target_value);
+  const { error } = await supabase
+    .from("player_goals")
+    .update({
+      current_value: currentValue,
+      ...(justAchieved ? { achieved_at: new Date().toISOString() } : {}),
+    })
+    .eq("id", goalId);
+  if (error) return { ok: false, error: "Enregistrement impossible." };
+
+  if (justAchieved) {
+    await pushToPlayerIfEnabled(playerId, {
+      title: "Objectif atteint 🏆",
+      body: goal.title,
+      url: "/dashboard",
+    });
+  }
+  revalidatePlayer(playerId);
+  revalidatePath("/dashboard");
+  return { ok: true };
+}
+
+export async function deletePlayerGoal(goalId: string, playerId: string): Promise<ActionResult> {
+  const supabase = await createClient();
+  const { error } = await supabase.from("player_goals").delete().eq("id", goalId);
+  if (error) return { ok: false, error: "Suppression impossible." };
+  revalidatePlayer(playerId);
+  revalidatePath("/dashboard");
   return { ok: true };
 }
 

@@ -55,6 +55,7 @@ export default async function CoachPlayersPage() {
             first_name: p.first_name,
             last_name: p.last_name,
             season_goal: p.season_goal,
+            availability: p.availability,
             discipline: p.discipline,
             progress: progressByPlayer.get(p.id) ?? null,
           }))}
