@@ -112,6 +112,45 @@ export async function updateCoach(
   return { ok: true };
 }
 
+/**
+ * Supprime définitivement un coach. Ses joueurs (actifs et archivés) sont
+ * d'abord réassignés à l'admin qui exécute l'action — sinon la contrainte
+ * `players.coach_id` (on delete restrict) bloquerait la suppression. La
+ * suppression du compte auth cascade ensuite sur le profil, ses invitations et
+ * ses subscriptions push. Un admin ne peut pas être supprimé par cette voie.
+ */
+export async function deleteCoach(coachId: string): Promise<ActionResult> {
+  const guard = await requireAdmin();
+  if (!guard.ok) return guard;
+  if (coachId === guard.adminId) return { ok: false, error: "Tu ne peux pas te supprimer toi-même." };
+
+  const admin = createAdminClient();
+
+  const { data: target } = await admin
+    .from("profiles")
+    .select("role")
+    .eq("id", coachId)
+    .maybeSingle();
+  if (!target) return { ok: false, error: "Coach introuvable." };
+  if (target.role !== "coach") {
+    return { ok: false, error: "Seuls les coachs peuvent être supprimés." };
+  }
+
+  // Réassigne tous ses joueurs (actifs + archivés) à l'admin avant suppression.
+  const { error: reassignError } = await admin
+    .from("players")
+    .update({ coach_id: guard.adminId })
+    .eq("coach_id", coachId);
+  if (reassignError) return { ok: false, error: "Réassignation des joueurs impossible." };
+
+  const { error: deleteError } = await admin.auth.admin.deleteUser(coachId);
+  if (deleteError) return { ok: false, error: "Suppression du compte impossible." };
+
+  revalidatePath("/coach/club", "layout");
+  revalidatePath("/coach");
+  return { ok: true };
+}
+
 // ---------------------------------------------------------------------------
 // Invitations
 // ---------------------------------------------------------------------------

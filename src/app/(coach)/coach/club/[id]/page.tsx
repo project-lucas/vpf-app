@@ -13,6 +13,7 @@ import { Card, CardTitle } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { ChevronLeftIcon } from "@/components/icons";
 import { EditCoachButton } from "./EditCoachButton";
+import { DeleteCoachButton } from "./DeleteCoachButton";
 import { CoachInvitations } from "@/components/coach/CoachInvitations";
 import { ArchivePlayerButton, ReactivatePlayerButton } from "./PlayerArchiveControls";
 import type { Invitation } from "@/lib/types";
@@ -129,14 +130,23 @@ export default async function ClubCoachPage({ params }: { params: Promise<{ id: 
             coach.whatsapp_number ? `WhatsApp : ${coach.whatsapp_number}` : "WhatsApp non renseigné"
           }
         />
-        <EditCoachButton
-          coach={{
-            id: coach.id,
-            first_name: coach.first_name,
-            last_name: coach.last_name,
-            whatsapp_number: coach.whatsapp_number,
-          }}
-        />
+        <div className="flex shrink-0 flex-col items-end gap-2">
+          <EditCoachButton
+            coach={{
+              id: coach.id,
+              first_name: coach.first_name,
+              last_name: coach.last_name,
+              whatsapp_number: coach.whatsapp_number,
+            }}
+          />
+          {coach.role === "coach" && (
+            <DeleteCoachButton
+              coachId={coach.id}
+              coachName={coachName}
+              playerCount={players.length + archived.length}
+            />
+          )}
+        </div>
       </div>
       {coach.role === "admin" && (
         <Badge tone="navy" className="-mt-2 mb-4">
