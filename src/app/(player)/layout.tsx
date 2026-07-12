@@ -6,7 +6,7 @@ import { CheckinModal } from "@/components/CheckinModal";
 import { PushPrompt } from "@/components/PushPrompt";
 import { InstallPrompt } from "@/components/InstallPrompt";
 import {
-  BallIcon,
+  // BallIcon,  // réactiver avec l'onglet « Séances » (voir BottomNav ci-dessous)
   CalendarIcon,
   ChartIcon,
   UserIcon,
@@ -61,9 +61,10 @@ export default async function PlayerLayout({ children }: { children: React.React
         variant="editorial"
         items={[
           { href: "/planning", label: "Planning", icon: <CalendarIcon size={22} /> },
-          // Séances : seul accès au programme préparé par le coach — sans cet
-          // onglet, la page n'était joignable que depuis la fiche de 2 types d'événements
-          { href: "/seances", label: "Séances", icon: <BallIcon size={22} /> },
+          // Séances : onglet masqué temporairement (contenu pas encore complété).
+          // NE PAS SUPPRIMER — la page /seances et sa route restent en place, il
+          // suffit de réactiver cette entrée pour le rendre à nouveau visible.
+          // { href: "/seances", label: "Séances", icon: <BallIcon size={22} /> },
           { href: "/dashboard", label: "Dashboard", icon: <ChartIcon size={22} /> },
           { href: "/parametres", label: "Profil", icon: <UserIcon size={22} /> },
         ]}
