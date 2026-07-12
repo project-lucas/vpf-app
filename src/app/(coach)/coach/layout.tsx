@@ -10,7 +10,7 @@ import {
 } from "@/components/icons";
 
 export default async function CoachLayout({ children }: { children: React.ReactNode }) {
-  // L'admin partage l'interface coach avec un onglet Club (supervision) en plus
+  // L'admin partage l'interface coach avec un onglet Staff (supervision) en plus
   const isAdmin = (await getNavRole()) === "admin";
 
   return (
@@ -18,15 +18,11 @@ export default async function CoachLayout({ children }: { children: React.ReactN
       <main className="px-4 pb-32 pt-6">{children}</main>
       <BottomNav
         items={[
-          { href: "/coach", label: "Dashboard", icon: <HomeIcon />, exact: true },
+          { href: "/coach", label: "Accueil", icon: <HomeIcon />, exact: true },
           { href: "/coach/planning", label: "Planning", icon: <CalendarIcon /> },
           { href: "/coach/joueurs", label: "Joueurs", icon: <UsersIcon /> },
-          {
-            href: "/coach/bibliotheque",
-            label: isAdmin ? "Biblio." : "Bibliothèque",
-            icon: <LibraryIcon />,
-          },
-          ...(isAdmin ? [{ href: "/coach/club", label: "Club", icon: <TrophyIcon /> }] : []),
+          { href: "/coach/bibliotheque", label: "Séances", icon: <LibraryIcon /> },
+          ...(isAdmin ? [{ href: "/coach/club", label: "Staff", icon: <TrophyIcon /> }] : []),
           { href: "/coach/parametres", label: "Réglages", icon: <GearIcon /> },
         ]}
       />

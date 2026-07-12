@@ -38,7 +38,7 @@ Deux groupes de routes avec layout et navigation propres :
 - `src/app/(coach)/coach/` — dashboard, planning, joueurs, bibliothèque, club, paramètres
 - `src/app/(auth)/` — login, invitation/[token], onboarding
 
-**Les admins utilisent l'interface coach** (ils encadrent leurs propres joueurs) avec en plus l'onglet `/coach/club` : supervision par coach + gestion des coachs, invitations et archivage. Conséquences structurantes :
+**Les admins utilisent l'interface coach** (ils encadrent leurs propres joueurs) avec en plus l'onglet Staff (`/coach/club`) : supervision par coach + gestion des coachs, invitations et archivage. L'admin invite aussi **ses propres** joueurs directement depuis `/coach/joueurs` (même composant `CoachInvitations`, `coachId` = lui-même). Conséquences structurantes :
 
 - Les pages coach passent un `coachId` explicite à `getPlayersWithDiscipline` (la RLS renvoie TOUS les joueurs à un admin — sans ce filtre, il verrait tout le club dans « ses » joueurs).
 - Les pages `/coach/club` vérifient `role === "admin"` côté serveur et redirigent sinon (le middleware ne distingue pas coach/admin sous `/coach`).

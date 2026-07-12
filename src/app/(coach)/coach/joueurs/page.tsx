@@ -2,8 +2,9 @@ import { createClient, getCachedUser } from "@/lib/supabase/server";
 import { getPlayersWithDiscipline } from "@/lib/coach-data";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { CoachInvitations } from "@/components/coach/CoachInvitations";
 import { PlayersList, type PoleProgress } from "./PlayersList";
-import type { SessionPole } from "@/lib/types";
+import type { Invitation, SessionPole } from "@/lib/types";
 
 export const metadata = { title: "Mes joueurs — VPF" };
 export const dynamic = "force-dynamic";
@@ -13,6 +14,31 @@ export default async function CoachPlayersPage() {
   const user = await getCachedUser();
   // filtre coach_id explicite : un admin ne voit ici QUE ses propres joueurs
   const players = await getPlayersWithDiscipline(supabase, user?.id);
+
+  // Coachs et admins invitent leurs propres joueurs directement ici (les actions
+  // re-vérifient le rôle et la propriété côté serveur).
+  let invitationRows: (Invitation & { used_by_name: string | null })[] = [];
+  if (user) {
+    const { data: invitations } = await supabase
+      .from("invitations")
+      .select("*")
+      .eq("coach_id", user.id)
+      .order("created_at", { ascending: false });
+    const usedByIds = ((invitations ?? []) as Invitation[])
+      .map((i) => i.used_by)
+      .filter((v): v is string => Boolean(v));
+    const { data: usedByProfiles } =
+      usedByIds.length === 0
+        ? { data: [] }
+        : await supabase.from("profiles").select("id, first_name, last_name").in("id", usedByIds);
+    const usedByNames = new Map(
+      (usedByProfiles ?? []).map((p) => [p.id, `${p.first_name} ${p.last_name}`.trim()])
+    );
+    invitationRows = ((invitations ?? []) as Invitation[]).map((inv) => ({
+      ...inv,
+      used_by_name: inv.used_by ? (usedByNames.get(inv.used_by) ?? "Joueur") : null,
+    }));
+  }
 
   // Avancement par pôle : séances visibles (cochées) et faites, pour chaque joueur
   const { data: assignments } = await supabase
@@ -48,7 +74,8 @@ export default async function CoachPlayersPage() {
 
       {players.length === 0 ? (
         <EmptyState>
-          Aucun joueur actif. Les joueurs rejoignent VPF via une invitation créée par l&apos;admin.
+          Aucun joueur actif. Génère un lien d&apos;invitation ci-dessous et envoie-le à ton
+          joueur.
         </EmptyState>
       ) : (
         <PlayersList
@@ -62,6 +89,17 @@ export default async function CoachPlayersPage() {
             progress: progressByPlayer.get(p.id) ?? null,
           }))}
         />
+      )}
+
+      {user && (
+        <div className="mt-5">
+          <CoachInvitations
+            coachId={user.id}
+            invitations={invitationRows}
+            appUrl={process.env.NEXT_PUBLIC_APP_URL ?? ""}
+            title="Inviter un joueur"
+          />
+        </div>
       )}
     </>
   );

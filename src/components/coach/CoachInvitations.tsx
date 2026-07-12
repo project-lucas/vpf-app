@@ -18,10 +18,12 @@ export function CoachInvitations({
   coachId,
   invitations,
   appUrl,
+  title = "Invitations",
 }: {
   coachId: string;
   invitations: InvitationRow[];
   appUrl: string;
+  title?: string;
 }) {
   const [label, setLabel] = useState("");
   const [error, setError] = useState("");
@@ -60,7 +62,7 @@ export function CoachInvitations({
 
   return (
     <Card>
-      <CardTitle>Invitations</CardTitle>
+      <CardTitle>{title}</CardTitle>
 
       <form onSubmit={handleCreate} className="space-y-3">
         <Field label="Nom du joueur (repère interne, optionnel)">

@@ -13,7 +13,7 @@ import { Card, CardTitle } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { ChevronLeftIcon } from "@/components/icons";
 import { EditCoachButton } from "./EditCoachButton";
-import { CoachInvitations } from "./CoachInvitations";
+import { CoachInvitations } from "@/components/coach/CoachInvitations";
 import { ArchivePlayerButton, ReactivatePlayerButton } from "./PlayerArchiveControls";
 import type { Invitation } from "@/lib/types";
 
@@ -119,7 +119,7 @@ export default async function ClubCoachPage({ params }: { params: Promise<{ id: 
         href="/coach/club"
         className="mb-3 inline-flex items-center gap-1 text-sm font-semibold text-navy-500"
       >
-        <ChevronLeftIcon size={16} /> Club
+        <ChevronLeftIcon size={16} /> Staff
       </Link>
 
       <div className="flex items-start justify-between gap-3">

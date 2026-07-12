@@ -14,7 +14,7 @@ import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { CreateCoachButton } from "./CreateCoachButton";
 
-export const metadata = { title: "Club — VPF" };
+export const metadata = { title: "Staff — VPF" };
 export const dynamic = "force-dynamic";
 
 interface StaffRow {
@@ -106,7 +106,7 @@ export default async function ClubPage() {
   return (
     <>
       <PageHeader
-        title="Club"
+        title="Staff"
         subtitle="L'essentiel sur chaque coach et ses joueurs, en un coup d'œil."
       />
 

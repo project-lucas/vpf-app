@@ -4,7 +4,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { LibraryView } from "@/components/library/LibraryView";
 import type { LibrarySession } from "@/lib/types";
 
-export const metadata = { title: "Bibliothèque — VPF" };
+export const metadata = { title: "Séances — VPF" };
 export const dynamic = "force-dynamic";
 
 export default async function CoachLibraryPage() {
@@ -46,7 +46,7 @@ export default async function CoachLibraryPage() {
   return (
     <>
       <PageHeader
-        title="Bibliothèque"
+        title="Séances"
         subtitle="Crée tes séances et coche pour chacune les joueurs qui peuvent la voir."
       />
       <LibraryView

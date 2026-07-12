@@ -11,6 +11,8 @@
     "migrate": "node --env-file=.env.local scripts/apply-migrations.mjs",
     "seed": "node --env-file=.env.local --import=tsx scripts/seed.ts",
     "seed:programmes": "node --env-file=.env.local --import=tsx scripts/seed-programmes.ts",
+    "create:staff": "node --env-file=.env.local --import=tsx scripts/create-staff.ts",
+    "delete:demo": "node --env-file=.env.local --import=tsx scripts/delete-demo-accounts.ts",
     "setup:cron": "node --env-file=.env.local scripts/setup-pg-cron.mjs",
     "check:cron": "node --env-file=.env.local scripts/check-pg-cron.mjs",
     "vapid": "node scripts/generate-vapid.mjs",

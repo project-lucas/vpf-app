@@ -15,6 +15,17 @@ async function requireAdmin(): Promise<{ ok: true; adminId: string } | { ok: fal
   return { ok: true, adminId: profile.id };
 }
 
+/** Vérifie que l'appelant est coach ou admin (staff) avant une opération service_role. */
+async function requireStaff(): Promise<
+  { ok: true; userId: string; role: "coach" | "admin" } | { ok: false; error: string }
+> {
+  const { profile } = await getAuthProfile();
+  if (!profile || (profile.role !== "admin" && profile.role !== "coach")) {
+    return { ok: false, error: "Accès réservé au staff." };
+  }
+  return { ok: true, userId: profile.id, role: profile.role };
+}
+
 // ---------------------------------------------------------------------------
 // Coachs
 // ---------------------------------------------------------------------------
@@ -109,33 +120,38 @@ export async function createInvitation(
   coachId: string,
   playerLabel: string
 ): Promise<ActionResult & { token?: string }> {
-  const guard = await requireAdmin();
+  const guard = await requireStaff();
   if (!guard.ok) return guard;
+  // Un coach ne peut inviter que pour lui-même ; l'admin peut cibler n'importe quel coach.
+  if (guard.role === "coach" && coachId !== guard.userId) {
+    return { ok: false, error: "Accès refusé." };
+  }
 
   const admin = createAdminClient();
   const { data, error } = await admin
     .from("invitations")
-    .insert({ coach_id: coachId, created_by: guard.adminId, player_label: playerLabel.trim() })
+    .insert({ coach_id: coachId, created_by: guard.userId, player_label: playerLabel.trim() })
     .select("id")
     .single();
   if (error || !data) return { ok: false, error: "Création impossible." };
 
   revalidatePath("/coach/club", "layout");
+  revalidatePath("/coach/joueurs"); // l'admin invite aussi depuis sa page Joueurs
   return { ok: true, token: data.id };
 }
 
 export async function deleteInvitation(invitationId: string): Promise<ActionResult> {
-  const guard = await requireAdmin();
+  const guard = await requireStaff();
   if (!guard.ok) return guard;
 
   const admin = createAdminClient();
-  const { error } = await admin
-    .from("invitations")
-    .delete()
-    .eq("id", invitationId)
-    .is("used_at", null);
+  let query = admin.from("invitations").delete().eq("id", invitationId).is("used_at", null);
+  // Un coach ne peut supprimer que ses propres invitations ; l'admin toutes.
+  if (guard.role === "coach") query = query.eq("coach_id", guard.userId);
+  const { error } = await query;
   if (error) return { ok: false, error: "Suppression impossible." };
   revalidatePath("/coach/club", "layout");
+  revalidatePath("/coach/joueurs");
   return { ok: true };
 }
 
