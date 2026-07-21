@@ -245,9 +245,13 @@ export async function checkEvent(
     return { ok: false, error: "Ce jour n'est pas encore passé." };
   }
 
-  // upsert : deux pointages rapprochés (✓ puis ✗) ne violent plus la
-  // contrainte unique (planned_event_id, week_start) — le dernier gagne
-  const { error } = await supabase.from("event_completions").upsert(
+  // Pas d'upsert ici : ON CONFLICT DO UPDATE exigerait le privilège UPDATE sur
+  // toutes les colonnes du snapshot, or le grant client est limité à
+  // (status, comment) — l'upsert échouait en 42501 et le pointage revenait.
+  // À la place : insert ignoré si la ligne existe (ignoreDuplicates → ON
+  // CONFLICT DO NOTHING, aucun privilège UPDATE requis), puis update du statut
+  // seul. Deux pointages rapprochés (✓ puis ✗) restent sûrs — le dernier gagne.
+  const { error: insertError } = await supabase.from("event_completions").upsert(
     {
       player_id: user.id,
       planned_event_id: plannedEventId,
@@ -264,9 +268,17 @@ export async function checkEvent(
       custom_color: event.custom_color ?? "",
       status,
     },
-    { onConflict: "planned_event_id,week_start" }
+    { onConflict: "planned_event_id,week_start", ignoreDuplicates: true }
   );
-  if (error) return { ok: false, error: "Pointage impossible." };
+  if (insertError) return { ok: false, error: "Pointage impossible." };
+
+  const { error: updateError } = await supabase
+    .from("event_completions")
+    .update({ status })
+    .eq("planned_event_id", plannedEventId)
+    .eq("week_start", weekStart)
+    .eq("player_id", user.id);
+  if (updateError) return { ok: false, error: "Pointage impossible." };
   revalidatePlanning(user.id);
   return { ok: true };
 }
