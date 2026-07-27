@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { createInvitation, deleteInvitation } from "@/app/actions/admin";
 import { formatDateFr } from "@/lib/dates";
+import { DEFAULT_OFFER, OFFER_HINTS, OFFER_LABELS, PLAYER_OFFERS, toOffer } from "@/lib/offers";
 import { Button } from "@/components/ui/Button";
 import { Card, CardTitle } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
@@ -10,7 +11,7 @@ import { Field, Input } from "@/components/ui/Field";
 import { IconButton } from "@/components/ui/IconButton";
 import { Check } from "lucide-react";
 import { TrashIcon } from "@/components/icons";
-import type { Invitation } from "@/lib/types";
+import type { Invitation, PlayerOffer } from "@/lib/types";
 
 type InvitationRow = Invitation & { used_by_name: string | null };
 
@@ -26,6 +27,8 @@ export function CoachInvitations({
   title?: string;
 }) {
   const [label, setLabel] = useState("");
+  // offre du futur joueur : appliquée à sa fiche dès son inscription
+  const [offer, setOffer] = useState<PlayerOffer>(DEFAULT_OFFER);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -37,13 +40,14 @@ export function CoachInvitations({
     e.preventDefault();
     setError("");
     setLoading(true);
-    const result = await createInvitation(coachId, label);
+    const result = await createInvitation(coachId, label, offer);
     setLoading(false);
     if (!result.ok) {
       setError(result.error);
       return;
     }
     setLabel("");
+    setOffer(DEFAULT_OFFER);
     if (result.token) copy(result.token);
   }
 
@@ -72,6 +76,26 @@ export function CoachInvitations({
             placeholder="Ex. : Lucas Martin"
           />
         </Field>
+        <Field label="Offre souscrite">
+          <div className="flex gap-1.5">
+            {PLAYER_OFFERS.map((value) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setOffer(value)}
+                aria-pressed={offer === value}
+                className={`flex-1 rounded-xl px-3 py-2 text-sm font-bold transition-colors ${
+                  offer === value
+                    ? "bg-navy-800 text-white"
+                    : "border border-navy-200 bg-white text-navy-500"
+                }`}
+              >
+                {OFFER_LABELS[value]}
+              </button>
+            ))}
+          </div>
+          <p className="mt-1.5 text-xs text-navy-400">{OFFER_HINTS[toOffer(offer)]}</p>
+        </Field>
         {error && <p className="text-sm font-medium text-danger">{error}</p>}
         <Button type="submit" full disabled={loading}>
           {loading ? "Création…" : "Générer un lien d'invitation"}
@@ -94,7 +118,8 @@ export function CoachInvitations({
                     {inv.player_label || "Sans nom"}
                   </p>
                   <p className="text-xs text-navy-400">
-                    Créée le {formatDateFr(inv.created_at.slice(0, 10))}
+                    Offre {OFFER_LABELS[toOffer(inv.offer)]} · créée le{" "}
+                    {formatDateFr(inv.created_at.slice(0, 10))}
                   </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-1.5">

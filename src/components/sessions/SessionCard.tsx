@@ -4,11 +4,9 @@ import { useState, useTransition } from "react";
 import { markSessionCompletion, saveChallengeScore } from "@/app/actions/player";
 import { successFeedback } from "@/lib/feedback";
 import { YouTubeEmbed } from "@/components/YouTubeEmbed";
+import { SessionSheet } from "@/components/SessionSheet";
 import { SessionProgramme } from "./SessionProgramme";
-import { CheckIcon, PlayIcon, XIcon } from "@/components/icons";
-import { SquareIconButton } from "@/components/editorial/primitives";
-import { XpBurst } from "@/components/ui/XpBurst";
-import { XP_VALUES } from "@/lib/gamification";
+import { PlayIcon } from "@/components/icons";
 import type { SessionAssignmentWithSession } from "@/lib/types";
 
 export function SessionCard({
@@ -25,24 +23,18 @@ export function SessionCard({
   const [scoreOpen, setScoreOpen] = useState(false);
   const [score, setScore] = useState(assignment.completion?.challenge_score?.toString() ?? "");
   const [videoOpen, setVideoOpen] = useState(false);
-  const [xpBurst, setXpBurst] = useState(0);
 
   const { session, completion } = assignment;
   // ?? [] : tolère une base pas encore migrée (colonne exercises absente)
   const exercises = session.exercises ?? [];
   const hasProgramme = exercises.length > 0;
   const hasVideo = Boolean(session.youtube_url);
+  // ?? "" : tolère une base pas encore migrée (colonne sheet_url absente)
+  const sheetUrl = session.sheet_url ?? "";
+  // Physique : la fiche est le support principal, elle passe AVANT la vidéo.
+  // Technique (et routine) : la vidéo d'abord, la fiche explicative ensuite.
+  const sheetFirst = session.pole === "physique";
   const num = String(index).padStart(2, "0");
-
-  function mark(status: "done" | "not_done") {
-    if (status === "done" && completion?.status !== "done") {
-      successFeedback();
-      setXpBurst((b) => b + 1);
-    }
-    startTransition(async () => {
-      await markSessionCompletion(assignment.id, status, completion?.comment ?? "");
-    });
-  }
 
   function saveComment() {
     startTransition(async () => {
@@ -66,44 +58,61 @@ export function SessionCard({
     });
   }
 
+  const sheetBlock = sheetUrl ? (
+    <SessionSheet url={sheetUrl} sessionName={session.name} />
+  ) : null;
+
+  const mediaBlock = (
+    /* Bloc média : navy avec liseré crème, gros numéro, play rond rouge, tags */
+    <div className="rounded-lg border-2 border-ink bg-ink p-1.5">
+      {/* max-h quand pas de vidéo affichée : en pleine largeur desktop, un 16:9 ferait ~650px de navy vide */}
+      <div
+        className={`relative aspect-video w-full overflow-hidden rounded-md border border-warm/25 bg-ink ${
+          videoOpen && hasVideo ? "" : "max-h-72"
+        }`}
+      >
+        {videoOpen && hasVideo ? (
+          <YouTubeEmbed url={session.youtube_url} title={session.name} />
+        ) : (
+          <>
+            <span className="ed-value absolute left-3 top-1 text-[54px] leading-tight text-paper">
+              {num}
+            </span>
+            <div className="absolute bottom-3 left-3 flex flex-wrap gap-1.5">
+              <span className="ed-meta rounded border border-paper/40 px-1.5 py-0.5 text-[9px] text-paper">
+                {session.duration_minutes} min
+              </span>
+              {session.equipment && (
+                <span className="ed-meta rounded border border-paper/40 px-1.5 py-0.5 text-[9px] text-paper">
+                  {session.equipment}
+                </span>
+              )}
+            </div>
+            {hasVideo && (
+              <button
+                onClick={() => setVideoOpen(true)}
+                aria-label="Lire la vidéo"
+                className="absolute bottom-3 right-3 flex h-11 w-11 items-center justify-center rounded-full bg-orange text-paper transition-transform hover:scale-105 active:scale-95"
+              >
+                <PlayIcon size={20} />
+              </button>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+
   return (
     <div>
-      {/* Bloc média : navy avec liseré crème, gros numéro, play rond rouge, tags */}
-      <div className="rounded-lg border-2 border-ink bg-ink p-1.5">
-        {/* max-h quand pas de vidéo affichée : en pleine largeur desktop, un 16:9 ferait ~650px de navy vide */}
-        <div className={`relative aspect-video w-full overflow-hidden rounded-md border border-warm/25 bg-ink ${videoOpen && hasVideo ? "" : "max-h-72"}`}>
-          {videoOpen && hasVideo ? (
-            <YouTubeEmbed url={session.youtube_url} title={session.name} />
-          ) : (
-            <>
-              <span className="ed-value absolute left-3 top-1 text-[54px] leading-tight text-paper">
-                {num}
-              </span>
-              <div className="absolute bottom-3 left-3 flex flex-wrap gap-1.5">
-                <span className="ed-meta rounded border border-paper/40 px-1.5 py-0.5 text-[9px] text-paper">
-                  {session.duration_minutes} min
-                </span>
-                {session.equipment && (
-                  <span className="ed-meta rounded border border-paper/40 px-1.5 py-0.5 text-[9px] text-paper">
-                    {session.equipment}
-                  </span>
-                )}
-              </div>
-              {hasVideo && (
-                <button
-                  onClick={() => setVideoOpen(true)}
-                  aria-label="Lire la vidéo"
-                  className="absolute bottom-3 right-3 flex h-11 w-11 items-center justify-center rounded-full bg-orange text-paper transition-transform hover:scale-105 active:scale-95"
-                >
-                  <PlayIcon size={20} />
-                </button>
-              )}
-            </>
-          )}
-        </div>
+      {/* Ordre imposé par le pôle : fiche puis vidéo en physique, l'inverse ailleurs */}
+      <div className="space-y-3">
+        {sheetFirst && sheetBlock}
+        {mediaBlock}
+        {!sheetFirst && sheetBlock}
       </div>
 
-      {/* Ligne séance : titre + sous-titre + valider / passer */}
+      {/* Ligne séance : titre + sous-titre */}
       <div className="mt-3 flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h3 className="ed-display text-[20px] text-ink">{session.name}</h3>
@@ -118,25 +127,6 @@ export function SessionCard({
               {programmeOpen ? "Masquer le détail" : "Voir le programme"}
             </button>
           )}
-        </div>
-        <div className="relative flex shrink-0 gap-1.5">
-          <XpBurst amount={XP_VALUES.sessionDone} burstKey={xpBurst} />
-          <SquareIconButton
-            onClick={() => mark("done")}
-            disabled={isPending}
-            aria-label="Séance faite"
-            filled={completion?.status === "done"}
-          >
-            <CheckIcon size={18} />
-          </SquareIconButton>
-          <SquareIconButton
-            onClick={() => mark("not_done")}
-            disabled={isPending}
-            aria-label="Séance pas faite"
-            className={completion?.status === "not_done" ? "bg-orange text-white" : ""}
-          >
-            <XIcon size={18} />
-          </SquareIconButton>
         </div>
       </div>
 

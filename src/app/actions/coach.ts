@@ -1,12 +1,13 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getCachedUser } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendPushToUser } from "@/lib/push";
 import { parisNow } from "@/lib/dates";
 import { REVIEW_REPLY_MAX_LENGTH, VISIBLE_NOTE_MAX_LENGTH } from "@/lib/constants";
-import type { ActionResult, PlayerAvailability, SessionPole } from "@/lib/types";
+import { toOffer } from "@/lib/offers";
+import type { ActionResult, PlayerAvailability, PlayerOffer, SessionPole } from "@/lib/types";
 
 function revalidatePlayer(playerId: string) {
   revalidatePath(`/coach/joueurs/${playerId}`);
@@ -21,19 +22,32 @@ export async function updatePlayerProfile(
   data: {
     first_name: string;
     last_name: string;
+    /** numéro WhatsApp du joueur, saisi par son coach (contact direct) */
+    whatsapp_number: string;
     position: string;
     club: string;
     birthdate: string | null;
     height_cm: number | null;
     weight_kg: number | null;
     season_goal: string;
+    /** offre souscrite : pilote les écrans visibles côté joueur (0026) */
+    offer: PlayerOffer;
   }
 ): Promise<ActionResult> {
   const supabase = await createClient();
 
+  const offerResult = await setPlayerOffer(playerId, data.offer);
+  if (!offerResult.ok) return offerResult;
+
+  // whatsapp_number est dans le column grant de profiles (0002) et la policy
+  // profiles_update autorise le coach référent : pas de service_role ici.
   const { error: e1 } = await supabase
     .from("profiles")
-    .update({ first_name: data.first_name.trim(), last_name: data.last_name.trim() })
+    .update({
+      first_name: data.first_name.trim(),
+      last_name: data.last_name.trim(),
+      whatsapp_number: data.whatsapp_number.trim(),
+    })
     .eq("id", playerId);
 
   const { error: e2 } = await supabase
@@ -54,6 +68,46 @@ export async function updatePlayerProfile(
 }
 
 /**
+ * Offre du joueur (perf / formation) : décidée par le coach, jamais par le
+ * joueur — d'où l'écriture en service_role (aucun grant client sur la colonne,
+ * migration 0026), précédée d'une lecture sous RLS qui vaut autorisation.
+ *
+ * Changer d'offre ne touche AUCUNE donnée : les écrans réservés à l'offre
+ * formation disparaissent ou réapparaissent, l'historique du joueur (hygiène,
+ * objectifs, progression) reste intact dans les deux sens.
+ */
+export async function setPlayerOffer(
+  playerId: string,
+  offer: PlayerOffer
+): Promise<ActionResult> {
+  const clean = toOffer(offer);
+  const supabase = await createClient();
+  const user = await getCachedUser();
+  if (!user) return { ok: false, error: "Session expirée." };
+  if (user.id === playerId) return { ok: false, error: "Réservé au coach." };
+
+  // lecture sous RLS : ne renvoie une ligne que si l'utilisateur est le coach
+  // référent (joueur actif) ou l'admin
+  const { data: row } = await supabase
+    .from("players")
+    .select("id, offer")
+    .eq("id", playerId)
+    .maybeSingle();
+  if (!row) return { ok: false, error: "Joueur introuvable." };
+  if (row.offer === clean) return { ok: true };
+
+  const admin = createAdminClient();
+  const { error } = await admin.from("players").update({ offer: clean }).eq("id", playerId);
+  if (error) return { ok: false, error: "Changement d'offre impossible." };
+
+  revalidatePlayer(playerId);
+  // les écrans du joueur changent de contenu (onglet Hygiène, carte Objectifs)
+  revalidatePath("/hygiene");
+  revalidatePath("/dashboard");
+  return { ok: true };
+}
+
+/**
  * Synchronise la visibilité d'une séance : les joueurs cochés la voient,
  * les décochés ne la voient plus (soft-delete, l'historique survit).
  * `managedPlayerIds` = les joueurs gérés par le coach connecté ; seuls eux
@@ -65,9 +119,7 @@ export async function setSessionVisibility(
   managedPlayerIds: string[]
 ): Promise<ActionResult> {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCachedUser();
   if (!user) return { ok: false, error: "Session expirée." };
 
   const { data: current, error: readError } = await supabase
@@ -103,9 +155,7 @@ export async function assignSession(
 ): Promise<ActionResult> {
   if (playerIds.length === 0) return { ok: true };
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCachedUser();
   if (!user) return { ok: false, error: "Session expirée." };
 
   for (const playerId of playerIds) {
@@ -232,9 +282,7 @@ export async function setPlayerAvailability(
   availability: PlayerAvailability
 ): Promise<ActionResult> {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCachedUser();
   if (!user) return { ok: false, error: "Session expirée." };
   if (user.id === playerId) return { ok: false, error: "Réservé au coach." };
 
@@ -276,9 +324,7 @@ export async function setPlayerAvailability(
 export async function setReviewReply(reviewId: string, content: string): Promise<ActionResult> {
   const clean = content.trim().slice(0, REVIEW_REPLY_MAX_LENGTH);
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCachedUser();
   if (!user) return { ok: false, error: "Session expirée." };
 
   const { data: review } = await supabase
@@ -346,9 +392,7 @@ export async function addPlayerGoal(
   if (!(data.target_value > 0)) return { ok: false, error: "Cible invalide." };
 
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCachedUser();
   if (!user) return { ok: false, error: "Session expirée." };
 
   // RLS : seuls le coach référent et l'admin peuvent insérer
@@ -424,9 +468,7 @@ export async function addCoachNote(playerId: string, content: string): Promise<A
   const clean = content.trim();
   if (!clean) return { ok: false, error: "La note est vide." };
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCachedUser();
   if (!user) return { ok: false, error: "Session expirée." };
 
   const { error } = await supabase

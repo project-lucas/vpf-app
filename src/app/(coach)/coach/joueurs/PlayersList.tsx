@@ -3,9 +3,11 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Search, Target } from "lucide-react";
+import { PlayerWhatsAppLink } from "@/components/coach/PlayerWhatsAppLink";
 import { formatPercent } from "@/lib/discipline";
 import { AVAILABILITY_LABELS, LOW_DISCIPLINE_THRESHOLD } from "@/lib/constants";
-import type { PlayerAvailability, SessionPole } from "@/lib/types";
+import { OFFER_LABELS } from "@/lib/offers";
+import type { PlayerAvailability, PlayerOffer, SessionPole } from "@/lib/types";
 
 const POLE_CHIPS: { pole: SessionPole; label: string }[] = [
   { pole: "basket", label: "Technique" },
@@ -20,9 +22,12 @@ export interface PlayerListItem {
   first_name: string;
   last_name: string;
   season_goal: string;
+  offer: PlayerOffer;
   availability: PlayerAvailability;
   discipline: number | null;
   progress: PoleProgress | null;
+  /** vide tant que le coach n'a pas saisi le numéro dans la fiche du joueur */
+  whatsapp_number: string;
 }
 
 type SortKey = "name" | "discipline-asc" | "discipline-desc";
@@ -93,65 +98,83 @@ export function PlayersList({ players }: { players: PlayerListItem[] }) {
       ) : (
         <div className="space-y-2.5">
           {shown.map((p) => (
-            <Link
-              key={p.id}
-              href={`/coach/joueurs/${p.id}`}
-              className="block rounded-2xl border border-navy-100 bg-white p-4 shadow-sm"
-            >
-              <div className="flex items-center justify-between gap-3">
-                <p className="font-bold text-navy-900">
-                  {p.first_name} {p.last_name}
-                  {p.availability !== "available" && (
-                    <span
-                      className={`ml-1.5 rounded-full px-2 py-0.5 align-middle text-[11px] font-semibold ${
-                        p.availability === "injured"
-                          ? "bg-danger-soft text-danger"
-                          : "bg-navy-100 text-navy-600"
-                      }`}
-                    >
-                      {AVAILABILITY_LABELS[p.availability]}
-                    </span>
-                  )}
-                </p>
-                <span
-                  className={`shrink-0 rounded-full px-2.5 py-0.5 text-sm font-bold ${
-                    p.discipline === null
-                      ? "bg-navy-100 text-navy-400"
-                      : p.discipline < LOW_DISCIPLINE_THRESHOLD
-                        ? "bg-danger-soft text-danger"
-                        : "bg-success-soft text-success"
-                  }`}
-                >
-                  {formatPercent(p.discipline)}
-                </span>
-              </div>
-              {p.season_goal && (
-                <p className="mt-1 line-clamp-2 text-sm text-navy-400">
-                  <Target size={12} className="-mt-0.5 inline" /> {p.season_goal}
-                </p>
-              )}
-              <div className="mt-2.5 flex flex-wrap gap-1.5">
-                {POLE_CHIPS.map(({ pole, label }) => {
-                  const stats = p.progress?.[pole];
-                  const empty = !stats || stats.total === 0;
-                  const complete = !empty && stats.done === stats.total;
-                  return (
-                    <span
-                      key={pole}
-                      className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
-                        empty
-                          ? "bg-navy-50 text-navy-300"
-                          : complete
-                            ? "bg-success-soft text-success"
+            // le raccourci WhatsApp est un FRÈRE de la carte, pas un enfant :
+            // un <a> dans un <a> est invalide et le clic ouvrirait la fiche
+            <div key={p.id} className="relative">
+              <Link
+                href={`/coach/joueurs/${p.id}`}
+                className="block rounded-2xl border border-navy-100 bg-white p-4 shadow-sm"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <p className="font-bold text-navy-900">
+                    {p.first_name} {p.last_name}
+                    {p.availability !== "available" && (
+                      <span
+                        className={`ml-1.5 rounded-full px-2 py-0.5 align-middle text-[11px] font-semibold ${
+                          p.availability === "injured"
+                            ? "bg-danger-soft text-danger"
                             : "bg-navy-100 text-navy-600"
-                      }`}
-                    >
-                      {label} {empty ? "—" : `${stats.done}/${stats.total}`}
-                    </span>
-                  );
-                })}
-              </div>
-            </Link>
+                        }`}
+                      >
+                        {AVAILABILITY_LABELS[p.availability]}
+                      </span>
+                    )}
+                  </p>
+                  <span
+                    className={`shrink-0 rounded-full px-2.5 py-0.5 text-sm font-bold ${
+                      p.discipline === null
+                        ? "bg-navy-100 text-navy-400"
+                        : p.discipline < LOW_DISCIPLINE_THRESHOLD
+                          ? "bg-danger-soft text-danger"
+                          : "bg-success-soft text-success"
+                    }`}
+                  >
+                    {formatPercent(p.discipline)}
+                  </span>
+                </div>
+                {p.season_goal && (
+                  <p className="mt-1 line-clamp-2 text-sm text-navy-400">
+                    <Target size={12} className="-mt-0.5 inline" /> {p.season_goal}
+                  </p>
+                )}
+                {/* pr-10 : réserve la place du raccourci WhatsApp en bas à droite */}
+                <div className="mt-2.5 flex flex-wrap gap-1.5 pr-10">
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                      p.offer === "formation"
+                        ? "bg-navy-800 text-white"
+                        : "border border-navy-200 text-navy-500"
+                    }`}
+                  >
+                    {OFFER_LABELS[p.offer]}
+                  </span>
+                  {POLE_CHIPS.map(({ pole, label }) => {
+                    const stats = p.progress?.[pole];
+                    const empty = !stats || stats.total === 0;
+                    const complete = !empty && stats.done === stats.total;
+                    return (
+                      <span
+                        key={pole}
+                        className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                          empty
+                            ? "bg-navy-50 text-navy-300"
+                            : complete
+                              ? "bg-success-soft text-success"
+                              : "bg-navy-100 text-navy-600"
+                        }`}
+                      >
+                        {label} {empty ? "—" : `${stats.done}/${stats.total}`}
+                      </span>
+                    );
+                  })}
+                </div>
+              </Link>
+              <PlayerWhatsAppLink
+                whatsappNumber={p.whatsapp_number}
+                playerName={`${p.first_name} ${p.last_name}`.trim()}
+                className="absolute bottom-3 right-3"
+              />
+            </div>
           ))}
         </div>
       )}

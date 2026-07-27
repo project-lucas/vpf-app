@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthProfile } from "@/lib/auth";
 import { CATEGORIES, POSITIONS } from "@/lib/constants";
-import type { ActionResult, SessionPole } from "@/lib/types";
+import { DEFAULT_OFFER, toOffer } from "@/lib/offers";
+import type { ActionResult, PlayerOffer, SessionPole } from "@/lib/types";
 
 /** Vérifie que l'appelant est admin avant toute opération service_role. */
 async function requireAdmin(): Promise<{ ok: true; adminId: string } | { ok: false; error: string }> {
@@ -151,13 +152,77 @@ export async function deleteCoach(coachId: string): Promise<ActionResult> {
   return { ok: true };
 }
 
+/**
+ * Change le coach référent d'un joueur : vers un autre coach, vers un autre
+ * admin, ou vers soi-même. Réservé aux admins — un coach ne doit pas pouvoir
+ * se débarrasser d'un joueur ni s'en attribuer un.
+ *
+ * `players.coach_id` est protégée par un column grant (0002) : l'écriture passe
+ * obligatoirement par le service_role, après ce contrôle de rôle.
+ *
+ * Les notes privées écrites par le coach sortant sont supprimées au passage.
+ * La policy `coach_notes_all` donne l'accès via `is_coach_of(player_id)` : sans
+ * cette suppression, le coach entrant hériterait de notes confidentielles
+ * rédigées par quelqu'un d'autre. Même principe que l'archivage, qui les
+ * supprime déjà (trigger de 0003).
+ */
+export async function reassignPlayer(playerId: string, newCoachId: string): Promise<ActionResult> {
+  const guard = await requireAdmin();
+  if (!guard.ok) return guard;
+
+  const admin = createAdminClient();
+
+  const { data: player } = await admin
+    .from("players")
+    .select("coach_id")
+    .eq("id", playerId)
+    .maybeSingle();
+  if (!player) return { ok: false, error: "Joueur introuvable." };
+  if (player.coach_id === newCoachId) {
+    return { ok: false, error: "Ce joueur est déjà rattaché à ce coach." };
+  }
+
+  // Cible obligatoirement membre du staff : un joueur ne peut pas devenir
+  // le référent d'un autre joueur.
+  const { data: target } = await admin
+    .from("profiles")
+    .select("role")
+    .eq("id", newCoachId)
+    .in("role", ["coach", "admin"])
+    .maybeSingle();
+  if (!target) return { ok: false, error: "Coach de destination introuvable." };
+
+  if (player.coach_id) {
+    const { error: notesError } = await admin
+      .from("coach_notes")
+      .delete()
+      .eq("player_id", playerId)
+      .eq("author_id", player.coach_id);
+    if (notesError) return { ok: false, error: "Nettoyage des notes impossible." };
+  }
+
+  const { error } = await admin
+    .from("players")
+    .update({ coach_id: newCoachId })
+    .eq("id", playerId);
+  if (error) return { ok: false, error: "Réaffectation impossible." };
+
+  revalidatePath("/coach/club", "layout");
+  revalidatePath("/coach/joueurs");
+  revalidatePath(`/coach/joueurs/${playerId}`);
+  revalidatePath("/coach");
+  return { ok: true };
+}
+
 // ---------------------------------------------------------------------------
 // Invitations
 // ---------------------------------------------------------------------------
 
 export async function createInvitation(
   coachId: string,
-  playerLabel: string
+  playerLabel: string,
+  /** offre appliquée à la fiche du joueur qui utilisera le lien */
+  offer: PlayerOffer = DEFAULT_OFFER
 ): Promise<ActionResult & { token?: string }> {
   const guard = await requireStaff();
   if (!guard.ok) return guard;
@@ -169,7 +234,12 @@ export async function createInvitation(
   const admin = createAdminClient();
   const { data, error } = await admin
     .from("invitations")
-    .insert({ coach_id: coachId, created_by: guard.userId, player_label: playerLabel.trim() })
+    .insert({
+      coach_id: coachId,
+      created_by: guard.userId,
+      player_label: playerLabel.trim(),
+      offer: toOffer(offer),
+    })
     .select("id")
     .single();
   if (error || !data) return { ok: false, error: "Création impossible." };
@@ -252,10 +322,23 @@ interface SessionData {
   pole: SessionPole;
   category: string;
   youtube_url: string;
+  /** fiche de training déposée dans le bucket "fiches" ; réservée aux admins */
+  sheet_url: string;
   duration_minutes: number;
   equipment: string;
   /** postes concernés ; vide = tous les postes */
   positions: string[];
+}
+
+/**
+ * URL de fiche acceptée : uniquement un objet du bucket "fiches" du projet
+ * Supabase. Empêche qu'un champ détourné fasse pointer une séance vers
+ * n'importe quelle URL externe.
+ */
+function isClubSheetUrl(url: string): boolean {
+  if (!url) return true;
+  const base = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  return Boolean(base) && url.startsWith(`${base}/storage/v1/object/public/fiches/`);
 }
 
 function validateSession(data: SessionData): string | null {
@@ -307,12 +390,17 @@ export async function createLibrarySession(data: SessionData): Promise<ActionRes
   const invalid = validateSession(data);
   if (invalid) return { ok: false, error: invalid };
 
+  // un coach ne dépose pas de fiche : le champ est ignoré côté serveur
+  const sheet = guard.isAdmin ? data.sheet_url.trim() : "";
+  if (!isClubSheetUrl(sheet)) return { ok: false, error: "Fiche invalide." };
+
   const admin = createAdminClient();
   const { error } = await admin.from("library_sessions").insert({
     name: data.name.trim(),
     pole: data.pole,
     category: data.category,
     youtube_url: data.youtube_url.trim(),
+    sheet_url: sheet,
     duration_minutes: data.duration_minutes,
     equipment: data.equipment.trim(),
     positions: data.positions,
@@ -334,6 +422,15 @@ export async function updateLibrarySession(
   const denied = await sessionWriteDenied(sessionId, guard);
   if (denied) return { ok: false, error: denied };
 
+  // hors admin, sheet_url n'est pas touché : un coach ne doit pas pouvoir
+  // effacer la fiche posée par le club en éditant une séance
+  const mediaPatch: { sheet_url?: string } = {};
+  if (guard.isAdmin) {
+    const sheet = data.sheet_url.trim();
+    if (!isClubSheetUrl(sheet)) return { ok: false, error: "Fiche invalide." };
+    mediaPatch.sheet_url = sheet;
+  }
+
   const admin = createAdminClient();
   const { error } = await admin
     .from("library_sessions")
@@ -342,6 +439,7 @@ export async function updateLibrarySession(
       pole: data.pole,
       category: data.category,
       youtube_url: data.youtube_url.trim(),
+      ...mediaPatch,
       duration_minutes: data.duration_minutes,
       equipment: data.equipment.trim(),
       positions: data.positions,

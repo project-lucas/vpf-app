@@ -1,27 +1,30 @@
 import { createClient, getCachedUser } from "@/lib/supabase/server";
 import { daysBetween, parisNow } from "@/lib/dates";
+import { isBetaPlayer } from "@/lib/beta";
+import { canUseHygiene, toOffer } from "@/lib/offers";
 import { CHECKIN_INTERVAL_DAYS } from "@/lib/constants";
 import { BottomNav } from "@/components/BottomNav";
 import { CheckinModal } from "@/components/CheckinModal";
 import { PushPrompt } from "@/components/PushPrompt";
 import { InstallPrompt } from "@/components/InstallPrompt";
-import {
-  // BallIcon,  // réactiver avec l'onglet « Séances » (voir BottomNav ci-dessous)
-  CalendarIcon,
-  ChartIcon,
-  UserIcon,
-} from "@/components/icons";
+import { CoachWhatsAppFab } from "@/components/CoachWhatsAppFab";
+import { BallIcon, CalendarIcon, ChartIcon, HeartIcon, UserIcon } from "@/components/icons";
 import type { CheckinQuestion } from "@/lib/types";
 
 export default async function PlayerLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
   const user = await getCachedUser();
 
+  // Programme est encore en construction : porte d'entrée bêta.
+  const showBeta = isBetaPlayer(user?.id);
+  // Hygiène : réservée à l'offre formation (lue avec le coach ci-dessous).
+  let showHygiene = false;
+
   let checkinQuestion: CheckinQuestion | null = null;
   let notificationsEnabled = false;
 
   if (user) {
-    const [{ data: lastCheckin }, { data: profile }] = await Promise.all([
+    const [{ data: lastCheckin }, { data: profile }, { data: playerRow }] = await Promise.all([
       supabase
         .from("checkins")
         .select("question, created_at")
@@ -30,7 +33,10 @@ export default async function PlayerLayout({ children }: { children: React.React
         .limit(1)
         .maybeSingle(),
       supabase.from("profiles").select("notifications_enabled").eq("id", user.id).maybeSingle(),
+      supabase.from("players").select("offer").eq("id", user.id).maybeSingle(),
     ]);
+
+    showHygiene = canUseHygiene(toOffer(playerRow?.offer));
 
     // ?? true : aligné sur le défaut de la colonne (0001) et sur la page profil
     notificationsEnabled = profile?.notifications_enabled ?? true;
@@ -57,14 +63,21 @@ export default async function PlayerLayout({ children }: { children: React.React
       {checkinQuestion && <CheckinModal question={checkinQuestion} />}
       <PushPrompt notificationsEnabled={notificationsEnabled} />
       <InstallPrompt />
+      <CoachWhatsAppFab />
       <BottomNav
         variant="editorial"
         items={[
+          // Hygiène : offre formation uniquement (src/lib/offers.ts) — un
+          // joueur perf garde les 3 onglets du socle.
+          ...(showHygiene
+            ? [{ href: "/hygiene", label: "Hygiène", icon: <HeartIcon size={22} /> }]
+            : []),
+          // Programme : encore en construction, visible seulement par les
+          // joueurs en accès anticipé (src/lib/beta.ts).
+          ...(showBeta
+            ? [{ href: "/seances", label: "Programme", icon: <BallIcon size={22} /> }]
+            : []),
           { href: "/planning", label: "Planning", icon: <CalendarIcon size={22} /> },
-          // Séances : onglet masqué temporairement (contenu pas encore complété).
-          // NE PAS SUPPRIMER — la page /seances et sa route restent en place, il
-          // suffit de réactiver cette entrée pour le rendre à nouveau visible.
-          // { href: "/seances", label: "Séances", icon: <BallIcon size={22} /> },
           { href: "/dashboard", label: "Dashboard", icon: <ChartIcon size={22} /> },
           { href: "/parametres", label: "Profil", icon: <UserIcon size={22} /> },
         ]}

@@ -16,6 +16,7 @@ import { EditCoachButton } from "./EditCoachButton";
 import { DeleteCoachButton } from "./DeleteCoachButton";
 import { CoachInvitations } from "@/components/coach/CoachInvitations";
 import { ArchivePlayerButton, ReactivatePlayerButton } from "./PlayerArchiveControls";
+import { ReassignPlayerButton, type StaffOption } from "./ReassignPlayerButton";
 import type { Invitation } from "@/lib/types";
 
 export const metadata = { title: "Fiche coach — VPF" };
@@ -42,19 +43,27 @@ export default async function ClubCoachPage({ params }: { params: Promise<{ id: 
     .maybeSingle();
   if (!coach) notFound();
 
-  const [players, { data: archivedRaw }, { data: invitations }] = await Promise.all([
-    getPlayersWithDiscipline(supabase, id),
-    supabase
-      .from("players")
-      .select("id, profile:profiles!players_id_fkey(first_name, last_name)")
-      .eq("coach_id", id)
-      .eq("status", "archived"),
-    supabase
-      .from("invitations")
-      .select("*")
-      .eq("coach_id", id)
-      .order("created_at", { ascending: false }),
-  ]);
+  const [players, { data: archivedRaw }, { data: invitations }, { data: staffRaw }] =
+    await Promise.all([
+      getPlayersWithDiscipline(supabase, id),
+      supabase
+        .from("players")
+        .select("id, profile:profiles!players_id_fkey(first_name, last_name)")
+        .eq("coach_id", id)
+        .eq("status", "archived"),
+      supabase
+        .from("invitations")
+        .select("*")
+        .eq("coach_id", id)
+        .order("created_at", { ascending: false }),
+      // destinations possibles d'une réaffectation : tout le staff sauf le
+      // coach de cette fiche (l'admin connecté s'y trouve, marqué « moi »)
+      supabase
+        .from("profiles")
+        .select("id, first_name, last_name, role")
+        .in("role", ["coach", "admin"])
+        .neq("id", id),
+    ]);
 
   const playerIds = players.map((p) => p.id);
   const usedByIds = ((invitations ?? []) as Invitation[])
@@ -113,6 +122,18 @@ export default async function ClubCoachPage({ params }: { params: Promise<{ id: 
 
   const coachName = `${coach.first_name} ${coach.last_name}`.trim() || "(profil incomplet)";
   const availablePlayers = players.filter((p) => p.availability === "available");
+
+  const staff: StaffOption[] = (staffRaw ?? [])
+    .map((s) => ({
+      id: s.id,
+      name: `${s.first_name} ${s.last_name}`.trim() || "(profil incomplet)",
+      isAdmin: s.role === "admin",
+      isMe: s.id === profile.id,
+    }))
+    // « moi » en tête : c'est la réaffectation la plus courante
+    .sort((a, b) =>
+      a.isMe === b.isMe ? a.name.localeCompare(b.name, "fr") : a.isMe ? -1 : 1
+    );
 
   return (
     <>
@@ -190,6 +211,12 @@ export default async function ClubCoachPage({ params }: { params: Promise<{ id: 
                           Planning vide
                         </Badge>
                       )}
+                      {/* seule l'offre restreinte est signalée : formation est le défaut */}
+                      {p.offer === "perf" && (
+                        <Badge tone="neutral" className="ml-1.5 align-middle">
+                          Offre Perf
+                        </Badge>
+                      )}
                     </span>
                     <span className="mt-0.5 flex items-center gap-1.5">
                       <Badge
@@ -209,10 +236,18 @@ export default async function ClubCoachPage({ params }: { params: Promise<{ id: 
                       </Badge>
                     </span>
                   </Link>
-                  <ArchivePlayerButton
-                    playerId={p.id}
-                    playerName={`${p.first_name} ${p.last_name}`}
-                  />
+                  <div className="flex shrink-0 flex-col items-end gap-1.5">
+                    <ReassignPlayerButton
+                      playerId={p.id}
+                      playerName={`${p.first_name} ${p.last_name}`}
+                      currentCoachName={coachName}
+                      staff={staff}
+                    />
+                    <ArchivePlayerButton
+                      playerId={p.id}
+                      playerName={`${p.first_name} ${p.last_name}`}
+                    />
+                  </div>
                 </div>
               );
             })}

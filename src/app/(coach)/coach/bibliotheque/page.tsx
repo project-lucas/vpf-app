@@ -55,6 +55,7 @@ export default async function CoachLibraryPage() {
         visibility={visibility}
         editable
         manageableIds={manageableIds}
+        isAdmin={isAdmin}
       />
     </>
   );

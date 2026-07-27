@@ -2,6 +2,8 @@ import Image from "next/image";
 import { createClient, getCachedUser } from "@/lib/supabase/server";
 import { addDays, currentWeekStart, formatDateFr, isoWeekNumber, parisNow } from "@/lib/dates";
 import { activeDayStreak } from "@/lib/discipline";
+import { canUseHygiene, toOffer } from "@/lib/offers";
+import { HYGIENE_MISSION_START } from "@/lib/hygiene";
 import { PlanningView } from "@/components/planning/PlanningView";
 import { WeeklyReviewLauncher } from "@/components/planning/WeeklyReviewLauncher";
 import { MatchSheetLauncher } from "@/components/planning/MatchSheetLauncher";
@@ -11,7 +13,7 @@ import { DiscordIcon } from "@/components/icons";
 import { DISCORD_INVITE_URL } from "@/lib/constants";
 import { computeMatchRecords } from "@/lib/gamification";
 import type { DayOutcome } from "@/components/planning/DisciplineCalendar";
-import type { EventCompletion, MatchStat, PlannedEvent } from "@/lib/types";
+import type { EventCompletion, HygieneLog, MatchStat, PlannedEvent } from "@/lib/types";
 
 export const metadata = { title: "Planning — VPF" };
 export const dynamic = "force-dynamic";
@@ -36,6 +38,8 @@ export default async function PlanningPage() {
     { data: coachFocusRow },
     { data: thisWeekReview },
     { data: matchStats },
+    { data: hygieneToday },
+    { data: hygieneDates },
   ] = await Promise.all([
     supabase
       .from("planned_events")
@@ -56,7 +60,7 @@ export default async function PlanningPage() {
     supabase
       .from("players")
       .select(
-        "availability, coach:profiles!players_coach_id_fkey(first_name, last_name, whatsapp_number)"
+        "availability, offer, coach:profiles!players_coach_id_fkey(first_name, last_name, whatsapp_number)"
       )
       .eq("id", user.id)
       .maybeSingle(),
@@ -78,6 +82,22 @@ export default async function PlanningPage() {
       .select("*")
       .eq("player_id", user.id)
       .order("match_date", { ascending: false }),
+    // mission du jour (offre formation) : la saisie d'hygiène d'aujourd'hui,
+    // qui pré-remplit le formulaire. En offre perf la RLS (0026) ne renvoie
+    // rien ; la mission est de toute façon écartée plus bas.
+    supabase
+      .from("hygiene_logs")
+      .select("*")
+      .eq("player_id", user.id)
+      .eq("log_date", now.date)
+      .maybeSingle(),
+    // jours déjà notés (dates seules) : la frise et le calendrier de
+    // discipline les comptent comme une tâche accomplie de la journée
+    supabase
+      .from("hygiene_logs")
+      .select("log_date")
+      .eq("player_id", user.id)
+      .gte("log_date", HYGIENE_MISSION_START),
   ]);
 
   // Contact coach : gardé pour l'intitulé du bouton (l'équipe échange sur Discord)
@@ -99,6 +119,11 @@ export default async function PlanningPage() {
   // pas de double comptage si on dé-coche puis re-coche la dernière tâche).
   const streakOnComplete = activeDayStreak(allCompletions ?? [], addDays(now.date, -1)) + 1;
 
+  // Offre formation : la mission d'hygiène est due chaque jour depuis son
+  // ouverture et compte comme une tâche de la journée (frise + calendrier).
+  const hasMission = canUseHygiene(toOffer(coachRow?.offer));
+  const notedDates = (hygieneDates ?? []).map((row) => row.log_date as string);
+
   // historique jour par jour (calendrier de discipline) : complet quand tous
   // les pointages du jour sont "done", partiel dès qu'un seul l'est
   const dayHistory: Record<string, DayOutcome> = {};
@@ -111,6 +136,19 @@ export default async function PlanningPage() {
       entry.total++;
       if (c.status === "done") entry.done++;
       byDate.set(date, entry);
+    }
+
+    // la mission pèse dans chaque journée depuis HYGIENE_MISSION_START —
+    // jamais avant, sinon les journées déjà classées « complètes » se
+    // retrouveraient rétroactivement partielles
+    if (hasMission) {
+      const noted = new Set(notedDates);
+      for (let date = HYGIENE_MISSION_START; date <= now.date; date = addDays(date, 1)) {
+        const entry = byDate.get(date) ?? { done: 0, total: 0 };
+        entry.total++;
+        if (noted.has(date)) entry.done++;
+        byDate.set(date, entry);
+      }
     }
     for (const [date, e] of byDate) {
       // la journée en cours n'est pas terminée : pas de « manqué » prématuré
@@ -145,6 +183,16 @@ export default async function PlanningPage() {
       : null;
 
   const weekNo = String(isoWeekNumber(weekStart)).padStart(2, "0");
+
+  // Mission journalière : noter son hygiène de vie, tous les soirs. Réservée à
+  // l'offre formation (src/lib/offers.ts) — un joueur perf ne la voit jamais.
+  const hygieneMission = hasMission
+    ? {
+        dateLabel: formatDateFr(now.date),
+        log: (hygieneToday ?? null) as HygieneLog | null,
+        notedDates,
+      }
+    : null;
 
   return (
     <>
@@ -204,6 +252,7 @@ export default async function PlanningPage() {
         nowMinutes={now.minutesOfDay}
         focus={focus}
         streakOnComplete={streakOnComplete}
+        hygieneMission={hygieneMission}
       />
 
       {/* Réponse du coach au bilan hebdo : carte éditoriale sous le planning */}

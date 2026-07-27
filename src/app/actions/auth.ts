@@ -1,7 +1,8 @@
 "use server";
 
 import { createAdminClient } from "@/lib/supabase/admin";
-import { createClient } from "@/lib/supabase/server";
+import { getCachedUser } from "@/lib/supabase/server";
+import { toOffer } from "@/lib/offers";
 import type { ActionResult } from "@/lib/types";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -31,7 +32,7 @@ export async function signupWithInvitation(
     .update({ used_at: new Date().toISOString() })
     .eq("id", token)
     .is("used_at", null)
-    .select("coach_id")
+    .select("coach_id, offer")
     .maybeSingle();
 
   if (consumeError || !consumed) {
@@ -65,7 +66,11 @@ export async function signupWithInvitation(
     .insert({ id: userId, role: "player" });
   const { error: playerError } = profileError
     ? { error: profileError }
-    : await admin.from("players").insert({ id: userId, coach_id: consumed.coach_id });
+    : // l'offre choisie par le coach à l'invitation suit le joueur : il ouvre
+      // l'application avec les bons écrans dès sa première connexion
+      await admin
+        .from("players")
+        .insert({ id: userId, coach_id: consumed.coach_id, offer: toOffer(consumed.offer) });
 
   if (profileError || playerError) {
     await admin.auth.admin.deleteUser(userId);
@@ -94,10 +99,7 @@ export interface OnboardingData {
  * Utilisable une seule fois : refusé si l'onboarding est déjà terminé.
  */
 export async function completeOnboarding(data: OnboardingData): Promise<ActionResult> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCachedUser();
   if (!user) return { ok: false, error: "Session expirée. Reconnecte-toi." };
 
   const first_name = data.first_name.trim();

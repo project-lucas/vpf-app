@@ -10,6 +10,7 @@ const PLAYER_PREFIXES = [
   "/planning",
   "/dashboard",
   "/seances",
+  "/hygiene",
   "/basket",
   "/physique",
   "/habitudes",
@@ -59,9 +60,13 @@ export async function middleware(request: NextRequest) {
     }
   );
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // Vérification LOCALE du jeton (clés de signature asymétriques Supabase) :
+  // le middleware est sur le chemin critique de CHAQUE navigation, un appel
+  // réseau à l'API auth y coûtait un aller-retour complet à chaque page.
+  // getClaims() rafraîchit toujours un jeton expiré et repose la session en
+  // cookie via setAll ci-dessus.
+  const { data: auth } = await supabase.auth.getClaims();
+  const user = auth ? { id: auth.claims.sub } : null;
 
   const path = request.nextUrl.pathname;
   const isPublic = path === "/login" || path.startsWith("/invitation");

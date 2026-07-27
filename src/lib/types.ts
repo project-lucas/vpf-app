@@ -2,6 +2,11 @@ export type UserRole = "admin" | "coach" | "player";
 export type PlayerStatus = "active" | "archived";
 /** disponibilité gérée par le coach : blessé/vacances gèle série, rappels et moyennes */
 export type PlayerAvailability = "available" | "injured" | "vacation";
+/**
+ * Offre souscrite, choisie par le coach : « perf » = le socle, « formation » =
+ * le socle + les écrans de formation (voir src/lib/offers.ts).
+ */
+export type PlayerOffer = "perf" | "formation";
 export type EventType =
   | "entrainement_club"
   | "training_basket"
@@ -38,6 +43,7 @@ export interface Player {
   weight_kg: number | null;
   season_goal: string;
   status: PlayerStatus;
+  offer: PlayerOffer;
   availability: PlayerAvailability;
   /** date de passage en blessé/vacances, null si disponible */
   availability_since: string | null;
@@ -54,6 +60,8 @@ export interface Invitation {
   coach_id: string;
   created_by: string | null;
   player_label: string;
+  /** offre appliquée à la fiche joueur créée avec ce lien */
+  offer: PlayerOffer;
   created_at: string;
   used_at: string | null;
   used_by: string | null;
@@ -167,6 +175,8 @@ export interface LibrarySession {
   pole: SessionPole;
   category: string;
   youtube_url: string;
+  /** fiche de training (image du bucket "fiches") ; vide = pas de fiche */
+  sheet_url: string;
   duration_minutes: number;
   equipment: string;
   /** postes concernés (Meneur, Pivot…) ; vide = tous les postes */
@@ -222,6 +232,26 @@ export interface PlayerGoal {
   deadline: string | null;
   achieved_at: string | null;
   created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Note sur 5 d'un critère d'hygiène de vie (hydratation, glucides…). */
+export type HygieneScore = 1 | 2 | 3 | 4 | 5;
+
+/** Les quatre critères notés sur 5 (le sommeil se saisit en heures). */
+export type HygieneCriterion = "hydration" | "carbs" | "proteins" | "vitamins";
+
+export interface HygieneLog {
+  id: string;
+  player_id: string;
+  /** jour noté ; sleep_hours porte sur la nuit qui l'a précédé */
+  log_date: string;
+  sleep_hours: number;
+  hydration: HygieneScore;
+  carbs: HygieneScore;
+  proteins: HygieneScore;
+  vitamins: HygieneScore;
   created_at: string;
   updated_at: string;
 }

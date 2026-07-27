@@ -5,23 +5,28 @@ import { useRouter } from "next/navigation";
 import { createLibrarySession, updateLibrarySession } from "@/app/actions/admin";
 import { CATEGORIES, POLE_LABELS, POSITIONS } from "@/lib/constants";
 import { Button } from "@/components/ui/Button";
-import { Field, Input, Select } from "@/components/ui/Field";
+import { Field, Input, Label, Select } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
+import { SheetUploader } from "./SheetUploader";
 import type { LibrarySession, SessionPole } from "@/lib/types";
 
 export function SessionFormModal({
   session,
   defaultPole,
+  isAdmin,
   onClose,
 }: {
   session: LibrarySession | null;
   defaultPole: SessionPole;
+  /** seul l'admin peut déposer une vidéo sur le stockage du club */
+  isAdmin: boolean;
   onClose: () => void;
 }) {
   const router = useRouter();
   const [pole, setPole] = useState<SessionPole>(session?.pole ?? defaultPole);
   const [category, setCategory] = useState(session?.category ?? CATEGORIES[defaultPole][0]);
   const [positions, setPositions] = useState<string[]>(session?.positions ?? []);
+  const [sheetUrl, setSheetUrl] = useState(session?.sheet_url ?? "");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -44,6 +49,7 @@ export function SessionFormModal({
       pole,
       category,
       youtube_url: String(fd.get("youtube_url") ?? ""),
+      sheet_url: sheetUrl,
       duration_minutes: Number(fd.get("duration_minutes")),
       equipment: String(fd.get("equipment") ?? ""),
       positions,
@@ -86,6 +92,21 @@ export function SessionFormModal({
             </Select>
           </Field>
         </div>
+        {isAdmin && (
+          /* pas de <Field> : l'uploader n'est pas un champ de saisie, le
+             htmlFor généré ne pointerait sur rien */
+          <div>
+            <Label>
+              Fiche de training (JPG, PNG ou WebP — 10 Mo max)
+              <span className="ml-1 font-normal text-navy-400">
+                {pole === "physique"
+                  ? "— affichée au-dessus de la vidéo"
+                  : "— affichée sous la vidéo"}
+              </span>
+            </Label>
+            <SheetUploader value={sheetUrl} onChange={setSheetUrl} />
+          </div>
+        )}
         <Field label="URL YouTube (non répertoriée)">
           <Input
             name="youtube_url"

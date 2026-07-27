@@ -1,14 +1,24 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { addDays, currentWeekStart, formatDateFr } from "./dates";
 import { POLE_LABELS } from "./constants";
-import type { MatchStat, PlayerAvailability, SessionPole, WeeklyReview } from "./types";
+import { toOffer } from "./offers";
+import type {
+  MatchStat,
+  PlayerAvailability,
+  PlayerOffer,
+  SessionPole,
+  WeeklyReview,
+} from "./types";
 
 export interface PlayerDiscipline {
   id: string;
   first_name: string;
   last_name: string;
+  /** numéro WhatsApp du joueur, saisi par son coach — vide si non renseigné */
+  whatsapp_number: string;
   season_goal: string;
   coach_id: string;
+  offer: PlayerOffer;
   availability: PlayerAvailability;
   /** null si aucune donnée exploitable */
   discipline: number | null;
@@ -33,7 +43,7 @@ export async function getPlayersWithDiscipline(
   let query = supabase
     .from("players")
     .select(
-      "id, coach_id, season_goal, availability, profile:profiles!players_id_fkey(first_name, last_name)"
+      "id, coach_id, season_goal, availability, offer, profile:profiles!players_id_fkey(first_name, last_name, whatsapp_number)"
     )
     .eq("status", "active");
   if (coachId) query = query.eq("coach_id", coachId);
@@ -78,7 +88,9 @@ export async function getPlayersWithDiscipline(
         coach_id: p.coach_id,
         first_name: profile?.first_name ?? "",
         last_name: profile?.last_name ?? "",
+        whatsapp_number: profile?.whatsapp_number ?? "",
         season_goal: p.season_goal,
+        offer: toOffer(p.offer),
         availability: (p.availability ?? "available") as PlayerAvailability,
         discipline,
         planningEmpty: plannedCount === 0,

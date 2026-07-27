@@ -54,8 +54,8 @@ export function CreateCoachButton() {
           <Field label="Mot de passe (8 caractères min.)">
             <Input name="password" type="text" required minLength={8} autoComplete="off" />
           </Field>
-          <Field label="Numéro WhatsApp">
-            <Input name="whatsapp_number" type="tel" placeholder="+33 6 12 34 56 78" />
+          <Field label="Numéro WhatsApp (l'indicatif +33 est ajouté tout seul)">
+            <Input name="whatsapp_number" type="tel" placeholder="06 12 34 56 78" />
           </Field>
           {error && <p className="text-sm font-medium text-danger">{error}</p>}
           <Button type="submit" full disabled={loading}>

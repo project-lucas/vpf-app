@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getCachedUser } from "@/lib/supabase/server";
 import { currentWeekStart, parisNow } from "@/lib/dates";
 import { PLAYER_CATEGORIES, POSITIONS } from "@/lib/constants";
 import type { ActionResult, CheckinQuestion } from "@/lib/types";
@@ -18,9 +18,7 @@ export async function addMatchStat(data: {
   fouls: number;
 }): Promise<ActionResult> {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCachedUser();
   if (!user) return { ok: false, error: "Session expirée." };
 
   const counts = [
@@ -78,9 +76,7 @@ export async function updateMyPlayerInfo(data: {
   season_goal: string;
 }): Promise<ActionResult> {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCachedUser();
   if (!user) return { ok: false, error: "Session expirée." };
 
   if (data.category && !PLAYER_CATEGORIES.includes(data.category as never)) {
@@ -111,9 +107,7 @@ export async function submitWeeklyReview(
   to_improve: string
 ): Promise<ActionResult> {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCachedUser();
   if (!user) return { ok: false, error: "Session expirée." };
 
   const { error } = await supabase.from("weekly_reviews").upsert(
@@ -141,9 +135,7 @@ export async function submitCheckin(
     return { ok: false, error: "Score invalide." };
   }
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCachedUser();
   if (!user) return { ok: false, error: "Session expirée." };
 
   const { error } = await supabase
@@ -163,9 +155,7 @@ export async function markSessionCompletion(
   comment: string
 ): Promise<ActionResult> {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCachedUser();
   if (!user) return { ok: false, error: "Session expirée." };
 
   const cleanComment = comment.trim().slice(0, 500);
@@ -207,9 +197,7 @@ export async function saveChallengeScore(
   score: number | null
 ): Promise<ActionResult> {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCachedUser();
   if (!user) return { ok: false, error: "Session expirée." };
 
   // borne au max du challenge de la séance (« 999/10 » impossible)

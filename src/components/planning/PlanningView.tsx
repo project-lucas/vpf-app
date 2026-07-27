@@ -5,15 +5,17 @@ import Link from "next/link";
 import { dayCompleteFeedback, perfectWeekFeedback } from "@/lib/feedback";
 import { eventLabel, WEEKDAY_LABELS, WEEKDAY_LABELS_SHORT } from "@/lib/constants";
 import { addDays, formatTime, parisNow, timeToMinutes } from "@/lib/dates";
+import { isMissionDay } from "@/lib/hygiene";
 import { Confetti } from "@/components/Confetti";
 import { CheckIcon, FlameIcon, TrophyIcon } from "@/components/icons";
 import { Overline, Rule, Quote, StarLine } from "@/components/editorial/primitives";
 import { EdButton } from "@/components/editorial/forms";
+import { DailyMissionCard } from "./DailyMissionCard";
 import { DayActionList } from "./DayActionList";
 import { DisciplineCalendar, type DayOutcome } from "./DisciplineCalendar";
 import { EventCheckRow } from "./EventCheckRow";
 import { PlanningEditor } from "./PlanningEditor";
-import type { CompletionStatus, EventCompletion, PlannedEvent } from "@/lib/types";
+import type { CompletionStatus, EventCompletion, HygieneLog, PlannedEvent } from "@/lib/types";
 
 // Messages de « journée bouclée » : on en montre un différent selon le jour de
 // la semaine pour que la récompense ne se répète pas à l'identique.
@@ -39,6 +41,13 @@ interface Props {
   focus: { text: string; source: "coach" | "player" } | null;
   /** série atteinte en bouclant aujourd'hui (série jusqu'à hier + 1) */
   streakOnComplete: number;
+  /**
+   * Mission journalière d'hygiène de vie — offre formation uniquement, `null`
+   * en offre perf (src/lib/offers.ts). `log` = saisie du jour si elle existe,
+   * `notedDates` = tous les jours déjà notés depuis l'ouverture de la mission
+   * (chacun compte comme une tâche accomplie dans le % de sa journée).
+   */
+  hygieneMission: { dateLabel: string; log: HygieneLog | null; notedDates: string[] } | null;
 }
 
 export function PlanningView({
@@ -52,15 +61,29 @@ export function PlanningView({
   nowMinutes,
   focus,
   streakOnComplete,
+  hygieneMission,
 }: Props) {
   const [selectedDay, setSelectedDay] = useState(todayWeekday);
   const [editMode, setEditMode] = useState(false);
   const [celebrate, setCelebrate] = useState<"day" | "week" | null>(null);
+  // mission notée à l'instant : la frise et la célébration réagissent sans
+  // attendre le rendu serveur (les props reprennent la main juste après)
+  const [missionJustDone, setMissionJustDone] = useState(false);
 
   const todayEvents = events.filter((e) => e.weekday === todayWeekday);
   const statusOf = (eventId: string): CompletionStatus | undefined =>
     completions.find((c) => c.planned_event_id === eventId)?.status;
   const doneToday = todayEvents.filter((e) => statusOf(e.id) === "done").length;
+
+  // La mission d'hygiène est une tâche de la journée comme une autre : elle
+  // pèse dans le % du jour. Elle n'est due que depuis son ouverture
+  // (HYGIENE_MISSION_START) — les jours d'avant restent jugés sur le planning
+  // seul, sinon la mise en ligne ferait retomber les journées déjà passées.
+  const missionDueOn = (date: string) => Boolean(hygieneMission) && isMissionDay(date);
+  const missionDoneOn = (date: string) =>
+    date === today
+      ? missionJustDone || Boolean(hygieneMission?.notedDates.includes(date))
+      : Boolean(hygieneMission?.notedDates.includes(date));
 
   // État de chaque jour de la semaine : checkpoint + navigation en un seul
   // composant. Complet = tout validé, partiel = fraction affichée.
@@ -74,10 +97,20 @@ export function PlanningView({
         e.weekday === day &&
         (date >= today || !e.created_at || parisNow(new Date(e.created_at)).date <= date)
     );
-    const done = dayEvts.filter((e) => statusOf(e.id) === "done").length;
-    const complete = dayEvts.length > 0 && done === dayEvts.length;
-    return { day, total: dayEvts.length, done, complete };
+    const mission = missionDueOn(date);
+    const total = dayEvts.length + (mission ? 1 : 0);
+    const done =
+      dayEvts.filter((e) => statusOf(e.id) === "done").length +
+      (mission && missionDoneOn(date) ? 1 : 0);
+    const complete = total > 0 && done === total;
+    return { day, total, done, complete };
   });
+  // Compteurs du jour, mission comprise — ce que le joueur lit sous la frise.
+  const missionDueToday = missionDueOn(today);
+  const missionDoneToday = missionDueToday && missionDoneOn(today);
+  const todayTotal = todayEvents.length + (missionDueToday ? 1 : 0);
+  const todayDone = doneToday + (missionDoneToday ? 1 : 0);
+
   const plannedDays = dayStates.filter((d) => d.total > 0);
   const weekPerfect = plannedDays.length > 0 && plannedDays.every((d) => d.complete);
 
@@ -86,14 +119,24 @@ export function PlanningView({
     .filter((e) => timeToMinutes(e.event_time) >= nowMinutes && statusOf(e.id) !== "done")
     .sort((a, b) => a.event_time.localeCompare(b.event_time))[0];
 
-  // déclenchée quand un pointage "fait" complète la journée — et peut-être la
-  // semaine. `dayComplete` est calculé par DayActionList sur l'état optimiste ;
-  // les autres jours (qui ne bougent pas là) restent fiables via les props.
-  function handleChecked(eventId: string, status: CompletionStatus, dayComplete: boolean) {
-    if (status !== "done" || !dayComplete) return;
-    const weekComplete = events
-      .filter((e) => e.weekday !== todayWeekday)
-      .every((e) => statusOf(e.id) === "done");
+  // Journée bouclée = toutes les tâches du planning ET la mission du jour.
+  // Appelée depuis les deux pointages possibles (un événement, la mission) ;
+  // celui qui vient d'être validé est passé en paramètre car les props
+  // serveur n'ont pas encore été rafraîchies au moment de l'appel.
+  function celebrateIfDayComplete({
+    eventsDone,
+    missionDone,
+  }: {
+    eventsDone: boolean;
+    missionDone: boolean;
+  }) {
+    if (!eventsDone || !missionDone) return;
+    // semaine parfaite : tous les autres jours bouclés, mission comprise
+    const weekComplete =
+      events.filter((e) => e.weekday !== todayWeekday).every((e) => statusOf(e.id) === "done") &&
+      Array.from({ length: 7 }, (_, i) => addDays(weekStart, i))
+        .filter((date) => date !== today && date <= today && missionDueOn(date))
+        .every((date) => missionDoneOn(date));
     if (weekComplete) {
       perfectWeekFeedback();
       setCelebrate("week");
@@ -101,6 +144,25 @@ export function PlanningView({
       dayCompleteFeedback();
       setCelebrate("day");
     }
+  }
+
+  // pointage d'un événement : `dayComplete` est calculé par DayActionList sur
+  // l'état optimiste (les props serveur arrivent en retard)
+  function handleChecked(eventId: string, status: CompletionStatus, dayComplete: boolean) {
+    if (status !== "done") return;
+    celebrateIfDayComplete({
+      eventsDone: dayComplete,
+      missionDone: !missionDueOn(today) || missionDoneOn(today),
+    });
+  }
+
+  // saisie de la mission du jour : la dernière brique possible de la journée
+  function handleMissionDone() {
+    setMissionJustDone(true);
+    celebrateIfDayComplete({
+      eventsDone: todayEvents.every((e) => statusOf(e.id) === "done"),
+      missionDone: true,
+    });
   }
 
   if (editMode) {
@@ -219,15 +281,17 @@ export function PlanningView({
             <StarLine className="mt-4 text-[11px]">Semaine parfaite — tout est validé</StarLine>
           ) : (
             <p className="ed-meta mt-4 text-center text-[11px] leading-relaxed text-meta">
-              {todayEvents.length > 0 && doneToday === todayEvents.length ? (
+              {todayTotal > 0 && todayDone === todayTotal ? (
                 <span className="text-orange">Checkpoint du jour validé — belle lancée.</span>
+              ) : missionDueToday && !missionDoneToday && doneToday === todayEvents.length ? (
+                "Il ne te reste que ta mission du jour — note ton hygiène de vie."
               ) : nextEvent ? (
                 <>
-                  Aujourd&apos;hui {doneToday}/{todayEvents.length} · prochain{" "}
+                  Aujourd&apos;hui {todayDone}/{todayTotal} · prochain{" "}
                   <span className="text-ink">{eventLabel(nextEvent)}</span> à{" "}
                   {formatTime(nextEvent.event_time)}
                 </>
-              ) : todayEvents.length > 0 ? (
+              ) : todayTotal > 0 ? (
                 "Plus rien de prévu — pointe ta journée."
               ) : (
                 "Rien de prévu aujourd'hui."
@@ -305,7 +369,7 @@ export function PlanningView({
               <p className="ed-meta mt-3 text-[10px] text-meta">
                 {celebrate === "week"
                   ? "Semaine complète — 100 % validé"
-                  : `${todayEvents.length}/${todayEvents.length} tâches validées aujourd'hui`}
+                  : `${todayTotal}/${todayTotal} tâches validées aujourd'hui`}
               </p>
 
               <p className="ed-meta mt-2 text-[11px] leading-relaxed text-meta">
@@ -341,6 +405,20 @@ export function PlanningView({
             </button>
           </div>
 
+          {/* Mission du jour (offre formation) : posée avant les tâches du
+              planning, et présente même quand la semaine type est vide — elle
+              revient tous les jours, indépendamment des événements pointés. */}
+          {hygieneMission && selectedDay === todayWeekday && (
+            <DailyMissionCard
+              date={today}
+              dateLabel={hygieneMission.dateLabel}
+              log={hygieneMission.log}
+              done={missionDoneToday}
+              nowMinutes={nowMinutes}
+              onDone={handleMissionDone}
+            />
+          )}
+
           {events.length === 0 ? (
             <div className="border-2 border-hair px-5 py-10 text-center">
               <p className="ed-display text-[24px] text-ink">Planning vide</p>
@@ -357,6 +435,7 @@ export function PlanningView({
               events={dayEvents}
               completions={completions}
               weekStart={weekStart}
+              missionPending={missionDueToday && !missionDoneToday}
               onEventChecked={handleChecked}
             />
           ) : dayEvents.length === 0 ? (

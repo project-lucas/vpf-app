@@ -17,6 +17,12 @@ interface Props {
   events: PlannedEvent[];
   completions: EventCompletion[];
   weekStart: string;
+  /**
+   * Mission du jour (hygiène) encore à faire : elle vit juste au-dessus de
+   * cette liste et compte dans le % de la journée — l'état vide « Tout est
+   * fait » mentirait tant qu'elle n'est pas remplie.
+   */
+  missionPending?: boolean;
   /** remonte les pointages d'événements + si la journée est bouclée (célébrations) */
   onEventChecked?: (eventId: string, status: CompletionStatus, dayComplete: boolean) => void;
 }
@@ -26,7 +32,13 @@ interface Props {
  * « À faire » / « Fait » (langage Éditorial Sport). Les envies personnelles
  * passent par une activité perso de la semaine type, pas par une liste à part.
  */
-export function DayActionList({ events, completions, weekStart, onEventChecked }: Props) {
+export function DayActionList({
+  events,
+  completions,
+  weekStart,
+  missionPending = false,
+  onEventChecked,
+}: Props) {
   const [, startTransition] = useTransition();
   const [tab, setTab] = useState<"todo" | "done">("todo");
   const [detailEvent, setDetailEvent] = useState<PlannedEvent | null>(null);
@@ -98,12 +110,18 @@ export function DayActionList({ events, completions, weekStart, onEventChecked }
       {showEvents.length === 0 ? (
         <div className="py-8 text-center">
           <p className="ed-display text-[32px] text-ink">
-            {tab === "todo" ? "Tout est fait" : "Rien de validé"}
+            {tab === "done"
+              ? "Rien de validé"
+              : missionPending
+                ? "Reste ta mission"
+                : "Tout est fait"}
           </p>
           <p className="ed-meta mt-2 text-[10px] text-meta">
-            {tab === "todo"
-              ? "Rien ne traîne — solide."
-              : "À toi de jouer — coche ta première action."}
+            {tab === "done"
+              ? "À toi de jouer — coche ta première action."
+              : missionPending
+                ? "Ton planning est bouclé — note ton hygiène de vie juste au-dessus."
+                : "Rien ne traîne — solide."}
           </p>
         </div>
       ) : (

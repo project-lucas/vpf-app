@@ -61,6 +61,15 @@ La sécurité repose sur la RLS (migration `0002`) : un joueur ne voit que ses d
 
 `supabase/migrations/0001…00NN_*.sql`, numérotées, appliquées dans l'ordre par `npm run migrate` (idempotent). Toute évolution de schéma = nouveau fichier numéroté, jamais de modification d'une migration existante.
 
+### Deux offres joueur (perf / formation)
+
+Chaque fiche joueur porte une `offer` (`players.offer`, migration 0026) choisie par le **coach** — à l'invitation puis modifiable dans la fiche. Stripe est hors application : rien n'est dérivé d'un paiement.
+
+- `formation` (offre 2) est le **défaut** : tout est développé en mode formation, c'est `perf` qui retire un écran. À ce jour, l'**onglet Hygiène de vie est la seule différence** entre les deux offres — tout le reste (planning, dashboard, objectifs mesurables, séances, bilans) est identique.
+- La liste de ce que chaque offre débloque vit dans `src/lib/offers.ts` — ajouter une restriction = ajouter un helper là, jamais un `=== "perf"` disséminé dans les pages.
+- Changer d'offre ne touche **aucune donnée** : l'onglet disparaît/réapparaît, l'historique (hygiène, objectifs, progression) reste intact dans les deux sens. Côté coach, tout reste visible quelle que soit l'offre.
+- Aucun grant client sur la colonne : l'écriture passe par le service_role après lecture RLS (`setPlayerOffer`), comme `availability`. La saisie d'hygiène est aussi verrouillée en RLS (`is_formation()`).
+
 ### Conventions transverses
 
 - **Dates/heures : tout est calculé en heure de Paris** via `src/lib/dates.ts` (le serveur Vercel est en UTC). Ne jamais utiliser `new Date()` brut pour de la logique métier de jour/heure.

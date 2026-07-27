@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getCachedUser } from "@/lib/supabase/server";
 import type { ActionResult } from "@/lib/types";
 
 /**
@@ -10,10 +10,7 @@ import type { ActionResult } from "@/lib/types";
  * colonne notifications_enabled n'est pas modifiable par les clients (grants).
  */
 export async function setNotificationsEnabled(enabled: boolean): Promise<ActionResult> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCachedUser();
   if (!user) return { ok: false, error: "Session expirée." };
 
   const admin = createAdminClient();
@@ -32,10 +29,7 @@ export async function savePushSubscription(sub: {
   p256dh: string;
   auth: string;
 }): Promise<ActionResult> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCachedUser();
   if (!user) return { ok: false, error: "Session expirée." };
   if (!sub.endpoint.startsWith("https://")) return { ok: false, error: "Subscription invalide." };
 
@@ -54,9 +48,7 @@ export async function savePushSubscription(sub: {
 
 export async function removePushSubscription(endpoint: string): Promise<ActionResult> {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCachedUser();
   if (!user) return { ok: false, error: "Session expirée." };
 
   await supabase.from("push_subscriptions").delete().eq("endpoint", endpoint);

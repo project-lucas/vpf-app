@@ -6,7 +6,7 @@ import { PasswordForm } from "@/components/settings/PasswordForm";
 import { PlayerInfoForm } from "@/components/settings/PlayerInfoForm";
 import { RulesCard } from "@/components/settings/RulesCard";
 import { Overline, Serif, DoubleRule, SectionHead } from "@/components/editorial/primitives";
-import { BellIcon, WhatsAppIcon } from "@/components/icons";
+import { BellIcon } from "@/components/icons";
 import { parisNow, seasonLabel } from "@/lib/dates";
 import { SEASON_START } from "@/lib/constants";
 
@@ -37,7 +37,7 @@ export default async function ProfilPage() {
     supabase
       .from("players")
       .select(
-        "category, position, club, season_goal, coach:profiles!players_coach_id_fkey(first_name, last_name, whatsapp_number)"
+        "category, position, club, season_goal, coach:profiles!players_coach_id_fkey(first_name, last_name)"
       )
       .eq("id", user.id)
       .maybeSingle(),
@@ -47,7 +47,6 @@ export default async function ProfilPage() {
     ? ((Array.isArray(playerRow.coach) ? playerRow.coach[0] : playerRow.coach) as {
         first_name: string;
         last_name: string;
-        whatsapp_number: string;
       } | null)
     : null;
 
@@ -62,7 +61,9 @@ export default async function ProfilPage() {
 
   return (
     <>
-      {/* En-tête : écusson + surtitre licence + nom serif + contact coach */}
+      {/* En-tête : écusson + surtitre licence + nom serif.
+          Le contact WhatsApp du coach n'est plus ici : il est porté par le
+          bouton flottant du layout, présent sur tous les onglets. */}
       <div className="flex items-center gap-4">
         <AvatarUploader
           avatarUrl={profile?.avatar_url ?? null}
@@ -77,17 +78,6 @@ export default async function ProfilPage() {
             {profile?.last_name}
           </Serif>
         </div>
-        {coach?.whatsapp_number && (
-          <a
-            href={`https://wa.me/${coach.whatsapp_number.replace(/[^\d]/g, "")}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label={`Écrire à ton coach ${coach.first_name} sur WhatsApp`}
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border-2 border-ink text-ink transition-colors hover:bg-ink hover:text-paper"
-          >
-            <WhatsAppIcon size={20} />
-          </a>
-        )}
       </div>
 
       {metaParts.length > 0 && (

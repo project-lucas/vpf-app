@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getCachedUser } from "@/lib/supabase/server";
 import { addDays, parisNow } from "@/lib/dates";
 import type { ActionResult } from "@/lib/types";
 
@@ -31,9 +31,7 @@ export async function toggleHabitCheck(habitId: string, date: string): Promise<A
   }
 
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCachedUser();
   if (!user) return { ok: false, error: "Session expirée." };
 
   const { data: existing } = await supabase

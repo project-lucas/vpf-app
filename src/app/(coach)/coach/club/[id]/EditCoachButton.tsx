@@ -59,8 +59,13 @@ export function EditCoachButton({ coach }: { coach: EditableCoach }) {
               <Input name="last_name" required defaultValue={coach.last_name} />
             </Field>
           </div>
-          <Field label="Numéro WhatsApp">
-            <Input name="whatsapp_number" type="tel" defaultValue={coach.whatsapp_number} />
+          <Field label="Numéro WhatsApp (l'indicatif +33 est ajouté tout seul)">
+            <Input
+              name="whatsapp_number"
+              type="tel"
+              placeholder="06 12 34 56 78"
+              defaultValue={coach.whatsapp_number}
+            />
           </Field>
           <Field label="Nouveau mot de passe (laisser vide pour ne pas changer)">
             <Input name="password" type="text" autoComplete="off" />

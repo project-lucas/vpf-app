@@ -21,6 +21,35 @@ export interface AssignablePlayer {
   name: string;
 }
 
+/**
+ * Aperçu de la fiche de training côté staff : miniature cliquable qui ouvre
+ * l'image en taille réelle dans un nouvel onglet (le zoom plein écran soigné
+ * est réservé à l'écran joueur, thème « Retro Varsity »).
+ */
+function SheetPreview({ session }: { session: LibrarySession }) {
+  // ?? "" : tolère une base pas encore migrée (colonne sheet_url absente)
+  const url = session.sheet_url ?? "";
+  if (!url) return null;
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="block overflow-hidden rounded-xl border border-navy-100 bg-white"
+      title="Ouvrir la fiche en grand"
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element -- URL Supabase externe */}
+      <img
+        src={url}
+        alt={`Fiche de training — ${session.name}`}
+        loading="lazy"
+        decoding="async"
+        className="max-h-72 w-full object-contain"
+      />
+    </a>
+  );
+}
+
 interface Props {
   sessions: LibrarySession[];
   players: AssignablePlayer[];
@@ -29,9 +58,18 @@ interface Props {
   editable: boolean;
   /** séances modifiables/supprimables ; absent = toutes (admin) */
   manageableIds?: string[];
+  /** admin : peut déposer une vidéo sur le stockage du club */
+  isAdmin: boolean;
 }
 
-export function LibraryView({ sessions, players, visibility, editable, manageableIds }: Props) {
+export function LibraryView({
+  sessions,
+  players,
+  visibility,
+  editable,
+  manageableIds,
+  isAdmin,
+}: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [pole, setPole] = useState<SessionPole>("basket");
@@ -191,8 +229,12 @@ export function LibraryView({ sessions, players, visibility, editable, manageabl
                         </div>
 
                         {videoOpen === s.id && (
-                          <div className="mt-3">
+                          /* même ordre que côté joueur : fiche avant la vidéo
+                             en physique, après en technique/routine */
+                          <div className="mt-3 space-y-3">
+                            {s.pole === "physique" && <SheetPreview session={s} />}
                             <YouTubeEmbed url={s.youtube_url} title={s.name} />
+                            {s.pole !== "physique" && <SheetPreview session={s} />}
                           </div>
                         )}
 
@@ -202,7 +244,11 @@ export function LibraryView({ sessions, players, visibility, editable, manageabl
                             variant="ghost"
                             onClick={() => setVideoOpen(videoOpen === s.id ? null : s.id)}
                           >
-                            {videoOpen === s.id ? "Masquer la vidéo" : "Voir la vidéo"}
+                            {videoOpen === s.id
+                              ? "Masquer le contenu"
+                              : s.sheet_url
+                                ? "Voir fiche + vidéo"
+                                : "Voir la vidéo"}
                           </Button>
                           {players.length > 0 && (
                             <Button
@@ -276,6 +322,7 @@ export function LibraryView({ sessions, players, visibility, editable, manageabl
         <SessionFormModal
           session={formTarget === "new" ? null : formTarget}
           defaultPole={pole}
+          isAdmin={isAdmin}
           onClose={() => setFormTarget(null)}
         />
       )}

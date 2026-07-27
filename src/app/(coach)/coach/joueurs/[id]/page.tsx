@@ -33,12 +33,16 @@ import { ReviewReplyBox } from "@/components/coach/ReviewReplyBox";
 import { AvailabilityControl } from "@/components/coach/AvailabilityControl";
 import { CopyWeekTemplate } from "@/components/coach/CopyWeekTemplate";
 import { GoalsManager } from "@/components/coach/GoalsManager";
+import { PlayerWhatsAppLink } from "@/components/coach/PlayerWhatsAppLink";
+import { PlayerHygieneCard } from "@/components/coach/PlayerHygieneCard";
+import { OFFER_LABELS, canUseHygiene, toOffer } from "@/lib/offers";
 import type {
   Checkin,
   CoachNote,
   EventCompletion,
   Habit,
   HabitWithChecks,
+  HygieneLog,
   LibrarySession,
   MatchStat,
   PlannedEvent,
@@ -60,16 +64,12 @@ export default async function PlayerDetailPage({
   const supabase = await createClient();
   const weekStart = currentWeekStart();
 
-  const { data: playerRaw } = await supabase
-    .from("players")
-    .select("*, profile:profiles!players_id_fkey(first_name, last_name)")
-    .eq("id", id)
-    .maybeSingle();
-
-  if (!playerRaw) notFound();
-  const profile = Array.isArray(playerRaw.profile) ? playerRaw.profile[0] : playerRaw.profile;
-
+  // Une seule salve : toutes ces requêtes ne dépendent que de l'id de la route.
+  // Les enchaîner (fiche → le reste → les autres joueurs) ajoutait deux
+  // allers-retours réseau avant le premier octet de la page.
   const [
+    { data: playerRaw },
+    { data: otherPlayersRaw },
     { data: events },
     { data: completions },
     { data: summaries },
@@ -85,7 +85,19 @@ export default async function PlayerDetailPage({
     { data: weekFocus },
     { count: eventsDoneCount },
     { data: goals },
+    { data: hygieneLogs },
   ] = await Promise.all([
+    supabase
+      .from("players")
+      .select("*, profile:profiles!players_id_fkey(first_name, last_name, whatsapp_number)")
+      .eq("id", id)
+      .maybeSingle(),
+    // autres joueurs actifs du coach (RLS) — source de la copie de semaine type
+    supabase
+      .from("players")
+      .select("id, profile:profiles!players_id_fkey(first_name, last_name)")
+      .eq("status", "active")
+      .neq("id", id),
     supabase
       .from("planned_events")
       .select("*")
@@ -150,14 +162,18 @@ export default async function PlayerDetailPage({
       .select("*")
       .eq("player_id", id)
       .order("created_at", { ascending: false }),
+    // hygiène : lisible par le coach référent (0025), y compris pour un joueur
+    // repassé en offre perf — l'historique ne disparaît jamais de la fiche
+    supabase
+      .from("hygiene_logs")
+      .select("*")
+      .eq("player_id", id)
+      .order("log_date", { ascending: false }),
   ]);
 
-  // autres joueurs actifs du coach (RLS) — source de la copie de semaine type
-  const { data: otherPlayersRaw } = await supabase
-    .from("players")
-    .select("id, profile:profiles!players_id_fkey(first_name, last_name)")
-    .eq("status", "active")
-    .neq("id", id);
+  if (!playerRaw) notFound();
+  const profile = Array.isArray(playerRaw.profile) ? playerRaw.profile[0] : playerRaw.profile;
+
   const otherPlayers = (otherPlayersRaw ?? [])
     .map((p) => {
       const pr = Array.isArray(p.profile) ? p.profile[0] : p.profile;
@@ -192,6 +208,8 @@ export default async function PlayerDetailPage({
     matchStats.length > 0 ? Math.max(...matchStats.map((m) => m.points)) : null;
   const checkin = lastCheckin as Checkin | null;
   const age = ageFromBirthdate(playerRaw.birthdate);
+  const offer = toOffer(playerRaw.offer);
+  const allHygieneLogs = (hygieneLogs ?? []) as HygieneLog[];
 
   // ---- Gamification : mêmes calculs que le dashboard joueur (XP, niveau,
   // badges) — le coach voit exactement ce que voit son joueur ----
@@ -270,15 +288,26 @@ export default async function PlayerDetailPage({
       </Link>
 
       <div className="mb-4">
-        <h1 className="text-xl font-extrabold text-navy-900">
-          {profile?.first_name} {profile?.last_name}
-        </h1>
+        <div className="flex items-center justify-between gap-3">
+          <h1 className="text-xl font-extrabold text-navy-900">
+            {profile?.first_name} {profile?.last_name}
+          </h1>
+          <PlayerWhatsAppLink
+            whatsappNumber={profile?.whatsapp_number}
+            playerName={`${profile?.first_name ?? ""} ${profile?.last_name ?? ""}`.trim()}
+            size="md"
+          />
+        </div>
         <p className="mt-0.5 text-sm text-navy-400">
           {[playerRaw.position, playerRaw.club, age !== null ? `${age} ans` : null]
             .filter(Boolean)
             .join(" · ")}
         </p>
         <div className="mt-2 flex flex-wrap items-center gap-2">
+          {/* offre souscrite : se change dans l'onglet Profil */}
+          <Badge tone={offer === "formation" ? "navy" : "neutral"}>
+            Offre {OFFER_LABELS[offer]}
+          </Badge>
           <AvailabilityControl playerId={id} availability={playerRaw.availability ?? "available"} />
           {playerRaw.availability !== "available" && playerRaw.availability_since && (
             <span className="text-[11px] text-navy-400">
@@ -307,12 +336,14 @@ export default async function PlayerDetailPage({
                   initial={{
                     first_name: profile?.first_name ?? "",
                     last_name: profile?.last_name ?? "",
+                    whatsapp_number: profile?.whatsapp_number ?? "",
                     position: playerRaw.position,
                     club: playerRaw.club,
                     birthdate: playerRaw.birthdate,
                     height_cm: playerRaw.height_cm,
                     weight_kg: playerRaw.weight_kg,
                     season_goal: playerRaw.season_goal,
+                    offer,
                   }}
                 />
                 <Card>
@@ -655,6 +686,21 @@ export default async function PlayerDetailPage({
               </div>
             ),
           },
+          // Hygiène : onglet de l'offre formation ; il reste affiché pour un
+          // joueur repassé en perf tant qu'il a un historique à consulter.
+          ...(canUseHygiene(offer) || allHygieneLogs.length > 0
+            ? [
+                {
+                  label: "Hygiène",
+                  content: (
+                    <PlayerHygieneCard
+                      logs={allHygieneLogs}
+                      isFormation={canUseHygiene(offer)}
+                    />
+                  ),
+                },
+              ]
+            : []),
           {
             label: "Habitudes",
             content: (

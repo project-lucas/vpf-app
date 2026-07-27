@@ -31,14 +31,27 @@ export async function createClient() {
   );
 }
 
+/** Utilisateur courant réduit à ce que l'application utilise réellement. */
+export interface CurrentUser {
+  id: string;
+}
+
 /**
- * Utilisateur courant, dédupliqué par requête (React cache) : layout et page
- * se partagent UN SEUL appel réseau auth.getUser() au lieu d'un chacun.
+ * Utilisateur courant, dédupliqué par requête (React cache).
+ *
+ * Vérification LOCALE du jeton via `getClaims()` : depuis le passage du projet
+ * Supabase aux clés de signature asymétriques (ECC P-256), la signature se
+ * contrôle avec le JWKS public, mis en cache par le processus. Plus d'appel
+ * réseau à l'API auth à chaque rendu — c'était un aller-retour complet par
+ * page, avant même la première requête de données.
+ *
+ * `getClaims()` rafraîchit quand même le jeton expiré (et purge la session si
+ * le compte a été banni entre-temps) : le flux d'authentification est
+ * inchangé, seul le coût disparaît.
  */
-export const getCachedUser = cache(async () => {
+export const getCachedUser = cache(async (): Promise<CurrentUser | null> => {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  return user;
+  const { data } = await supabase.auth.getClaims();
+  const id = data?.claims.sub;
+  return id ? { id } : null;
 });

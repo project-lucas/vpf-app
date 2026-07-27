@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { sendPushToUser } from "@/lib/push";
 import { addDays, parisNow, timeToMinutes } from "@/lib/dates";
 import { EVENT_TYPE_LABELS } from "@/lib/constants";
+import { canUseHygiene, toOffer } from "@/lib/offers";
 import type { EventType } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -23,6 +24,9 @@ export const maxDuration = 60;
  * 4. Dès le lundi midi : clôture de la semaine précédente — fige le résumé
  *    hebdomadaire (weekly_summaries). C'est la "nouvelle semaine de suivi"
  *    automatique.
+ * 5. Lundi 12h-20h : récap push de la semaine écoulée.
+ * 6. Tous les soirs à 20h : rappel de la mission d'hygiène aux joueurs de
+ *    l'offre formation qui n'ont pas encore noté leur journée.
  *
  * La table notification_log (contrainte UNIQUE) garantit qu'aucun rappel
  * n'est envoyé deux fois, même si deux exécutions se chevauchent.
@@ -41,7 +45,14 @@ export async function GET(request: NextRequest) {
   const weekStart = addDays(now.date, 1 - now.isoWeekday);
   const prevWeekStart = addDays(weekStart, -7);
 
-  const results = { eventReminders: 0, reviewReminders: 0, missedFilled: 0, weeksClosed: 0, recaps: 0 };
+  const results = {
+    eventReminders: 0,
+    reviewReminders: 0,
+    missedFilled: 0,
+    weeksClosed: 0,
+    recaps: 0,
+    hygieneReminders: 0,
+  };
 
   // Joueurs actifs + préférence notifications. Les joueurs blessés / en
   // vacances sont entièrement gelés : pas de rappels, pas de matérialisation
@@ -51,7 +62,9 @@ export async function GET(request: NextRequest) {
   // matérialise jamais les jours d'absence.
   const { data: activePlayers } = await admin
     .from("players")
-    .select("id, availability, availability_since, profile:profiles!players_id_fkey(notifications_enabled)")
+    .select(
+      "id, availability, availability_since, offer, profile:profiles!players_id_fkey(notifications_enabled)"
+    )
     .eq("status", "active");
 
   const players = (activePlayers ?? [])
@@ -61,6 +74,7 @@ export async function GET(request: NextRequest) {
       return {
         id: p.id,
         availabilitySince: p.availability_since as string | null,
+        offer: toOffer(p.offer),
         notificationsEnabled: profile?.notifications_enabled ?? false,
       };
     });
@@ -264,6 +278,50 @@ export async function GET(request: NextRequest) {
           url: "/dashboard",
         });
         results.recaps++;
+      }
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // 6. Mission du jour — rappel à 20h aux joueurs de l'offre formation qui
+  //    n'ont pas encore noté leur hygiène de vie. Fenêtre 20h-22h pour
+  //    absorber un cron en retard ; le notification_log (ref_key = la date)
+  //    garantit un seul rappel par jour, même sur plusieurs exécutions.
+  //    Les joueurs blessés / en vacances sont déjà écartés de `players`.
+  // -------------------------------------------------------------------------
+  if (now.minutesOfDay >= 20 * 60 && now.minutesOfDay < 22 * 60) {
+    const targets = players
+      .filter((p) => p.notificationsEnabled && canUseHygiene(p.offer))
+      .map((p) => p.id);
+
+    if (targets.length > 0) {
+      const { data: todayLogs } = await admin
+        .from("hygiene_logs")
+        .select("player_id")
+        .eq("log_date", now.date)
+        .in("player_id", targets);
+      const noted = new Set((todayLogs ?? []).map((l) => l.player_id));
+
+      for (const playerId of targets) {
+        if (noted.has(playerId)) continue;
+
+        const refKey = `hygiene:${now.date}`;
+        const { data: logged } = await admin
+          .from("notification_log")
+          .upsert(
+            { user_id: playerId, kind: "hygiene_mission", ref_key: refKey },
+            { onConflict: "user_id,kind,ref_key", ignoreDuplicates: true }
+          )
+          .select("id");
+
+        if (logged && logged.length > 0) {
+          await sendPushToUser(playerId, {
+            title: "Ta mission du jour 💤",
+            body: "Note ton sommeil et ton alimentation — une minute, et ta journée est bouclée.",
+            url: "/planning",
+          });
+          results.hygieneReminders++;
+        }
       }
     }
   }

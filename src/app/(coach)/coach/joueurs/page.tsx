@@ -12,43 +12,55 @@ export const dynamic = "force-dynamic";
 export default async function CoachPlayersPage() {
   const supabase = await createClient();
   const user = await getCachedUser();
+
+  // Joueurs et invitations ne dépendent pas les uns des autres : une seule
+  // salve réseau au lieu de deux allers-retours enchaînés.
   // filtre coach_id explicite : un admin ne voit ici QUE ses propres joueurs
-  const players = await getPlayersWithDiscipline(supabase, user?.id);
+  const [players, { data: invitations }] = await Promise.all([
+    getPlayersWithDiscipline(supabase, user?.id),
+    user
+      ? supabase
+          .from("invitations")
+          .select("*")
+          .eq("coach_id", user.id)
+          .order("created_at", { ascending: false })
+      : Promise.resolve({ data: null }),
+  ]);
 
   // Coachs et admins invitent leurs propres joueurs directement ici (les actions
   // re-vérifient le rôle et la propriété côté serveur).
-  let invitationRows: (Invitation & { used_by_name: string | null })[] = [];
-  if (user) {
-    const { data: invitations } = await supabase
-      .from("invitations")
-      .select("*")
-      .eq("coach_id", user.id)
-      .order("created_at", { ascending: false });
-    const usedByIds = ((invitations ?? []) as Invitation[])
-      .map((i) => i.used_by)
-      .filter((v): v is string => Boolean(v));
-    const { data: usedByProfiles } =
-      usedByIds.length === 0
-        ? { data: [] }
-        : await supabase.from("profiles").select("id, first_name, last_name").in("id", usedByIds);
-    const usedByNames = new Map(
-      (usedByProfiles ?? []).map((p) => [p.id, `${p.first_name} ${p.last_name}`.trim()])
-    );
-    invitationRows = ((invitations ?? []) as Invitation[]).map((inv) => ({
-      ...inv,
-      used_by_name: inv.used_by ? (usedByNames.get(inv.used_by) ?? "Joueur") : null,
-    }));
-  }
+  const usedByIds = ((invitations ?? []) as Invitation[])
+    .map((i) => i.used_by)
+    .filter((v): v is string => Boolean(v));
 
-  // Avancement par pôle : séances visibles (cochées) et faites, pour chaque joueur
-  const { data: assignments } = await supabase
-    .from("session_assignments")
-    .select("player_id, session:library_sessions!inner(pole), completion:session_completions(status)")
-    .in(
-      "player_id",
-      players.map((p) => p.id)
-    )
-    .is("removed_at", null);
+  // Noms des joueurs inscrits et avancement par pôle : indépendants, donc lancés
+  // ensemble (deuxième et dernière salve de la page).
+  const [{ data: usedByProfiles }, { data: assignments }] = await Promise.all([
+    usedByIds.length === 0
+      ? Promise.resolve({ data: [] })
+      : supabase.from("profiles").select("id, first_name, last_name").in("id", usedByIds),
+    // séances visibles (cochées) et faites, pour chaque joueur
+    supabase
+      .from("session_assignments")
+      .select(
+        "player_id, session:library_sessions!inner(pole), completion:session_completions(status)"
+      )
+      .in(
+        "player_id",
+        players.map((p) => p.id)
+      )
+      .is("removed_at", null),
+  ]);
+
+  const usedByNames = new Map(
+    (usedByProfiles ?? []).map((p) => [p.id, `${p.first_name} ${p.last_name}`.trim()])
+  );
+  const invitationRows: (Invitation & { used_by_name: string | null })[] = (
+    (invitations ?? []) as Invitation[]
+  ).map((inv) => ({
+    ...inv,
+    used_by_name: inv.used_by ? (usedByNames.get(inv.used_by) ?? "Joueur") : null,
+  }));
 
   const progressByPlayer = new Map<string, PoleProgress>();
   for (const a of assignments ?? []) {
@@ -84,9 +96,11 @@ export default async function CoachPlayersPage() {
             first_name: p.first_name,
             last_name: p.last_name,
             season_goal: p.season_goal,
+            offer: p.offer,
             availability: p.availability,
             discipline: p.discipline,
             progress: progressByPlayer.get(p.id) ?? null,
+            whatsapp_number: p.whatsapp_number,
           }))}
         />
       )}

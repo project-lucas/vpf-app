@@ -111,7 +111,24 @@ export default async function CoachDashboardPage() {
   const user = await getCachedUser();
   // filtre coach_id explicite : un admin ne voit ici QUE ses propres joueurs
   const players = await getPlayersWithDiscipline(supabase, user?.id);
-  const overview = await getCoachOverview(supabase, players);
+
+  // Remontées joueurs et check-ins ne dépendent que de la liste des joueurs :
+  // les enchaîner coûtait un aller-retour réseau de plus avant l'affichage.
+  const [overview, { data: checkinRows }] = await Promise.all([
+    getCoachOverview(supabase, players),
+    // ---- Santé : dernier check-in énergie et douleurs de chaque joueur ----
+    players.length === 0
+      ? Promise.resolve({ data: [] })
+      : supabase
+          .from("checkins")
+          .select("player_id, question, score, created_at")
+          .in(
+            "player_id",
+            players.map((p) => p.id)
+          )
+          .order("created_at", { ascending: false })
+          .limit(200),
+  ]);
 
   const weekStart = currentWeekStart();
   const prevWeekStart = addDays(weekStart, -7);
@@ -126,20 +143,6 @@ export default async function CoachDashboardPage() {
     (p) => p.discipline !== null && p.discipline < LOW_DISCIPLINE_THRESHOLD
   );
   const emptyPlanning = availablePlayers.filter((p) => p.planningEmpty);
-
-  // ---- Santé : dernier check-in énergie et douleurs de chaque joueur ----
-  const { data: checkinRows } =
-    players.length === 0
-      ? { data: [] }
-      : await supabase
-          .from("checkins")
-          .select("player_id, question, score, created_at")
-          .in(
-            "player_id",
-            players.map((p) => p.id)
-          )
-          .order("created_at", { ascending: false })
-          .limit(200);
 
   const health = new Map<string, HealthEntry>();
   for (const c of checkinRows ?? []) {

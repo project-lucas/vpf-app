@@ -246,6 +246,14 @@ export const TargetIcon = (p: IconProps) => (
   </Svg>
 );
 
+// Cœur battant : onglet Hygiène de vie (sommeil, hydratation, nutrition)
+export const HeartIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M12 20.5s-7.5-4.6-7.5-9.6A4.4 4.4 0 0 1 12 8a4.4 4.4 0 0 1 7.5 2.9c0 5-7.5 9.6-7.5 9.6Z" />
+    <path d="M6.5 13.2h3l1.5-2.7 1.8 4.2 1.4-1.5h2.8" />
+  </Svg>
+);
+
 // Appareil photo : badge d'upload de l'avatar
 export const CameraIcon = (p: IconProps) => (
   <Svg {...p}>

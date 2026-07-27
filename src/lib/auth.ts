@@ -5,9 +5,8 @@ import type { Profile } from "./types";
 /** Utilisateur courant + profil (ou null si non connecté). */
 export async function getAuthProfile() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // getCachedUser : jeton vérifié localement et dédupliqué par requête
+  const user = await getCachedUser();
   if (!user) return { supabase, user: null, profile: null };
 
   const { data: profile } = await supabase
