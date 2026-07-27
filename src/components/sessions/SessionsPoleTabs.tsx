@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { CATEGORIES, POLE_LABELS } from "@/lib/constants";
-import { XP_VALUES } from "@/lib/gamification";
 import { DumbbellIcon, RepeatIcon, TargetIcon } from "@/components/icons";
 import { EditorialTabs } from "@/components/editorial/EditorialTabs";
 import { IndexRow, Overline } from "@/components/editorial/primitives";
@@ -25,7 +24,7 @@ const isDone = (a: SessionAssignmentWithSession) => a.completion?.status === "do
 
 /**
  * Onglets Physique / Technique / Routine (langage Éditorial Sport) : une seule
- * catégorie affichée à la fois, avec relance XP et renvoi vers les autres pôles.
+ * catégorie affichée à la fois.
  */
 export function SessionsPoleTabs({
   list,
@@ -48,19 +47,7 @@ export function SessionsPoleTabs({
     );
   const note = notes.find((n) => n.pole === pole)?.content;
   const doneInPole = poleList.filter(isDone).length;
-  const pendingInPole = poleList.length - doneInPole;
   const sectionIndex = String(POLE_ORDER.indexOf(pole) + 1).padStart(2, "0");
-
-  // Renvoi : le pôle (autre que courant) avec le plus de séances à faire
-  const suggestion = POLE_ORDER.filter((p) => p !== pole)
-    .map((p) => {
-      const sessions = list.filter((a) => a.session.pole === p);
-      return { pole: p, pending: sessions.filter((a) => !isDone(a)).length };
-    })
-    .filter((s) => s.pending > 0)
-    .sort((a, b) => b.pending - a.pending)[0];
-
-  const todayXp = pendingInPole * XP_VALUES.sessionDone;
 
   return (
     <div>
@@ -110,46 +97,6 @@ export function SessionsPoleTabs({
           ))}
         </div>
       )}
-
-      {/* Renvoi vers un autre pôle qui a des séances à faire */}
-      {suggestion && (
-        <button
-          onClick={() => setPole(suggestion.pole)}
-          className="mt-6 flex w-full items-center gap-4 rounded-md border-2 border-ink bg-card px-4 py-3.5 text-left transition-colors hover:bg-ink/5"
-        >
-          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-ink">
-            <span className="ed-value text-base text-warm">+{suggestion.pending * XP_VALUES.sessionDone}</span>
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="ed-value block text-base text-ink">
-              {suggestion.pending} séance{suggestion.pending > 1 ? "s" : ""}{" "}
-              {POLE_SHORT[suggestion.pole].toLowerCase()}
-            </span>
-            <span className="ed-meta block text-[9px] text-meta">
-              Onglet {POLE_SHORT[suggestion.pole]} — XP à la clé
-            </span>
-          </span>
-          <span aria-hidden className="ed-value shrink-0 text-2xl text-orange">
-            ›
-          </span>
-        </button>
-      )}
-
-      {/* Relance XP : gain unique par séance validée (pas un cycle quotidien) */}
-      <div className="mt-8 text-center">
-        {pendingInPole > 0 ? (
-          <p className="ed-display text-[26px] text-orange">+{todayXp} XP à débloquer</p>
-        ) : (
-          <p className="ed-display text-[26px] text-ink">Séances validées</p>
-        )}
-        <p className="ed-meta mt-1.5 text-[10px] text-meta">
-          {pendingInPole > 0
-            ? pendingInPole > 1
-              ? "Termine tes séances pour les gagner"
-              : "Termine ta séance pour les gagner"
-            : "Bien joué — ton coach ajoutera la suite"}
-        </p>
-      </div>
     </div>
   );
 }
