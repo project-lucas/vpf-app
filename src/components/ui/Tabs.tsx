@@ -12,7 +12,10 @@ export function Tabs({ items }: { items: TabItem[] }) {
 
   return (
     <div>
-      <div className="scrollbar-none -mx-4 mb-4 flex gap-1.5 overflow-x-auto px-4 pb-1">
+      {/* Au doigt : bande qui défile bord à bord. À la souris : on passe en
+          retour à la ligne — sans barre de défilement visible, les derniers
+          onglets (Bilans, Notes privées…) étaient inatteignables sur ordinateur. */}
+      <div className="scrollbar-none -mx-4 mb-4 flex gap-1.5 overflow-x-auto px-4 pb-1 pointer-fine:mx-0 pointer-fine:flex-wrap pointer-fine:overflow-x-visible pointer-fine:px-0">
         {items.map((item, i) => (
           <button
             key={i}

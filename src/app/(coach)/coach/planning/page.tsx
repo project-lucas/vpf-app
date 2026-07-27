@@ -177,7 +177,7 @@ export default async function CoachPlanningPage({
 
       {/* Filtre par joueur */}
       {players.length > 1 && (
-        <div className="mb-4 flex gap-1.5 overflow-x-auto pb-1">
+        <div className="mb-4 flex gap-1.5 overflow-x-auto pb-1 pointer-fine:flex-wrap pointer-fine:overflow-x-visible">
           <Link
             href={`/coach/planning?w=${weekStart}`}
             className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-bold ${
