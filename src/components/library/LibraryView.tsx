@@ -70,6 +70,9 @@ export function LibraryView({
   manageableIds,
   isAdmin,
 }: Props) {
+  // La création de séance est réservée à l'admin : le coach affecte la
+  // bibliothèque du club et retouche au plus ses propres séances.
+  const canCreate = editable && isAdmin;
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [pole, setPole] = useState<SessionPole>("basket");
@@ -146,7 +149,7 @@ export function LibraryView({
         ))}
       </div>
 
-      {editable && (
+      {canCreate && (
         <Button full className="mb-4" onClick={() => setFormTarget("new")}>
           <PlusIcon size={16} /> Nouvelle séance
         </Button>
@@ -330,8 +333,8 @@ export function LibraryView({
         </Button>
       </Modal>
 
-      {/* Modal création / édition (admin) */}
-      {editable && formTarget !== null && (
+      {/* Modal création (admin) / édition (admin + auteur de la séance) */}
+      {editable && formTarget !== null && (formTarget !== "new" || canCreate) && (
         <SessionFormModal
           session={formTarget === "new" ? null : formTarget}
           defaultPole={pole}

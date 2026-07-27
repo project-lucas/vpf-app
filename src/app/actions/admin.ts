@@ -359,8 +359,9 @@ function validateSession(data: SessionData): string | null {
 }
 
 /**
- * Admin ou coach pour la bibliothèque : l'admin gère tout, un coach ne gère
- * que les séances qu'il a créées (les programmes admin restent intouchables).
+ * Admin ou coach pour la bibliothèque : la création est réservée à l'admin,
+ * qui gère aussi toute la bibliothèque ; un coach ne peut que modifier ou
+ * supprimer les séances qu'il avait créées (les programmes restent intouchables).
  */
 async function requireLibrarian(): Promise<
   { ok: true; userId: string; isAdmin: boolean } | { ok: false; error: string }
@@ -394,6 +395,11 @@ async function sessionWriteDenied(
 export async function createLibrarySession(data: SessionData): Promise<ActionResult> {
   const guard = await requireLibrarian();
   if (!guard.ok) return guard;
+  // La bibliothèque est alimentée par le club : un coach affecte et modifie
+  // ses propres séances mais n'en crée pas de nouvelles.
+  if (!guard.isAdmin) {
+    return { ok: false, error: "Seul un administrateur peut créer une séance." };
+  }
   const invalid = validateSession(data);
   if (invalid) return { ok: false, error: invalid };
 

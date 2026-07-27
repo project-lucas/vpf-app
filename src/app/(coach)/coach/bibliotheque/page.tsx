@@ -36,8 +36,8 @@ export default async function CoachLibraryPage() {
     (visibility[a.session_id] ??= []).push(a.player_id);
   }
 
-  // le coach crée ses propres séances et ne peut modifier que celles-ci ;
-  // l'admin gère toute la bibliothèque (dont les programmes)
+  // seul l'admin crée des séances ; un coach ne peut retoucher que celles
+  // qu'il avait créées auparavant, l'admin gère toute la bibliothèque
   const allSessions = (sessions ?? []) as LibrarySession[];
   const manageableIds = isAdmin
     ? allSessions.map((s) => s.id)
@@ -47,7 +47,11 @@ export default async function CoachLibraryPage() {
     <>
       <PageHeader
         title="Séances"
-        subtitle="Crée tes séances et coche pour chacune les joueurs qui peuvent la voir."
+        subtitle={
+          isAdmin
+            ? "Crée les séances du club et coche pour chacune les joueurs qui peuvent la voir."
+            : "Coche pour chaque séance les joueurs qui peuvent la voir."
+        }
       />
       <LibraryView
         sessions={allSessions}
