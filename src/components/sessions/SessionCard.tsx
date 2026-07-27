@@ -62,33 +62,40 @@ export function SessionCard({
     <SessionSheet url={sheetUrl} sessionName={session.name} />
   ) : null;
 
+  const tags = (
+    <>
+      <span className="ed-meta rounded border border-paper/40 px-1.5 py-0.5 text-[9px] text-paper">
+        {session.duration_minutes} min
+      </span>
+      {session.equipment && (
+        <span className="ed-meta rounded border border-paper/40 px-1.5 py-0.5 text-[9px] text-paper">
+          {session.equipment}
+        </span>
+      )}
+    </>
+  );
+
   const mediaBlock = (
-    /* Bloc média : navy avec liseré crème, gros numéro, play rond rouge, tags */
+    /* Bloc média : navy avec liseré crème, gros numéro, play rond rouge, tags.
+       Le format 16:9 est réservé aux séances qui ont VRAIMENT une vidéo — sinon
+       c'est un bandeau compact (sans vidéo, le 16:9 n'est qu'un trou navy). */
     <div className="rounded-lg border-2 border-ink bg-ink p-1.5">
-      {/* max-h quand pas de vidéo affichée : en pleine largeur desktop, un 16:9 ferait ~650px de navy vide */}
-      <div
-        className={`relative aspect-video w-full overflow-hidden rounded-md border border-warm/25 bg-ink ${
-          videoOpen && hasVideo ? "" : "max-h-72"
-        }`}
-      >
-        {videoOpen && hasVideo ? (
-          <YouTubeEmbed url={session.youtube_url} title={session.name} />
-        ) : (
-          <>
-            <span className="ed-value absolute left-3 top-1 text-[54px] leading-tight text-paper">
-              {num}
-            </span>
-            <div className="absolute bottom-3 left-3 flex flex-wrap gap-1.5">
-              <span className="ed-meta rounded border border-paper/40 px-1.5 py-0.5 text-[9px] text-paper">
-                {session.duration_minutes} min
+      {hasVideo ? (
+        // max-h tant que la vidéo n'est pas lancée : en pleine largeur desktop,
+        // un 16:9 ferait ~650px de navy vide
+        <div
+          className={`relative aspect-video w-full overflow-hidden rounded-md border border-warm/25 bg-ink ${
+            videoOpen ? "" : "max-h-72"
+          }`}
+        >
+          {videoOpen ? (
+            <YouTubeEmbed url={session.youtube_url} title={session.name} />
+          ) : (
+            <>
+              <span className="ed-value absolute left-3 top-1 text-[54px] leading-tight text-paper">
+                {num}
               </span>
-              {session.equipment && (
-                <span className="ed-meta rounded border border-paper/40 px-1.5 py-0.5 text-[9px] text-paper">
-                  {session.equipment}
-                </span>
-              )}
-            </div>
-            {hasVideo && (
+              <div className="absolute bottom-3 left-3 flex flex-wrap gap-1.5">{tags}</div>
               <button
                 onClick={() => setVideoOpen(true)}
                 aria-label="Lire la vidéo"
@@ -96,10 +103,15 @@ export function SessionCard({
               >
                 <PlayIcon size={20} />
               </button>
-            )}
-          </>
-        )}
-      </div>
+            </>
+          )}
+        </div>
+      ) : (
+        <div className="flex items-center justify-between gap-3 rounded-md border border-warm/25 px-3 py-2">
+          <span className="ed-value text-[34px] leading-none text-paper">{num}</span>
+          <div className="flex flex-wrap justify-end gap-1.5">{tags}</div>
+        </div>
+      )}
     </div>
   );
 

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { CATEGORIES, POLE_LABELS } from "@/lib/constants";
 import { DumbbellIcon, RepeatIcon, TargetIcon } from "@/components/icons";
 import { EditorialTabs } from "@/components/editorial/EditorialTabs";
-import { IndexRow, Overline } from "@/components/editorial/primitives";
+import { IndexRow, Overline, SectionHead } from "@/components/editorial/primitives";
 import { SessionCard } from "./SessionCard";
 import type { SessionAssignmentWithSession, SessionPole } from "@/lib/types";
 
@@ -34,6 +34,33 @@ function categoryRank(pole: SessionPole, categories: string[]): number {
   return ranks.length > 0 ? Math.min(...ranks) : Number.MAX_SAFE_INTEGER;
 }
 
+type CategoryGroup = { label: string; items: SessionAssignmentWithSession[] };
+
+/**
+ * Découpe les séances d'un pôle en sections, dans l'ordre de CATEGORIES.
+ * Une séance de prépa physique peut porter plusieurs catégories : elle est
+ * rangée sous sa catégorie principale (la plus haute dans l'ordre de référence)
+ * pour n'apparaître qu'une fois. Les sections vides sont omises ; les séances
+ * sans catégorie connue ferment la liste (base pas encore migrée).
+ */
+function groupByCategory(
+  pole: SessionPole,
+  list: SessionAssignmentWithSession[]
+): CategoryGroup[] {
+  const order = CATEGORIES[pole] ?? [];
+  const groups: CategoryGroup[] = order.map((label) => ({ label, items: [] }));
+  const others: SessionAssignmentWithSession[] = [];
+
+  for (const a of list) {
+    const rank = categoryRank(pole, a.session.categories ?? []);
+    if (rank === Number.MAX_SAFE_INTEGER) others.push(a);
+    else groups[rank].items.push(a);
+  }
+
+  const filled = groups.filter((g) => g.items.length > 0);
+  return others.length > 0 ? [...filled, { label: "Autres séances", items: others }] : filled;
+}
+
 /**
  * Onglets Physique / Technique / Routine (langage Éditorial Sport) : une seule
  * catégorie affichée à la fois.
@@ -50,13 +77,13 @@ export function SessionsPoleTabs({
     () => POLE_ORDER.find((p) => list.some((a) => a.session.pole === p)) ?? "physique"
   );
 
-  const poleList = list
-    .filter((a) => a.session.pole === pole)
-    .sort(
-      (a, b) =>
-        categoryRank(pole, a.session.categories ?? []) -
-        categoryRank(pole, b.session.categories ?? [])
-    );
+  const poleList = list.filter((a) => a.session.pole === pole);
+  const groups = groupByCategory(pole, poleList);
+  // numérotation continue sur tout le pôle (01, 02, 03…), les sections ne la
+  // remettent pas à zéro : le numéro identifie la séance dans le programme
+  const numbers = new Map(
+    groups.flatMap((g) => g.items).map((a, i) => [a.id, i + 1] as const)
+  );
   const note = notes.find((n) => n.pole === pole)?.content;
   const doneInPole = poleList.filter(isDone).length;
   const sectionIndex = String(POLE_ORDER.indexOf(pole) + 1).padStart(2, "0");
@@ -103,9 +130,16 @@ export function SessionsPoleTabs({
           </p>
         </div>
       ) : (
-        <div className="mt-5 space-y-8">
-          {poleList.map((a, i) => (
-            <SessionCard key={a.id} assignment={a} index={i + 1} />
+        <div className="mt-6 space-y-10">
+          {groups.map((g) => (
+            <section key={g.label}>
+              <SectionHead>{g.label}</SectionHead>
+              <div className="mt-4 space-y-8">
+                {g.items.map((a) => (
+                  <SessionCard key={a.id} assignment={a} index={numbers.get(a.id) ?? 0} />
+                ))}
+              </div>
+            </section>
           ))}
         </div>
       )}
