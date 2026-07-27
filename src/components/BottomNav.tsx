@@ -41,7 +41,13 @@ export function BottomNav({
                   <span aria-hidden className="absolute top-0 h-[3px] w-8 bg-orange" />
                 )}
                 {item.icon}
-                <span className="ed-meta text-[9px]">{item.label}</span>
+                {/* truncate : en offre formation la barre porte 5 onglets, et
+                    « PROGRAMME » en mono espacé frôle la largeur d'une case sur
+                    un écran 320px — mieux vaut l'ellipser que passer à la ligne
+                    et épaissir la barre */}
+                <span className="ed-meta w-full truncate text-center text-[9px]">
+                  {item.label}
+                </span>
               </Link>
             );
           })}

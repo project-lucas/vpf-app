@@ -158,6 +158,9 @@ export async function assignSession(
   const user = await getCachedUser();
   if (!user) return { ok: false, error: "Session expirée." };
 
+  // joueurs réellement nouvellement affectés : eux seuls seront prévenus
+  const newlyAssigned: string[] = [];
+
   for (const playerId of playerIds) {
     // anti-doublon : si la séance est déjà affectée et active pour ce joueur,
     // on ne recrée pas de ligne (double-clic ou ré-affectation).
@@ -185,9 +188,34 @@ export async function assignSession(
       order_index: (maxRow?.order_index ?? 0) + 1,
     });
     if (error) return { ok: false, error: "Affectation impossible." };
+    newlyAssigned.push(playerId);
     revalidatePlayer(playerId);
   }
   revalidatePath("/coach/bibliotheque");
+
+  // Sans push, le joueur ne découvrait la séance qu'en ouvrant l'app de
+  // lui-même. Envoyé après la boucle et en parallèle : l'affectation est déjà
+  // enregistrée, une notification qui traîne ne doit pas retarder la réponse.
+  // Les doublons ignorés plus haut ne déclenchent rien — pas de relance.
+  if (newlyAssigned.length > 0) {
+    const { data: session } = await supabase
+      .from("library_sessions")
+      .select("name")
+      .eq("id", sessionId)
+      .maybeSingle();
+    await Promise.all(
+      newlyAssigned.map((playerId) =>
+        pushToPlayerIfEnabled(playerId, {
+          title: "Nouvelle séance de ton coach 🏀",
+          body: session?.name
+            ? `${session.name} t'attend dans ton programme.`
+            : "Une nouvelle séance t'attend dans ton programme.",
+          url: "/seances",
+        })
+      )
+    );
+  }
+
   return { ok: true };
 }
 

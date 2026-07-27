@@ -1,6 +1,5 @@
 import { createClient, getCachedUser } from "@/lib/supabase/server";
 import { daysBetween, parisNow } from "@/lib/dates";
-import { isBetaPlayer } from "@/lib/beta";
 import { canUseHygiene, toOffer } from "@/lib/offers";
 import { CHECKIN_INTERVAL_DAYS } from "@/lib/constants";
 import { BottomNav } from "@/components/BottomNav";
@@ -15,8 +14,6 @@ export default async function PlayerLayout({ children }: { children: React.React
   const supabase = await createClient();
   const user = await getCachedUser();
 
-  // Programme est encore en construction : porte d'entrée bêta.
-  const showBeta = isBetaPlayer(user?.id);
   // Hygiène : réservée à l'offre formation (lue avec le coach ci-dessous).
   let showHygiene = false;
 
@@ -72,11 +69,7 @@ export default async function PlayerLayout({ children }: { children: React.React
           ...(showHygiene
             ? [{ href: "/hygiene", label: "Hygiène", icon: <HeartIcon size={22} /> }]
             : []),
-          // Programme : encore en construction, visible seulement par les
-          // joueurs en accès anticipé (src/lib/beta.ts).
-          ...(showBeta
-            ? [{ href: "/seances", label: "Programme", icon: <BallIcon size={22} /> }]
-            : []),
+          { href: "/seances", label: "Programme", icon: <BallIcon size={22} /> },
           { href: "/planning", label: "Planning", icon: <CalendarIcon size={22} /> },
           { href: "/dashboard", label: "Dashboard", icon: <ChartIcon size={22} /> },
           { href: "/parametres", label: "Profil", icon: <UserIcon size={22} /> },
