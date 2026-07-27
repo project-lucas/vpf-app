@@ -26,6 +26,24 @@ export interface PushPayload {
 }
 
 /**
+ * Nombre d'appareils réellement abonnés au push pour un utilisateur.
+ *
+ * Passe par le service_role : la policy de push_subscriptions est volontairement
+ * limitée au propriétaire (chaque ligne porte les clés de chiffrement du
+ * navigateur), un coach ne peut donc pas les lire — et n'a pas à les lire, seul
+ * le compte l'intéresse. L'appelant DOIT avoir vérifié sous RLS qu'il a le droit
+ * de consulter ce joueur avant d'appeler cette fonction.
+ */
+export async function countPushDevices(userId: string): Promise<number> {
+  const admin = createAdminClient();
+  const { count } = await admin
+    .from("push_subscriptions")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId);
+  return count ?? 0;
+}
+
+/**
  * Envoie une notification push à toutes les subscriptions d'un utilisateur.
  * Les subscriptions expirées (404/410) sont supprimées au passage.
  */

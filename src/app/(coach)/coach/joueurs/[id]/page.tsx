@@ -35,6 +35,8 @@ import { CopyWeekTemplate } from "@/components/coach/CopyWeekTemplate";
 import { GoalsManager } from "@/components/coach/GoalsManager";
 import { PlayerWhatsAppLink } from "@/components/coach/PlayerWhatsAppLink";
 import { PlayerHygieneCard } from "@/components/coach/PlayerHygieneCard";
+import { PlayerNotificationsCard } from "@/components/coach/PlayerNotificationsCard";
+import { countPushDevices } from "@/lib/push";
 import { OFFER_LABELS, canUseHygiene, toOffer } from "@/lib/offers";
 import type {
   Checkin,
@@ -89,7 +91,9 @@ export default async function PlayerDetailPage({
   ] = await Promise.all([
     supabase
       .from("players")
-      .select("*, profile:profiles!players_id_fkey(first_name, last_name, whatsapp_number)")
+      .select(
+        "*, profile:profiles!players_id_fkey(first_name, last_name, whatsapp_number, notifications_enabled)"
+      )
       .eq("id", id)
       .maybeSingle(),
     // autres joueurs actifs du coach (RLS) — source de la copie de semaine type
@@ -173,6 +177,11 @@ export default async function PlayerDetailPage({
 
   if (!playerRaw) notFound();
   const profile = Array.isArray(playerRaw.profile) ? playerRaw.profile[0] : playerRaw.profile;
+
+  // Après le notFound() seulement : la lecture ci-dessus s'est faite sous RLS,
+  // c'est elle qui prouve que l'utilisateur a le droit de consulter ce joueur.
+  // Le comptage, lui, contourne la RLS (voir countPushDevices).
+  const pushDeviceCount = await countPushDevices(id);
 
   const otherPlayers = (otherPlayersRaw ?? [])
     .map((p) => {
@@ -345,6 +354,10 @@ export default async function PlayerDetailPage({
                     season_goal: playerRaw.season_goal,
                     offer,
                   }}
+                />
+                <PlayerNotificationsCard
+                  enabled={profile?.notifications_enabled ?? true}
+                  deviceCount={pushDeviceCount}
                 />
                 <Card>
                   <CardTitle>Objectifs mesurables</CardTitle>
