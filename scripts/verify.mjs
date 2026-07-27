@@ -149,7 +149,12 @@ console.log("\n3. RLS — coachs");
 
   const libWrite = await rest(karim, "library_sessions", {
     method: "POST",
-    body: JSON.stringify({ name: "x", pole: "basket", category: "Tir", duration_minutes: 10 }),
+    body: JSON.stringify({
+      name: "x",
+      pole: "basket",
+      categories: ["Début de séance"],
+      duration_minutes: 10,
+    }),
   });
   check("coach : création de séance refusée", libWrite.status === 401 || libWrite.status === 403, `(${libWrite.status})`);
 }

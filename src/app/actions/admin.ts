@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthProfile } from "@/lib/auth";
-import { CATEGORIES, POSITIONS } from "@/lib/constants";
+import { allowsMultipleCategories, CATEGORIES, POSITIONS, sortCategories } from "@/lib/constants";
 import { DEFAULT_OFFER, toOffer } from "@/lib/offers";
 import type { ActionResult, PlayerOffer, SessionPole } from "@/lib/types";
 
@@ -320,7 +320,8 @@ export async function reactivatePlayer(playerId: string): Promise<ActionResult> 
 interface SessionData {
   name: string;
   pole: SessionPole;
-  category: string;
+  /** au moins une catégorie ; plusieurs seulement en préparation physique */
+  categories: string[];
   youtube_url: string;
   /** fiche de training déposée dans le bucket "fiches" ; réservée aux admins */
   sheet_url: string;
@@ -343,7 +344,13 @@ function isClubSheetUrl(url: string): boolean {
 
 function validateSession(data: SessionData): string | null {
   if (!data.name.trim()) return "Le nom est obligatoire.";
-  if (!CATEGORIES[data.pole]?.includes(data.category)) return "Catégorie invalide pour ce pôle.";
+  if (data.categories.length === 0) return "Choisis au moins une catégorie.";
+  if (data.categories.some((c) => !CATEGORIES[data.pole]?.includes(c))) {
+    return "Catégorie invalide pour ce pôle.";
+  }
+  if (!allowsMultipleCategories(data.pole) && data.categories.length > 1) {
+    return "Une seule catégorie possible pour ce pôle.";
+  }
   if (!Number.isInteger(data.duration_minutes) || data.duration_minutes <= 0) {
     return "Durée invalide.";
   }
@@ -398,7 +405,7 @@ export async function createLibrarySession(data: SessionData): Promise<ActionRes
   const { error } = await admin.from("library_sessions").insert({
     name: data.name.trim(),
     pole: data.pole,
-    category: data.category,
+    categories: sortCategories(data.pole, data.categories),
     youtube_url: data.youtube_url.trim(),
     sheet_url: sheet,
     duration_minutes: data.duration_minutes,
@@ -437,7 +444,7 @@ export async function updateLibrarySession(
     .update({
       name: data.name.trim(),
       pole: data.pole,
-      category: data.category,
+      categories: sortCategories(data.pole, data.categories),
       youtube_url: data.youtube_url.trim(),
       ...mediaPatch,
       duration_minutes: data.duration_minutes,

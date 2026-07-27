@@ -110,10 +110,10 @@ async function main() {
 
   // ------------------------------------------------------------ bibliothèque
   const sessions = [
-    { name: "Tir en sortie de dribble", pole: "basket", category: "Tir", youtube_url: "https://youtu.be/dQw4w9WgXcQ", duration_minutes: 35, equipment: "Ballon, panier" },
-    { name: "Finitions main faible", pole: "basket", category: "Finition", youtube_url: "https://youtu.be/dQw4w9WgXcQ", duration_minutes: 30, equipment: "Ballon, plots" },
-    { name: "Mobilité hanches & chevilles", pole: "physique", category: "Mobilité", youtube_url: "https://youtu.be/dQw4w9WgXcQ", duration_minutes: 20, equipment: "Tapis" },
-    { name: "Circuit explosivité bas du corps", pole: "physique", category: "Explosivité", youtube_url: "https://youtu.be/dQw4w9WgXcQ", duration_minutes: 25, equipment: "Aucun" },
+    { name: "Tir en sortie de dribble", pole: "basket", categories: ["Début de séance"], youtube_url: "https://youtu.be/dQw4w9WgXcQ", duration_minutes: 35, equipment: "Ballon, panier" },
+    { name: "Finitions main faible", pole: "basket", categories: ["Cœur de séance"], youtube_url: "https://youtu.be/dQw4w9WgXcQ", duration_minutes: 30, equipment: "Ballon, plots" },
+    { name: "Gainage & prévention", pole: "physique", categories: ["Renforcement musculaire", "Proprioception"], youtube_url: "https://youtu.be/dQw4w9WgXcQ", duration_minutes: 20, equipment: "Tapis" },
+    { name: "Circuit explosivité bas du corps", pole: "physique", categories: ["Explosivité"], youtube_url: "https://youtu.be/dQw4w9WgXcQ", duration_minutes: 25, equipment: "Aucun" },
   ] as const;
 
   const sessionIds: string[] = [];

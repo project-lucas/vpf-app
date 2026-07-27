@@ -174,7 +174,7 @@ export function AssignedSessionsManager({
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-bold text-navy-900">{a.session.name}</p>
                     <p className="text-xs text-navy-400">
-                      {a.session.category} · {a.session.duration_minutes} min
+                      {(a.session.categories ?? []).join(", ")} · {a.session.duration_minutes} min
                     </p>
                   </div>
                   {completionBadge(a)}
@@ -237,7 +237,7 @@ export function AssignedSessionsManager({
         ) : (
           <div className="space-y-4">
             {CATEGORIES[pole]
-              .filter((c) => library.some((s) => s.category === c))
+              .filter((c) => library.some((s) => (s.categories ?? []).includes(c)))
               .map((category) => (
                 <div key={category}>
                   <h3 className="mb-1.5 text-xs font-bold uppercase tracking-wide text-navy-400">
@@ -245,7 +245,7 @@ export function AssignedSessionsManager({
                   </h3>
                   <div className="space-y-1.5">
                     {library
-                      .filter((s) => s.category === category)
+                      .filter((s) => (s.categories ?? []).includes(category))
                       .map((s) => (
                         <div
                           key={s.id}

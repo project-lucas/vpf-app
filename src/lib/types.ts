@@ -173,7 +173,8 @@ export interface LibrarySession {
   id: string;
   name: string;
   pole: SessionPole;
-  category: string;
+  /** au moins une catégorie ; plusieurs seulement en préparation physique */
+  categories: string[];
   youtube_url: string;
   /** fiche de training (image du bucket "fiches") ; vide = pas de fiche */
   sheet_url: string;

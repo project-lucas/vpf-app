@@ -88,7 +88,9 @@ export function LibraryView({
   const poleSessions = sessions.filter(
     (s) =>
       s.pole === pole &&
-      (!q || s.name.toLowerCase().includes(q) || s.category.toLowerCase().includes(q))
+      (!q ||
+        s.name.toLowerCase().includes(q) ||
+        (s.categories ?? []).some((c) => c.toLowerCase().includes(q)))
   );
 
   function togglePlayer(id: string) {
@@ -171,8 +173,9 @@ export function LibraryView({
         </EmptyState>
       ) : (
         <div className="space-y-5">
+          {/* une séance multi-catégories apparaît dans chacune de ses sections */}
           {CATEGORIES[pole]
-            .filter((c) => poleSessions.some((s) => s.category === c))
+            .filter((c) => poleSessions.some((s) => (s.categories ?? []).includes(c)))
             .map((category) => (
               <section key={category}>
                 <h2 className="mb-2 text-sm font-bold uppercase tracking-wide text-navy-500">
@@ -180,7 +183,7 @@ export function LibraryView({
                 </h2>
                 <div className="space-y-2.5">
                   {poleSessions
-                    .filter((s) => s.category === category)
+                    .filter((s) => (s.categories ?? []).includes(category))
                     .map((s) => (
                       <Card key={s.id}>
                         <div className="flex items-start justify-between gap-3">
@@ -196,6 +199,16 @@ export function LibraryView({
                                 </>
                               )}
                             </p>
+                            {(s.categories ?? []).length > 1 && (
+                              /* rappel : la séance est aussi listée ailleurs */
+                              <p className="mt-0.5 text-xs text-navy-400">
+                                Aussi en{" "}
+                                {(s.categories ?? [])
+                                  .filter((c) => c !== category)
+                                  .join(", ")
+                                  .toLowerCase()}
+                              </p>
+                            )}
                             {(s.positions ?? []).length > 0 && (
                               <div className="mt-1.5 flex flex-wrap gap-1">
                                 {(s.positions ?? []).map((p) => (

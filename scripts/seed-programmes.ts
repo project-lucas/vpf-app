@@ -93,7 +93,7 @@ async function main() {
       const row = {
         name,
         pole: "basket",
-        category: "Programme",
+        categories: ["Cœur de séance"],
         youtube_url: "",
         duration_minutes: seance.durationMinutes,
         equipment: equipmentOf(seance),

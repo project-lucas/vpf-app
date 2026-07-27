@@ -23,6 +23,18 @@ const POLE_ICONS: Record<SessionPole, React.ReactNode> = {
 const isDone = (a: SessionAssignmentWithSession) => a.completion?.status === "done";
 
 /**
+ * Rang de tri d'une séance dans son pôle : sa catégorie la plus haute dans
+ * CATEGORIES (une séance physique peut en porter plusieurs). Les catégories
+ * inconnues passent en fin de liste.
+ */
+function categoryRank(pole: SessionPole, categories: string[]): number {
+  const ranks = categories
+    .map((c) => CATEGORIES[pole].indexOf(c))
+    .filter((i) => i >= 0);
+  return ranks.length > 0 ? Math.min(...ranks) : Number.MAX_SAFE_INTEGER;
+}
+
+/**
  * Onglets Physique / Technique / Routine (langage Éditorial Sport) : une seule
  * catégorie affichée à la fois.
  */
@@ -42,8 +54,8 @@ export function SessionsPoleTabs({
     .filter((a) => a.session.pole === pole)
     .sort(
       (a, b) =>
-        CATEGORIES[pole].indexOf(a.session.category) -
-        CATEGORIES[pole].indexOf(b.session.category)
+        categoryRank(pole, a.session.categories ?? []) -
+        categoryRank(pole, b.session.categories ?? [])
     );
   const note = notes.find((n) => n.pole === pole)?.content;
   const doneInPole = poleList.filter(isDone).length;

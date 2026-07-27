@@ -213,21 +213,31 @@ export const POLE_LABELS: Record<SessionPole, string> = {
   routine: "Routine",
 };
 
+/**
+ * Catégories proposées au coach, par pôle. L'ordre fait foi partout : il pilote
+ * l'ordre des sections en bibliothèque et le tri des séances côté joueur.
+ * Miroir de la contrainte SQL `library_sessions_categories_check` (0027).
+ */
 export const CATEGORIES: Record<SessionPole, string[]> = {
-  basket: [
-    "Programme",
-    "Tir",
-    "Dribble",
-    "Passes",
-    "Finition",
-    "Footwork",
-    "Drive",
-    "Jeu au poste",
-    "Prise d'écran",
-  ],
-  physique: ["Mobilité", "Explosivité", "Endurance", "Proprioception", "Kit anti-blessure"],
-  routine: ["Avant-match", "Étirements & récupération"],
+  basket: ["Début de séance", "Cœur de séance", "Challenge"],
+  physique: ["Explosivité", "Endurance", "Renforcement musculaire", "Proprioception"],
+  routine: ["Avant-match", "Santé / Prévention des blessures"],
 };
+
+/**
+ * Une séance de prépa physique peut relever de plusieurs catégories à la fois
+ * (un circuit peut être explosivité + renforcement) ; technique et routine
+ * restent à une seule catégorie.
+ */
+export function allowsMultipleCategories(pole: SessionPole): boolean {
+  return pole === "physique";
+}
+
+/** Catégories d'une séance remises dans l'ordre de référence du pôle. */
+export function sortCategories(pole: SessionPole, categories: string[]): string[] {
+  const order = CATEGORIES[pole] ?? [];
+  return [...categories].sort((a, b) => order.indexOf(a) - order.indexOf(b));
+}
 
 export const POSITIONS = ["Meneur", "Arrière", "Ailier", "Ailier fort", "Pivot"];
 

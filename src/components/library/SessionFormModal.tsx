@@ -3,7 +3,13 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createLibrarySession, updateLibrarySession } from "@/app/actions/admin";
-import { CATEGORIES, POLE_LABELS, POSITIONS } from "@/lib/constants";
+import {
+  allowsMultipleCategories,
+  CATEGORIES,
+  POLE_LABELS,
+  POSITIONS,
+  sortCategories,
+} from "@/lib/constants";
 import { Button } from "@/components/ui/Button";
 import { Field, Input, Label, Select } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
@@ -24,19 +30,31 @@ export function SessionFormModal({
 }) {
   const router = useRouter();
   const [pole, setPole] = useState<SessionPole>(session?.pole ?? defaultPole);
-  const [category, setCategory] = useState(session?.category ?? CATEGORIES[defaultPole][0]);
+  const [categories, setCategories] = useState<string[]>(
+    session?.categories?.length ? session.categories : [CATEGORIES[defaultPole][0]]
+  );
   const [positions, setPositions] = useState<string[]>(session?.positions ?? []);
   const [sheetUrl, setSheetUrl] = useState(session?.sheet_url ?? "");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
+  const multi = allowsMultipleCategories(pole);
+
   function togglePosition(p: string) {
     setPositions((prev) => (prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]));
   }
 
+  /** en multi, on refuse de tout décocher : une séance a toujours une catégorie */
+  function toggleCategory(c: string) {
+    setCategories((prev) => {
+      if (!prev.includes(c)) return sortCategories(pole, [...prev, c]);
+      return prev.length > 1 ? prev.filter((x) => x !== c) : prev;
+    });
+  }
+
   function changePole(next: SessionPole) {
     setPole(next);
-    setCategory(CATEGORIES[next][0]);
+    setCategories([CATEGORIES[next][0]]);
   }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -47,7 +65,7 @@ export function SessionFormModal({
     const data = {
       name: String(fd.get("name") ?? ""),
       pole,
-      category,
+      categories,
       youtube_url: String(fd.get("youtube_url") ?? ""),
       sheet_url: sheetUrl,
       duration_minutes: Number(fd.get("duration_minutes")),
@@ -82,16 +100,40 @@ export function SessionFormModal({
               ))}
             </Select>
           </Field>
-          <Field label="Catégorie">
-            <Select value={category} onChange={(e) => setCategory(e.target.value)}>
-              {CATEGORIES[pole].map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </Select>
-          </Field>
+          {!multi && (
+            <Field label="Catégorie">
+              <Select value={categories[0]} onChange={(e) => setCategories([e.target.value])}>
+                {CATEGORIES[pole].map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          )}
         </div>
+        {multi && (
+          /* prépa physique : une séance peut relever de plusieurs catégories */
+          <Field label="Catégories (une ou plusieurs)">
+            <div className="flex flex-wrap gap-1.5">
+              {CATEGORIES[pole].map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  aria-pressed={categories.includes(c)}
+                  onClick={() => toggleCategory(c)}
+                  className={`cursor-pointer rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
+                    categories.includes(c)
+                      ? "bg-navy-800 text-white"
+                      : "border border-navy-200 bg-white text-navy-500 hover:bg-navy-50"
+                  }`}
+                >
+                  {c}
+                </button>
+              ))}
+            </div>
+          </Field>
+        )}
         {isAdmin && (
           /* pas de <Field> : l'uploader n'est pas un champ de saisie, le
              htmlFor généré ne pointerait sur rien */
