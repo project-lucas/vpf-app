@@ -24,6 +24,7 @@ import { StatCard } from "@/components/ui/StatCard";
 import { Card, CardTitle } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { ReviewReplyBox } from "@/components/coach/ReviewReplyBox";
+import { SelectionsLink } from "@/components/coach/SelectionsLink";
 
 export const metadata = { title: "Dashboard coach — VPF" };
 export const dynamic = "force-dynamic";
@@ -173,7 +174,11 @@ export default async function CoachDashboardPage() {
 
   return (
     <>
-      <PageHeader title="Dashboard" subtitle="Tout ce que tes joueurs remontent, en un coup d'œil." />
+      <PageHeader
+        title="Dashboard"
+        subtitle="Tout ce que tes joueurs remontent, en un coup d'œil."
+        action={<SelectionsLink />}
+      />
 
       <div className="grid grid-cols-2 gap-2.5">
         <StatCard label="Joueurs actifs" value={`${players.length}`} />
