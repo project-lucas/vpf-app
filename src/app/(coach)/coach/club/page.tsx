@@ -13,6 +13,8 @@ import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { CreateCoachButton } from "./CreateCoachButton";
+import { AnnouncementsManager } from "./AnnouncementsManager";
+import type { Announcement } from "@/lib/types";
 
 export const metadata = { title: "Staff — VPF" };
 export const dynamic = "force-dynamic";
@@ -39,13 +41,14 @@ export default async function ClubPage() {
   const weekStart = currentWeekStart();
 
   // Tout le staff encadre des joueurs : les coachs comme les deux admins
-  const [{ data: staff }, players] = await Promise.all([
+  const [{ data: staff }, players, { data: announcements }] = await Promise.all([
     supabase
       .from("profiles")
       .select("id, first_name, last_name, role")
       .in("role", ["coach", "admin"])
       .order("first_name"),
     getPlayersWithDiscipline(supabase),
+    supabase.from("announcements").select("*").order("created_at", { ascending: false }),
   ]);
 
   const playerIds = players.map((p) => p.id);
@@ -118,6 +121,10 @@ export default async function ClubPage() {
           value={formatPercent(averageDiscipline(players))}
           hint="moyenne club"
         />
+      </div>
+
+      <div className="mt-5">
+        <AnnouncementsManager announcements={(announcements ?? []) as Announcement[]} />
       </div>
 
       <div className="mt-5">

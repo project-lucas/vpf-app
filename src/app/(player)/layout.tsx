@@ -6,9 +6,9 @@ import { BottomNav } from "@/components/BottomNav";
 import { CheckinModal } from "@/components/CheckinModal";
 import { PushPrompt } from "@/components/PushPrompt";
 import { InstallPrompt } from "@/components/InstallPrompt";
-import { CoachWhatsAppFab } from "@/components/CoachWhatsAppFab";
+import { AnnouncementsBell } from "@/components/messages/AnnouncementsBell";
 import { BallIcon, CalendarIcon, ChartIcon, HeartIcon, UserIcon } from "@/components/icons";
-import type { CheckinQuestion } from "@/lib/types";
+import type { Announcement, CheckinQuestion } from "@/lib/types";
 
 export default async function PlayerLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
@@ -19,9 +19,17 @@ export default async function PlayerLayout({ children }: { children: React.React
 
   let checkinQuestion: CheckinQuestion | null = null;
   let notificationsEnabled = false;
+  let announcements: Announcement[] = [];
+  let unreadAnnouncementIds: string[] = [];
 
   if (user) {
-    const [{ data: lastCheckin }, { data: profile }, { data: playerRow }] = await Promise.all([
+    const [
+      { data: lastCheckin },
+      { data: profile },
+      { data: playerRow },
+      { data: announcementRows },
+      { data: announcementReads },
+    ] = await Promise.all([
       supabase
         .from("checkins")
         .select("question, created_at")
@@ -31,9 +39,16 @@ export default async function PlayerLayout({ children }: { children: React.React
         .maybeSingle(),
       supabase.from("profiles").select("notifications_enabled").eq("id", user.id).maybeSingle(),
       supabase.from("players").select("offer").eq("id", user.id).maybeSingle(),
+      // annonces du club : la RLS filtre déjà selon l'offre du joueur
+      supabase.from("announcements").select("*").order("created_at", { ascending: false }),
+      supabase.from("announcement_reads").select("announcement_id").eq("user_id", user.id),
     ]);
 
     showHygiene = canUseHygiene(toOffer(playerRow?.offer));
+
+    announcements = (announcementRows ?? []) as Announcement[];
+    const readIds = new Set((announcementReads ?? []).map((r) => r.announcement_id));
+    unreadAnnouncementIds = announcements.filter((a) => !readIds.has(a.id)).map((a) => a.id);
 
     // ?? true : aligné sur le défaut de la colonne (0001) et sur la page profil
     notificationsEnabled = profile?.notifications_enabled ?? true;
@@ -60,7 +75,12 @@ export default async function PlayerLayout({ children }: { children: React.React
       {checkinQuestion && <CheckinModal question={checkinQuestion} />}
       <PushPrompt notificationsEnabled={notificationsEnabled} />
       <InstallPrompt />
-      <CoachWhatsAppFab />
+      {/* Cloche des annonces du club — remplace l'ancien bouton WhatsApp :
+          la messagerie interne (onglet Profil) porte désormais le contact coach. */}
+      <AnnouncementsBell
+        announcements={announcements}
+        initialUnreadIds={unreadAnnouncementIds}
+      />
       <BottomNav
         variant="editorial"
         items={[

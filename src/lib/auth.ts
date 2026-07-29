@@ -25,7 +25,7 @@ export async function getAuthProfile() {
  * qui adaptent l'UI au rôle — PAS une preuve d'autorisation (les actions
  * sensibles gardent leur vérification serveur).
  */
-export async function getNavRole(): Promise<"admin" | "coach" | "player" | null> {
+export async function getNavRole(): Promise<"admin" | "coach" | "player" | "parent" | null> {
   const user = await getCachedUser();
   if (!user) return null;
 
@@ -33,12 +33,15 @@ export async function getNavRole(): Promise<"admin" | "coach" | "player" | null>
   const raw = cookieStore.get("vpf-nav")?.value;
   if (raw) {
     const [uid, role] = raw.split("|");
-    if (uid === user.id && (role === "admin" || role === "coach" || role === "player")) {
+    if (
+      uid === user.id &&
+      (role === "admin" || role === "coach" || role === "player" || role === "parent")
+    ) {
       return role;
     }
   }
 
   const supabase = await createClient();
   const { data } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
-  return (data?.role as "admin" | "coach" | "player") ?? null;
+  return (data?.role as "admin" | "coach" | "player" | "parent") ?? null;
 }

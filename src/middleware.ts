@@ -5,6 +5,7 @@ type CookieToSet = { name: string; value: string; options?: CookieOptions };
 
 const PLAYER_HOME = "/planning";
 const COACH_HOME = "/coach";
+const PARENT_HOME = "/parent";
 
 const PLAYER_PREFIXES = [
   "/planning",
@@ -25,13 +26,14 @@ const PLAYER_PREFIXES = [
 const NAV_COOKIE = "vpf-nav";
 const NAV_TTL_SECONDS = 15 * 60;
 
-type NavState = { role: "admin" | "coach" | "player" };
+type NavRole = "admin" | "coach" | "player" | "parent";
+type NavState = { role: NavRole };
 
 function parseNavCookie(value: string | undefined, userId: string): NavState | null {
   if (!value) return null;
   const [uid, role] = value.split("|");
   if (uid !== userId) return null;
-  if (role !== "admin" && role !== "coach" && role !== "player") return null;
+  if (role !== "admin" && role !== "coach" && role !== "player" && role !== "parent") return null;
   return { role };
 }
 
@@ -86,7 +88,7 @@ export async function middleware(request: NextRequest) {
   }
 
   const cached = parseNavCookie(request.cookies.get(NAV_COOKIE)?.value, user.id);
-  let role: "admin" | "coach" | "player";
+  let role: NavRole;
 
   if (cached) {
     role = cached.role;
@@ -102,7 +104,7 @@ export async function middleware(request: NextRequest) {
       return redirect("/login");
     }
 
-    role = profile.role as "admin" | "coach" | "player";
+    role = profile.role as NavRole;
 
     if (role === "player") {
       const player = Array.isArray(profile.players) ? profile.players[0] : profile.players;
@@ -129,6 +131,11 @@ export async function middleware(request: NextRequest) {
   if (role === "player") {
     const isPlayerPath = PLAYER_PREFIXES.some((p) => path === p || path.startsWith(p + "/"));
     return isPlayerPath ? response : redirect(PLAYER_HOME);
+  }
+
+  // parent : uniquement l'espace /parent (suivi en lecture seule de son enfant)
+  if (role === "parent") {
+    return path.startsWith("/parent") ? response : redirect(PARENT_HOME);
   }
 
   // coach et admin partagent l'interface /coach ; l'onglet Club (supervision)

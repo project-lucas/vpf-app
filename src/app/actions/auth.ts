@@ -82,6 +82,95 @@ export async function signupWithInvitation(
   return { ok: true };
 }
 
+/**
+ * Inscription parent via lien d'invitation à usage unique (0031). Même modèle
+ * que l'inscription joueur : consommation atomique du token, puis compte auth
+ * + profil « parent » + lien vers l'enfant. Pas d'onboarding : le nom est
+ * demandé directement dans le formulaire.
+ */
+export async function signupParentWithInvitation(
+  token: string,
+  email: string,
+  password: string,
+  firstName: string,
+  lastName: string
+): Promise<ActionResult> {
+  email = email.trim().toLowerCase();
+  const first_name = firstName.trim().slice(0, 60);
+  const last_name = lastName.trim().slice(0, 60);
+  if (!UUID_RE.test(token)) return { ok: false, error: "Invitation invalide." };
+  if (!/^\S+@\S+\.\S+$/.test(email)) return { ok: false, error: "Adresse email invalide." };
+  if (password.length < 8) {
+    return { ok: false, error: "Le mot de passe doit contenir au moins 8 caractères." };
+  }
+  if (!first_name || !last_name) return { ok: false, error: "Prénom et nom sont obligatoires." };
+
+  const admin = createAdminClient();
+
+  // Consommation atomique : seul le premier appel gagne la ligne
+  const { data: consumed, error: consumeError } = await admin
+    .from("parent_invitations")
+    .update({ used_at: new Date().toISOString() })
+    .eq("id", token)
+    .is("used_at", null)
+    .select("player_id")
+    .maybeSingle();
+
+  if (consumeError || !consumed) {
+    return { ok: false, error: "Invitation invalide ou déjà utilisée." };
+  }
+
+  const rollback = () =>
+    admin.from("parent_invitations").update({ used_at: null }).eq("id", token);
+
+  // borne re-vérifiée à la consommation : 2 comptes parents max par joueur
+  const { count: linkCount } = await admin
+    .from("parent_links")
+    .select("parent_id", { count: "exact", head: true })
+    .eq("player_id", consumed.player_id);
+  if ((linkCount ?? 0) >= 2) {
+    await rollback();
+    return { ok: false, error: "Ce joueur a déjà deux comptes parents." };
+  }
+
+  const { data: created, error: createError } = await admin.auth.admin.createUser({
+    email,
+    password,
+    email_confirm: true,
+  });
+
+  if (createError || !created.user) {
+    await rollback();
+    const msg = createError?.message ?? "";
+    return {
+      ok: false,
+      error: msg.includes("already") || msg.includes("registered")
+        ? "Un compte existe déjà avec cet email."
+        : "Impossible de créer le compte. Réessaie.",
+    };
+  }
+
+  const userId = created.user.id;
+
+  const { error: profileError } = await admin
+    .from("profiles")
+    .insert({ id: userId, role: "parent", first_name, last_name });
+  const { error: linkError } = profileError
+    ? { error: profileError }
+    : await admin
+        .from("parent_links")
+        .insert({ parent_id: userId, player_id: consumed.player_id });
+
+  if (profileError || linkError) {
+    await admin.auth.admin.deleteUser(userId);
+    await rollback();
+    return { ok: false, error: "Impossible de créer le compte. Réessaie." };
+  }
+
+  await admin.from("parent_invitations").update({ used_by: userId }).eq("id", token);
+  return { ok: true };
+}
+
 export interface OnboardingData {
   first_name: string;
   last_name: string;

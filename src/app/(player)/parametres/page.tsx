@@ -1,12 +1,15 @@
 import { createClient, getCachedUser } from "@/lib/supabase/server";
+import { getConversationMessages } from "@/app/actions/messages";
 import { LogoutButton } from "@/components/LogoutButton";
 import { AvatarUploader } from "@/components/settings/AvatarUploader";
 import { NotificationsToggle } from "@/components/settings/NotificationsToggle";
 import { PasswordForm } from "@/components/settings/PasswordForm";
 import { PlayerInfoForm } from "@/components/settings/PlayerInfoForm";
 import { RulesCard } from "@/components/settings/RulesCard";
+import { MessageThread } from "@/components/messages/MessageThread";
 import { Overline, Serif, DoubleRule, SectionHead } from "@/components/editorial/primitives";
 import { BellIcon } from "@/components/icons";
+import { MessageCircle } from "lucide-react";
 import { parisNow, seasonLabel } from "@/lib/dates";
 import { SEASON_START } from "@/lib/constants";
 
@@ -28,7 +31,7 @@ export default async function ProfilPage() {
   const user = await getCachedUser();
   if (!user) return null;
 
-  const [{ data: profile }, { data: playerRow }] = await Promise.all([
+  const [{ data: profile }, { data: playerRow }, messages] = await Promise.all([
     supabase
       .from("profiles")
       .select("first_name, last_name, notifications_enabled, avatar_url")
@@ -41,6 +44,7 @@ export default async function ProfilPage() {
       )
       .eq("id", user.id)
       .maybeSingle(),
+    getConversationMessages(user.id),
   ]);
 
   const coach = playerRow
@@ -62,8 +66,7 @@ export default async function ProfilPage() {
   return (
     <>
       {/* En-tête : écusson + surtitre licence + nom serif.
-          Le contact WhatsApp du coach n'est plus ici : il est porté par le
-          bouton flottant du layout, présent sur tous les onglets. */}
+          Le contact du coach passe par la messagerie interne ci-dessous. */}
       <div className="flex items-center gap-4">
         <AvatarUploader
           avatarUrl={profile?.avatar_url ?? null}
@@ -87,6 +90,22 @@ export default async function ProfilPage() {
       )}
 
       <DoubleRule className="mt-4" />
+
+      {/* Messagerie : cœur de l'onglet — le fil direct avec le coach (et le
+          staff VPF). Remplace l'ancien raccourci WhatsApp. */}
+      <section className="mt-6">
+        <SectionHead icon={<MessageCircle size={13} />}>
+          {coach ? `Conversation avec Coach ${coach.last_name}` : "Conversation avec ton coach"}
+        </SectionHead>
+        <div className="mt-4">
+          <MessageThread
+            playerId={user.id}
+            currentUserId={user.id}
+            initialMessages={messages}
+            variant="editorial"
+          />
+        </div>
+      </section>
 
       {/* Ma fiche basket */}
       <section className="mt-6">
