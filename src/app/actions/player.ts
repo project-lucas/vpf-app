@@ -3,8 +3,13 @@
 import { revalidatePath } from "next/cache";
 import { createClient, getCachedUser } from "@/lib/supabase/server";
 import { currentWeekStart, parisNow } from "@/lib/dates";
-import { PLAYER_CATEGORIES, POSITIONS } from "@/lib/constants";
-import type { ActionResult, CheckinQuestion } from "@/lib/types";
+import {
+  PLAYER_CATEGORIES,
+  POSITIONS,
+  REVIEW_HEALTH_LABELS,
+  REVIEW_HEALTH_NOTE_MAX_LENGTH,
+} from "@/lib/constants";
+import type { ActionResult, CheckinQuestion, ReviewHealthStatus } from "@/lib/types";
 
 /** Saisie d'une feuille de match — immuable ensuite (aucune modification/suppression). */
 export async function addMatchStat(data: {
@@ -104,8 +109,14 @@ export async function updateMyPlayerInfo(data: {
 /** Bilan hebdomadaire (créé ou mis à jour pour la semaine courante). */
 export async function submitWeeklyReview(
   went_well: string,
-  to_improve: string
+  to_improve: string,
+  health_status: ReviewHealthStatus,
+  health_note: string
 ): Promise<ActionResult> {
+  // la question santé est obligatoire : c'est l'info que le coach attend
+  if (!(health_status in REVIEW_HEALTH_LABELS)) {
+    return { ok: false, error: "Indique comment va ton corps cette semaine." };
+  }
   const supabase = await createClient();
   const user = await getCachedUser();
   if (!user) return { ok: false, error: "Session expirée." };
@@ -116,6 +127,11 @@ export async function submitWeeklyReview(
       week_start: currentWeekStart(),
       went_well: went_well.trim().slice(0, 2000),
       to_improve: to_improve.trim().slice(0, 2000),
+      health_status,
+      health_note:
+        health_status === "ok"
+          ? ""
+          : health_note.trim().slice(0, REVIEW_HEALTH_NOTE_MAX_LENGTH),
     },
     { onConflict: "player_id,week_start" }
   );

@@ -1,4 +1,4 @@
-export type UserRole = "admin" | "coach" | "player";
+export type UserRole = "admin" | "coach" | "player" | "parent";
 export type PlayerStatus = "active" | "archived";
 /** disponibilité gérée par le coach : blessé/vacances gèle série, rappels et moyennes */
 export type PlayerAvailability = "available" | "injured" | "vacation";
@@ -67,6 +67,24 @@ export interface Invitation {
   used_by: string | null;
 }
 
+/** Lien compte parent → joueur (un compte parent = un enfant, 2 parents max). */
+export interface ParentLink {
+  parent_id: string;
+  player_id: string;
+  created_at: string;
+}
+
+/** Invitation parent à usage unique, créée depuis la fiche du joueur. */
+export interface ParentInvitation {
+  id: string;
+  player_id: string;
+  created_by: string | null;
+  label: string;
+  created_at: string;
+  used_at: string | null;
+  used_by: string | null;
+}
+
 export interface PlannedEvent {
   id: string;
   player_id: string;
@@ -129,12 +147,17 @@ export interface MatchStat {
   created_at: string;
 }
 
+/** Réponse santé du bilan hebdo — "" sur les bilans d'avant la question. */
+export type ReviewHealthStatus = "" | "ok" | "gene" | "blessure";
+
 export interface WeeklyReview {
   id: string;
   player_id: string;
   week_start: string;
   went_well: string;
   to_improve: string;
+  health_status: ReviewHealthStatus;
+  health_note: string;
   /** réponse du coach (écrite côté serveur uniquement), "" tant qu'il n'a pas répondu */
   coach_reply: string;
   coach_reply_at: string | null;
@@ -257,6 +280,28 @@ export interface HygieneLog {
   updated_at: string;
 }
 
+/** Vidéo éducative d'hygiène de vie (créée par les admins, Bibliothèque). */
+export interface HygieneVideo {
+  id: string;
+  title: string;
+  url: string;
+  /** catégorie libre — liste suggérée dans HYGIENE_VIDEO_CATEGORIES */
+  category: string;
+  description: string;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Activation d'une vidéo hygiène pour un joueur (offre formation). */
+export interface HygieneVideoAssignment {
+  id: string;
+  video_id: string;
+  player_id: string;
+  assigned_by: string | null;
+  created_at: string;
+}
+
 export interface VisibleNote {
   id: string;
   player_id: string;
@@ -315,6 +360,34 @@ export interface HabitCheck {
 
 export interface HabitWithChecks extends Habit {
   checkDates: string[];
+}
+
+/** Ciblage d'une annonce du club : tous les joueurs ou une seule offre. */
+export type AnnouncementAudience = "all" | "perf" | "formation";
+
+export interface Announcement {
+  id: string;
+  author_id: string | null;
+  audience: AnnouncementAudience;
+  title: string;
+  body: string;
+  created_at: string;
+}
+
+/** Message du fil de discussion d'un joueur (joueur, coach, admin, parent). */
+export interface ConversationMessage {
+  id: string;
+  /** joueur dont c'est le fil (un joueur = une conversation) */
+  player_id: string;
+  sender_id: string | null;
+  body: string;
+  created_at: string;
+}
+
+/** Message enrichi pour l'affichage : nom et rôle de l'auteur. */
+export interface ConversationMessageWithSender extends ConversationMessage {
+  sender_name: string;
+  sender_role: UserRole | null;
 }
 
 export type ActionResult = { ok: true } | { ok: false; error: string };

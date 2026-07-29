@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getCachedUser } from "@/lib/supabase/server";
+import { getConversationMessages } from "@/app/actions/messages";
+import { MessageThread } from "@/components/messages/MessageThread";
 import {
   ageFromBirthdate,
   currentWeekStart,
@@ -17,7 +19,7 @@ import {
 import { HabitCard } from "@/components/habits/HabitCard";
 import { PlayerRadar } from "@/app/(player)/dashboard/PlayerRadar";
 import { MessageCircle, Star } from "lucide-react";
-import { eventLabel, WEEKDAY_LABELS } from "@/lib/constants";
+import { eventLabel, REVIEW_HEALTH_LABELS, WEEKDAY_LABELS } from "@/lib/constants";
 import { EventTypeIcon } from "@/components/planning/EventIcon";
 import { formatPercent } from "@/lib/discipline";
 import { Tabs } from "@/components/ui/Tabs";
@@ -35,6 +37,9 @@ import { CopyWeekTemplate } from "@/components/coach/CopyWeekTemplate";
 import { GoalsManager } from "@/components/coach/GoalsManager";
 import { PlayerWhatsAppLink } from "@/components/coach/PlayerWhatsAppLink";
 import { PlayerHygieneCard } from "@/components/coach/PlayerHygieneCard";
+import { PlayerHygieneVideosCard } from "@/components/coach/PlayerHygieneVideosCard";
+import { PlayerParentsCard } from "@/components/coach/PlayerParentsCard";
+import { getPlayerParents } from "@/lib/parents";
 import { PlayerNotificationsCard } from "@/components/coach/PlayerNotificationsCard";
 import { countPushDevices } from "@/lib/push";
 import { OFFER_LABELS, canUseHygiene, toOffer } from "@/lib/offers";
@@ -45,6 +50,7 @@ import type {
   Habit,
   HabitWithChecks,
   HygieneLog,
+  HygieneVideo,
   LibrarySession,
   MatchStat,
   PlannedEvent,
@@ -64,6 +70,7 @@ export default async function PlayerDetailPage({
 }) {
   const { id } = await params;
   const supabase = await createClient();
+  const user = await getCachedUser();
   const weekStart = currentWeekStart();
 
   // Une seule salve : toutes ces requêtes ne dépendent que de l'id de la route.
@@ -88,6 +95,10 @@ export default async function PlayerDetailPage({
     { count: eventsDoneCount },
     { data: goals },
     { data: hygieneLogs },
+    conversationMessages,
+    { data: hygieneVideos },
+    { data: hygieneVideoAssignments },
+    { data: parentInvitations },
   ] = await Promise.all([
     supabase
       .from("players")
@@ -173,6 +184,18 @@ export default async function PlayerDetailPage({
       .select("*")
       .eq("player_id", id)
       .order("log_date", { ascending: false }),
+    // fil de discussion du joueur (lecture RLS : coach référent + admin)
+    getConversationMessages(id),
+    // vidéothèque hygiène : catalogue complet + activations de ce joueur
+    supabase.from("hygiene_videos").select("*").order("category").order("title"),
+    supabase.from("hygiene_video_assignments").select("video_id").eq("player_id", id),
+    // invitations parent en attente (RLS : coach référent + admin)
+    supabase
+      .from("parent_invitations")
+      .select("id, label, created_at")
+      .eq("player_id", id)
+      .is("used_at", null)
+      .order("created_at", { ascending: false }),
   ]);
 
   if (!playerRaw) notFound();
@@ -180,8 +203,12 @@ export default async function PlayerDetailPage({
 
   // Après le notFound() seulement : la lecture ci-dessus s'est faite sous RLS,
   // c'est elle qui prouve que l'utilisateur a le droit de consulter ce joueur.
-  // Le comptage, lui, contourne la RLS (voir countPushDevices).
-  const pushDeviceCount = await countPushDevices(id);
+  // Le comptage et les noms des parents, eux, contournent la RLS
+  // (voir countPushDevices / getPlayerParents).
+  const [pushDeviceCount, playerParents] = await Promise.all([
+    countPushDevices(id),
+    getPlayerParents(id),
+  ]);
 
   const otherPlayers = (otherPlayersRaw ?? [])
     .map((p) => {
@@ -359,11 +386,32 @@ export default async function PlayerDetailPage({
                   enabled={profile?.notifications_enabled ?? true}
                   deviceCount={pushDeviceCount}
                 />
+                <PlayerParentsCard
+                  playerId={id}
+                  parents={playerParents}
+                  invitations={parentInvitations ?? []}
+                />
                 <Card>
                   <CardTitle>Objectifs mesurables</CardTitle>
                   <GoalsManager playerId={id} goals={(goals ?? []) as PlayerGoal[]} />
                 </Card>
               </div>
+            ),
+          },
+          {
+            label: "Messages",
+            content: (
+              <Card>
+                <CardTitle>
+                  Conversation avec {profile?.first_name ?? "le joueur"}
+                </CardTitle>
+                <MessageThread
+                  playerId={id}
+                  currentUserId={user?.id ?? ""}
+                  initialMessages={conversationMessages}
+                  variant="coach"
+                />
+              </Card>
             ),
           },
           {
@@ -692,6 +740,19 @@ export default async function PlayerDetailPage({
                         <span className="font-semibold text-warning">À améliorer : </span>
                         {r.to_improve || "—"}
                       </p>
+                      {/* Question santé (migration 0032) — absente des bilans antérieurs */}
+                      {r.health_status && (
+                        <p className="mt-2 text-sm text-navy-800">
+                          <span
+                            className={`font-semibold ${
+                              r.health_status === "ok" ? "text-success" : "text-danger"
+                            }`}
+                          >
+                            Santé : {REVIEW_HEALTH_LABELS[r.health_status]}
+                          </span>
+                          {r.health_note ? ` — ${r.health_note}` : ""}
+                        </p>
+                      )}
                       <ReviewReplyBox reviewId={r.id} initialReply={r.coach_reply} />
                     </Card>
                   ))
@@ -706,10 +767,23 @@ export default async function PlayerDetailPage({
                 {
                   label: "Hygiène",
                   content: (
-                    <PlayerHygieneCard
-                      logs={allHygieneLogs}
-                      isFormation={canUseHygiene(offer)}
-                    />
+                    <div className="space-y-5">
+                      {/* activation des vidéos éducatives : offre formation
+                          uniquement (verrou RLS 0029 côté base) */}
+                      {canUseHygiene(offer) && (
+                        <PlayerHygieneVideosCard
+                          playerId={id}
+                          videos={(hygieneVideos ?? []) as HygieneVideo[]}
+                          initialAssignedIds={(hygieneVideoAssignments ?? []).map(
+                            (a) => a.video_id
+                          )}
+                        />
+                      )}
+                      <PlayerHygieneCard
+                        logs={allHygieneLogs}
+                        isFormation={canUseHygiene(offer)}
+                      />
+                    </div>
                   ),
                 },
               ]

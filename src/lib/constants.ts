@@ -254,6 +254,34 @@ export const VISIBLE_NOTE_MAX_LENGTH = 80;
 // Réponse du coach à un bilan hebdomadaire
 export const REVIEW_REPLY_MAX_LENGTH = 500;
 
+// Question santé du bilan hebdomadaire (miroir du CHECK de la migration 0032)
+export const REVIEW_HEALTH_LABELS = {
+  ok: "Tout va bien",
+  gene: "Une gêne",
+  blessure: "Une blessure",
+} as const;
+export const REVIEW_HEALTH_NOTE_MAX_LENGTH = 500;
+
+// Le bilan hebdo est un rendez-vous fixe : dimanche 18 h, pour toutes les offres
+export const REVIEW_DAY = 7;
+export const REVIEW_TIME = "18:00";
+
+// Messagerie interne (fil joueur ↔ coach) — bornes alignées sur la migration 0028
+export const MESSAGE_MAX_LENGTH = 2000;
+
+// Annonces du club (admins → joueurs)
+export const ANNOUNCEMENT_TITLE_MAX_LENGTH = 80;
+export const ANNOUNCEMENT_BODY_MAX_LENGTH = 2000;
+
+// Vidéothèque hygiène de vie — catégories suggérées (la colonne reste libre)
+export const HYGIENE_VIDEO_CATEGORIES = [
+  "Sommeil",
+  "Nutrition",
+  "Hydratation",
+  "Récupération",
+  "Mental",
+] as const;
+
 // Disponibilité du joueur (gérée par le coach) : gèle série, rappels et moyennes
 export const AVAILABILITY_LABELS: Record<PlayerAvailability, string> = {
   available: "Disponible",

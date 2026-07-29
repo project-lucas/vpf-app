@@ -15,7 +15,7 @@ export const maxDuration = 60;
  * fuseau du serveur (robuste au changement d'heure été/hiver).
  *
  * 1. Rappel push 30 min avant chaque événement du planning (tous types).
- * 2. Dimanche 18h45 : rappel du bilan hebdomadaire.
+ * 2. Dimanche 18h : rappel du bilan hebdomadaire (rendez-vous fixe du planning).
  * 3. Clôture quotidienne : dès la première exécution après minuit, les
  *    événements de la veille (et de tout jour passé) non pointés sont
  *    matérialisés en "not_done" — un jour entièrement ignoré casse la série
@@ -121,10 +121,21 @@ export async function GET(request: NextRequest) {
   }
 
   // -------------------------------------------------------------------------
-  // 2. Rappel bilan hebdomadaire — dimanche à partir de 18h45
+  // 2. Rappel bilan hebdomadaire — dimanche 18h, l'heure du rendez-vous fixe
+  //    affiché dans le planning (fenêtre jusqu'à 21h pour absorber un cron en
+  //    retard ; le notification_log garantit un seul envoi).
   // -------------------------------------------------------------------------
-  if (now.isoWeekday === 7 && now.minutesOfDay >= 18 * 60 + 45 && now.minutesOfDay < 21 * 60) {
+  if (now.isoWeekday === 7 && now.minutesOfDay >= 18 * 60 && now.minutesOfDay < 21 * 60) {
+    // inutile de relancer un joueur qui a déjà rempli son bilan en avance
+    const { data: doneReviews } = await admin
+      .from("weekly_reviews")
+      .select("player_id")
+      .eq("week_start", weekStart)
+      .in("player_id", [...notifiablePlayerIds]);
+    const alreadyDone = new Set((doneReviews ?? []).map((r) => r.player_id));
+
     for (const playerId of notifiablePlayerIds) {
+      if (alreadyDone.has(playerId)) continue;
       const refKey = `review:${weekStart}`;
       const { data: logged } = await admin
         .from("notification_log")
@@ -137,7 +148,7 @@ export async function GET(request: NextRequest) {
       if (logged && logged.length > 0) {
         await sendPushToUser(playerId, {
           title: "Ton bilan de la semaine 📝",
-          body: "Qu'as-tu bien fait ? Que dois-tu améliorer ? 2 minutes suffisent.",
+          body: "Bien fait, à améliorer, et comment va ton corps ? 2 minutes suffisent.",
           url: "/planning",
         });
         results.reviewReminders++;

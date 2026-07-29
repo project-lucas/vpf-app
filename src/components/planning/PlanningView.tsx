@@ -11,6 +11,7 @@ import { CheckIcon, FlameIcon, TrophyIcon } from "@/components/icons";
 import { Overline, Rule, Quote, StarLine } from "@/components/editorial/primitives";
 import { EdButton } from "@/components/editorial/forms";
 import { DailyMissionCard } from "./DailyMissionCard";
+import { WeeklyReviewFixedCard, type WeeklyReviewState } from "./WeeklyReviewLauncher";
 import { DayActionList } from "./DayActionList";
 import { DisciplineCalendar, type DayOutcome } from "./DisciplineCalendar";
 import { EventCheckRow } from "./EventCheckRow";
@@ -48,6 +49,11 @@ interface Props {
    * (chacun compte comme une tâche accomplie dans le % de sa journée).
    */
   hygieneMission: { dateLabel: string; log: HygieneLog | null; notedDates: string[] } | null;
+  /**
+   * Bilan de la semaine en cours : rendez-vous FIXE du dimanche 18 h, toutes
+   * offres confondues — affiché dans la journée du dimanche, non supprimable.
+   */
+  weeklyReview: WeeklyReviewState;
 }
 
 export function PlanningView({
@@ -62,6 +68,7 @@ export function PlanningView({
   focus,
   streakOnComplete,
   hygieneMission,
+  weeklyReview,
 }: Props) {
   const [selectedDay, setSelectedDay] = useState(todayWeekday);
   const [editMode, setEditMode] = useState(false);
@@ -416,6 +423,16 @@ export function PlanningView({
               done={missionDoneToday}
               nowMinutes={nowMinutes}
               onDone={handleMissionDone}
+            />
+          )}
+
+          {/* Bilan de la semaine : rendez-vous fixe du dimanche 18 h (toutes
+              offres). Pas un événement de la semaine type — non supprimable. */}
+          {selectedDay === 7 && (
+            <WeeklyReviewFixedCard
+              review={weeklyReview}
+              nowMinutes={nowMinutes}
+              isToday={todayWeekday === 7}
             />
           )}
 

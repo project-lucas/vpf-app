@@ -13,7 +13,13 @@ import { DiscordIcon } from "@/components/icons";
 import { DISCORD_INVITE_URL } from "@/lib/constants";
 import { computeMatchRecords } from "@/lib/gamification";
 import type { DayOutcome } from "@/components/planning/DisciplineCalendar";
-import type { EventCompletion, HygieneLog, MatchStat, PlannedEvent } from "@/lib/types";
+import type {
+  EventCompletion,
+  HygieneLog,
+  MatchStat,
+  PlannedEvent,
+  ReviewHealthStatus,
+} from "@/lib/types";
 
 export const metadata = { title: "Planning — VPF" };
 export const dynamic = "force-dynamic";
@@ -73,7 +79,7 @@ export default async function PlanningPage() {
     supabase.from("coach_focus").select("content").eq("player_id", user.id).maybeSingle(),
     supabase
       .from("weekly_reviews")
-      .select("went_well, to_improve, coach_reply, week_start")
+      .select("went_well, to_improve, health_status, health_note, coach_reply, week_start")
       .eq("player_id", user.id)
       .eq("week_start", weekStart)
       .maybeSingle(),
@@ -163,6 +169,15 @@ export default async function PlanningPage() {
   // l'un des deux l'est.
   const records = computeMatchRecords((matchStats ?? []) as MatchStat[]);
   const hasReview = Boolean(thisWeekReview);
+  // état du bilan de la semaine : partagé par la pastille du bas et le
+  // rendez-vous fixe du dimanche 18 h dans le planning
+  const weeklyReview = {
+    hasReview,
+    initialWentWell: thisWeekReview?.went_well ?? "",
+    initialToImprove: thisWeekReview?.to_improve ?? "",
+    initialHealthStatus: (thisWeekReview?.health_status ?? "") as ReviewHealthStatus,
+    initialHealthNote: thisWeekReview?.health_note ?? "",
+  };
   const hasMatchThisWeek = (matchStats ?? []).some((m) => m.match_date >= weekStart);
   const isWeekend = now.isoWeekday >= 6;
   const remind = isWeekend && !hasReview && !hasMatchThisWeek;
@@ -253,6 +268,7 @@ export default async function PlanningPage() {
         focus={focus}
         streakOnComplete={streakOnComplete}
         hygieneMission={hygieneMission}
+        weeklyReview={weeklyReview}
       />
 
       {/* Réponse du coach au bilan hebdo : carte éditoriale sous le planning */}
@@ -269,12 +285,7 @@ export default async function PlanningPage() {
           « ? » jaune de rappel le week-end tant que ni l'un ni l'autre n'est rempli. */}
       <div className="mt-8 flex flex-wrap items-center gap-2.5">
         <MatchSheetLauncher records={records} hasMatch={hasMatchThisWeek} remind={remind} />
-        <WeeklyReviewLauncher
-          hasReview={hasReview}
-          remind={remind}
-          initialWentWell={thisWeekReview?.went_well ?? ""}
-          initialToImprove={thisWeekReview?.to_improve ?? ""}
-        />
+        <WeeklyReviewLauncher review={weeklyReview} remind={remind} />
       </div>
 
       {/* Discord de l'équipe : bouton flottant en bas à droite, au-dessus de la

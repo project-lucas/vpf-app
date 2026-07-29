@@ -17,7 +17,11 @@ import {
   type ReviewWithPlayer,
 } from "@/lib/coach-data";
 import { formatPercent } from "@/lib/discipline";
-import { AVAILABILITY_LABELS, LOW_DISCIPLINE_THRESHOLD } from "@/lib/constants";
+import {
+  AVAILABILITY_LABELS,
+  LOW_DISCIPLINE_THRESHOLD,
+  REVIEW_HEALTH_LABELS,
+} from "@/lib/constants";
 import { addDays, currentWeekStart, formatAgoFr, formatDateFr, parisNow } from "@/lib/dates";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatCard } from "@/components/ui/StatCard";
@@ -97,6 +101,19 @@ function ReviewCard({ review }: { review: ReviewWithPlayer }) {
         <span className="font-semibold text-warning">À améliorer : </span>
         {review.to_improve || "—"}
       </p>
+      {/* Question santé (0032) — absente des bilans antérieurs */}
+      {review.health_status && (
+        <p className="mt-0.5 text-xs text-navy-600">
+          <span
+            className={`font-semibold ${
+              review.health_status === "ok" ? "text-success" : "text-danger"
+            }`}
+          >
+            Santé : {REVIEW_HEALTH_LABELS[review.health_status]}
+          </span>
+          {review.health_note ? ` — ${review.health_note}` : ""}
+        </p>
+      )}
       <ReviewReplyBox reviewId={review.id} initialReply={review.coach_reply} />
     </div>
   );
