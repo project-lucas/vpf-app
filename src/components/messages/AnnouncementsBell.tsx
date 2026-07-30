@@ -38,6 +38,8 @@ export function AnnouncementsBell({
 
   return (
     <>
+      {/* top-[120px] : sous l'emblème VPF du Planning (haut 31px + 80px de
+          hauteur) — au ras du filet double, plus jamais par-dessus le logo. */}
       <button
         type="button"
         onClick={openPanel}
@@ -46,7 +48,7 @@ export function AnnouncementsBell({
             ? `Annonces du club — ${unreadIds.size} non lue${unreadIds.size > 1 ? "s" : ""}`
             : "Annonces du club"
         }
-        className="fixed right-[22px] top-4 z-40 flex h-11 w-11 items-center justify-center rounded-md border-2 border-ink bg-paper text-ink shadow-lg transition-transform hover:scale-105 active:scale-95 sm:right-8 lg:right-16"
+        className="fixed right-[22px] top-[120px] z-40 flex h-11 w-11 items-center justify-center rounded-md border-2 border-ink bg-paper text-ink shadow-lg transition-transform hover:scale-105 active:scale-95 sm:right-8 lg:right-16"
       >
         <BellIcon size={20} />
         {unreadIds.size > 0 && (

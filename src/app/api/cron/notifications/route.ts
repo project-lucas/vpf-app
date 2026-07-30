@@ -114,6 +114,7 @@ export async function GET(request: NextRequest) {
           title: `${label} à ${event.event_time.slice(0, 5)}`,
           body: "C'est dans 30 minutes. Tiens ton plan ! 💪",
           url: "/planning",
+          kind: "reminder",
         });
         results.eventReminders++;
       }
@@ -150,6 +151,7 @@ export async function GET(request: NextRequest) {
           title: "Ton bilan de la semaine 📝",
           body: "Bien fait, à améliorer, et comment va ton corps ? 2 minutes suffisent.",
           url: "/planning",
+          kind: "reminder",
         });
         results.reviewReminders++;
       }
@@ -287,6 +289,7 @@ export async function GET(request: NextRequest) {
           title: "Ta semaine en un coup d'œil 🏀",
           body,
           url: "/dashboard",
+          kind: "reminder",
         });
         results.recaps++;
       }
@@ -330,6 +333,7 @@ export async function GET(request: NextRequest) {
             title: "Ta mission du jour 💤",
             body: "Note ton sommeil et ton alimentation — une minute, et ta journée est bouclée.",
             url: "/planning",
+            kind: "reminder",
           });
           results.hygieneReminders++;
         }

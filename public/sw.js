@@ -30,6 +30,26 @@ self.addEventListener("fetch", (event) => {
   }
 });
 
+/**
+ * Motifs de vibration (ms : vibre, pause, vibre…) selon la nature du message —
+ * `kind` est posé par le serveur (src/lib/push.ts). Un message du coach et une
+ * annonce du club se reconnaissent poche fermée, sans sortir le téléphone.
+ *
+ * Android/Chrome honore ce champ ; iOS ignore `vibrate` et applique le réglage
+ * système de l'appareil. Un téléphone en silencieux ne vibre pas non plus.
+ */
+const VIBRATION_PATTERNS = {
+  // deux impulsions rapprochées : « quelqu'un te parle »
+  message: [90, 50, 90],
+  // trois temps plus appuyés : info du club
+  announcement: [160, 80, 160, 80, 160],
+  // rappel de séance : un seul buzz, discret
+  reminder: [140],
+  // alerte santé au coach : long et insistant, ça ne s'ignore pas
+  alert: [300, 120, 300, 120, 300],
+};
+const DEFAULT_VIBRATION = [140];
+
 self.addEventListener("push", (event) => {
   let data = { title: "VPF", body: "", url: "/" };
   try {
@@ -42,6 +62,7 @@ self.addEventListener("push", (event) => {
       body: data.body,
       icon: "/icons/icon-192.png",
       badge: "/icons/icon-192.png",
+      vibrate: VIBRATION_PATTERNS[data.kind] || DEFAULT_VIBRATION,
       data: { url: data.url },
     })
   );

@@ -19,10 +19,18 @@ function ensureConfigured(): boolean {
   return true;
 }
 
+/**
+ * Nature de la notification — pilote le motif de vibration du téléphone (le
+ * service worker traduit `kind` en pattern, cf. public/sw.js). Sans `kind`, le
+ * motif neutre s'applique.
+ */
+export type PushKind = "message" | "announcement" | "reminder" | "alert";
+
 export interface PushPayload {
   title: string;
   body: string;
   url?: string;
+  kind?: PushKind;
 }
 
 /**

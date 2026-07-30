@@ -249,6 +249,14 @@ export const LOW_DISCIPLINE_THRESHOLD = 0.6;
 // Pop-up check-in : tous les 5 jours
 export const CHECKIN_INTERVAL_DAYS = 5;
 
+/**
+ * Douleur à partir de laquelle le coach référent est prévenu par push, dès la
+ * validation du check-in. (Le tableau de bord coach, lui, signale visuellement
+ * dès 5/10 sur 7 jours : l'alerte poussée est volontairement plus haute pour ne
+ * pas sonner sur une courbature.)
+ */
+export const PAIN_PUSH_THRESHOLD = 6;
+
 export const VISIBLE_NOTE_MAX_LENGTH = 80;
 
 // Réponse du coach à un bilan hebdomadaire
@@ -268,6 +276,12 @@ export const REVIEW_TIME = "18:00";
 
 // Messagerie interne (fil joueur ↔ coach) — bornes alignées sur la migration 0028
 export const MESSAGE_MAX_LENGTH = 2000;
+
+/** Profondeur d'historique chargée par le serveur (les plus récents d'abord). */
+export const CONVERSATION_HISTORY_LIMIT = 300;
+
+/** Messages affichés d'entrée dans le fil — le reste se déplie à la demande. */
+export const CONVERSATION_PAGE_SIZE = 25;
 
 // Annonces du club (admins → joueurs)
 export const ANNOUNCEMENT_TITLE_MAX_LENGTH = 80;

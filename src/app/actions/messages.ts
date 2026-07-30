@@ -3,10 +3,11 @@
 import { revalidatePath } from "next/cache";
 import { createClient, getCachedUser } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { sendPushToUser } from "@/lib/push";
+import { sendPushToUser, type PushPayload } from "@/lib/push";
 import {
   ANNOUNCEMENT_BODY_MAX_LENGTH,
   ANNOUNCEMENT_TITLE_MAX_LENGTH,
+  CONVERSATION_HISTORY_LIMIT,
   MESSAGE_MAX_LENGTH,
 } from "@/lib/constants";
 import type {
@@ -19,10 +20,7 @@ import type {
 } from "@/lib/types";
 
 /** Push à un utilisateur s'il n'a pas coupé ses notifications. */
-async function pushToUserIfEnabled(
-  userId: string,
-  payload: { title: string; body: string; url?: string }
-): Promise<void> {
+async function pushToUserIfEnabled(userId: string, payload: PushPayload): Promise<void> {
   const admin = createAdminClient();
   const { data: profile } = await admin
     .from("profiles")
@@ -76,23 +74,32 @@ async function withSenders(
  * fait sous RLS : un appelant sans accès au fil récupère une liste vide.
  * Sert au chargement initial (pages serveur) et au rafraîchissement périodique
  * du composant client.
+ *
+ * Borné aux CONVERSATION_HISTORY_LIMIT derniers messages : sur une saison le fil
+ * atteindrait plusieurs centaines de lignes rechargées toutes les 30 s, pour un
+ * historique que personne ne remonte. Le composant n'en affiche qu'une tranche
+ * et déplie le reste à la demande.
  */
 export async function getConversationMessages(
   playerId: string
 ): Promise<ConversationMessageWithSender[]> {
   const supabase = await createClient();
+  // les N plus récents = tri décroissant + limite, puis on remet dans l'ordre
   const { data } = await supabase
     .from("conversation_messages")
     .select("*")
     .eq("player_id", playerId)
-    .order("created_at", { ascending: true });
-  return withSenders((data ?? []) as ConversationMessage[]);
+    .order("created_at", { ascending: false })
+    .limit(CONVERSATION_HISTORY_LIMIT);
+  const chronological = [...((data ?? []) as ConversationMessage[])].reverse();
+  return withSenders(chronological);
 }
 
 /**
  * Envoi d'un message dans le fil d'un joueur. L'insert passe sous RLS (la
  * policy vérifie que l'expéditeur participe au fil), puis les autres
- * participants — joueur et coach référent — reçoivent un push.
+ * participants — joueur, coach référent, parents — reçoivent un push. Quand le
+ * message vient de la famille, les admins sont prévenus en plus.
  */
 export async function sendConversationMessage(
   playerId: string,
@@ -122,33 +129,83 @@ export async function sendConversationMessage(
   // joueur, coach référent et parents. L'insert RLS a déjà prouvé l'accès ;
   // le service_role ne sert qu'à composer la notification.
   const admin = createAdminClient();
-  const [{ data: player }, { data: senderProfile }, { data: parentLinks }] = await Promise.all([
-    admin.from("players").select("coach_id").eq("id", playerId).maybeSingle(),
-    admin.from("profiles").select("first_name, last_name, role").eq("id", user.id).maybeSingle(),
-    admin.from("parent_links").select("parent_id").eq("player_id", playerId),
-  ]);
+  const [{ data: player }, { data: senderProfile }, { data: playerProfile }, { data: parentLinks }] =
+    await Promise.all([
+      admin.from("players").select("coach_id").eq("id", playerId).maybeSingle(),
+      admin.from("profiles").select("first_name, last_name, role").eq("id", user.id).maybeSingle(),
+      admin.from("profiles").select("first_name").eq("id", playerId).maybeSingle(),
+      admin.from("parent_links").select("parent_id").eq("player_id", playerId),
+    ]);
   const senderName =
     `${senderProfile?.first_name ?? ""} ${senderProfile?.last_name ?? ""}`.trim() || "Un membre du staff";
+  const playerName = playerProfile?.first_name ?? "un joueur";
 
   // chaque destinataire ouvre le fil dans SA propre interface
   const recipients = new Map<string, string>([[playerId, "/parametres"]]);
   if (player?.coach_id) recipients.set(player.coach_id, `/coach/joueurs/${playerId}`);
   for (const link of parentLinks ?? []) recipients.set(link.parent_id, "/parent/messages");
+
+  // Un message venu de la famille (joueur ou parent) remonte AUSSI aux admins,
+  // même s'ils n'encadrent pas ce joueur : c'est le staff qui doit répondre
+  // quand le coach référent est indisponible. Les messages du staff, eux, ne
+  // se re-notifient pas entre eux.
+  const fromFamily = senderProfile?.role === "player" || senderProfile?.role === "parent";
+  const staffIds = new Set<string>(player?.coach_id ? [player.coach_id] : []);
+  if (fromFamily) {
+    const { data: admins } = await admin.from("profiles").select("id").eq("role", "admin");
+    for (const a of admins ?? []) {
+      recipients.set(a.id, `/coach/joueurs/${playerId}`);
+      staffIds.add(a.id);
+    }
+  }
   recipients.delete(user.id);
 
   await Promise.all(
     [...recipients].map(([recipientId, url]) =>
       pushToUserIfEnabled(recipientId, {
-        title:
-          recipientId === playerId ? `Message de ${senderName} 💬` : `Message de ${senderName}`,
+        // le staff suit plusieurs fils : le prénom du joueur situe la conversation
+        title: staffIds.has(recipientId)
+          ? `${senderName} · fil de ${playerName}`
+          : recipientId === playerId
+            ? `Message de ${senderName} 💬`
+            : `Message de ${senderName}`,
         body: excerpt(clean),
         url,
+        kind: "message",
       })
     )
   );
 
   revalidatePath("/parametres");
   revalidatePath(`/coach/joueurs/${playerId}`);
+  revalidatePath("/parent/messages");
+  return { ok: true };
+}
+
+/**
+ * Suppression d'un message du fil. La RLS (0033) tranche : on ne supprime que
+ * ses propres messages — un admin peut en plus modérer ceux des autres. Aucune
+ * édition possible, un message se supprime et se réécrit.
+ */
+export async function deleteConversationMessage(messageId: string): Promise<ActionResult> {
+  const supabase = await createClient();
+  const user = await getCachedUser();
+  if (!user) return { ok: false, error: "Session expirée." };
+
+  // select() pour distinguer « supprimé » de « refusé par la RLS » : un delete
+  // qui ne touche aucune ligne ne remonte pas d'erreur Postgres.
+  const { data, error } = await supabase
+    .from("conversation_messages")
+    .delete()
+    .eq("id", messageId)
+    .select("player_id");
+  if (error) return { ok: false, error: "Suppression impossible." };
+  if (!data || data.length === 0) {
+    return { ok: false, error: "Ce message ne peut plus être supprimé." };
+  }
+
+  revalidatePath("/parametres");
+  revalidatePath(`/coach/joueurs/${data[0].player_id}`);
   revalidatePath("/parent/messages");
   return { ok: true };
 }
@@ -219,6 +276,7 @@ export async function publishAnnouncement(data: {
         title: AUDIENCE_PUSH_LABEL[audience],
         body: `${title} — ${excerpt(body, 100)}`,
         url: "/planning",
+        kind: "announcement",
       })
     )
   );

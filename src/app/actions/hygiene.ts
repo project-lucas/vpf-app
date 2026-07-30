@@ -247,6 +247,7 @@ export async function setHygieneVideoVisibility(
               ? `${video.title} t'attend dans ton onglet Hygiène.`
               : "Une nouvelle vidéo t'attend dans ton onglet Hygiène.",
             url: "/hygiene",
+            kind: "announcement",
           });
         }
       })

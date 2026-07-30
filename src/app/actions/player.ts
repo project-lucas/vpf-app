@@ -1,9 +1,12 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient, getCachedUser } from "@/lib/supabase/server";
+import { sendPushToUser } from "@/lib/push";
 import { currentWeekStart, parisNow } from "@/lib/dates";
 import {
+  PAIN_PUSH_THRESHOLD,
   PLAYER_CATEGORIES,
   POSITIONS,
   REVIEW_HEALTH_LABELS,
@@ -158,10 +161,58 @@ export async function submitCheckin(
     .from("checkins")
     .insert({ player_id: user.id, question, score });
   if (error) return { ok: false, error: "Enregistrement impossible." };
+
+  if (question === "pain" && score >= PAIN_PUSH_THRESHOLD) {
+    await alertCoachOfPain(user.id, score);
+  }
+
   // le check-in vit dans le layout joueur (toutes les pages) : purge globale
   // pour qu'un onglet en cache client ne ré-affiche pas le pop-up
   revalidatePath("/", "layout");
   return { ok: true };
+}
+
+/**
+ * Douleur élevée déclarée au check-in : le coach référent est prévenu tout de
+ * suite, sans attendre qu'il ouvre son tableau de bord. Une blessure qui traîne
+ * une semaine coûte une saison.
+ *
+ * Passe par le service_role : un joueur n'a pas le droit de lire le profil de
+ * son coach ni ses subscriptions push. L'insert sous RLS juste au-dessus a
+ * prouvé que ce check-in est bien le sien, et rien d'autre n'est exposé.
+ * Best-effort : un push qui échoue ne doit pas faire échouer le check-in.
+ */
+async function alertCoachOfPain(playerId: string, score: number): Promise<void> {
+  try {
+    const admin = createAdminClient();
+    const { data: player } = await admin
+      .from("players")
+      .select("coach_id")
+      .eq("id", playerId)
+      .maybeSingle();
+    if (!player?.coach_id) return;
+
+    const [{ data: coach }, { data: playerProfile }] = await Promise.all([
+      admin
+        .from("profiles")
+        .select("notifications_enabled")
+        .eq("id", player.coach_id)
+        .maybeSingle(),
+      admin.from("profiles").select("first_name, last_name").eq("id", playerId).maybeSingle(),
+    ]);
+    if (!coach?.notifications_enabled) return;
+
+    const name =
+      `${playerProfile?.first_name ?? ""} ${playerProfile?.last_name ?? ""}`.trim() || "Un joueur";
+    await sendPushToUser(player.coach_id, {
+      title: "Alerte douleur 🩹",
+      body: `${name} se note ${score}/10 en douleur au check-in.`,
+      url: `/coach/joueurs/${playerId}`,
+      kind: "alert",
+    });
+  } catch {
+    // le check-in du joueur est enregistré : l'alerte est un bonus, pas un dû
+  }
 }
 
 /** Verdict du joueur sur une séance affectée (fait / pas fait + commentaire). */

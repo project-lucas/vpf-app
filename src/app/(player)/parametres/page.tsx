@@ -6,6 +6,7 @@ import { NotificationsToggle } from "@/components/settings/NotificationsToggle";
 import { PasswordForm } from "@/components/settings/PasswordForm";
 import { PlayerInfoForm } from "@/components/settings/PlayerInfoForm";
 import { RulesCard } from "@/components/settings/RulesCard";
+import { SettingsSheet } from "@/components/settings/SettingsSheet";
 import { MessageThread } from "@/components/messages/MessageThread";
 import { Overline, Serif, DoubleRule, SectionHead } from "@/components/editorial/primitives";
 import { BellIcon } from "@/components/icons";
@@ -83,8 +84,11 @@ export default async function ProfilPage() {
         </div>
       </div>
 
+      {/* pr-* : la ligne passe sous les deux boutons flottants (engrenage +
+          cloche, ancrés à 120px du haut) — sans cette réserve le texte se
+          glisse dessous et devient illisible. */}
       {metaParts.length > 0 && (
-        <p className="ed-meta mt-3 text-[11px] leading-relaxed text-meta">
+        <p className="ed-meta mt-3 pr-28 text-[11px] leading-relaxed text-meta lg:pr-44">
           {metaParts.join(" — ")}
         </p>
       )}
@@ -92,57 +96,59 @@ export default async function ProfilPage() {
       <DoubleRule className="mt-4" />
 
       {/* Messagerie : cœur de l'onglet — le fil direct avec le coach (et le
-          staff VPF). Remplace l'ancien raccourci WhatsApp. */}
+          staff VPF). Remplace l'ancien raccourci WhatsApp.
+          Hauteur bornée au reste de l'écran : le fil défile dans sa boîte, la
+          zone de saisie reste sous les yeux quel que soit l'historique. */}
       <section className="mt-6">
         <SectionHead icon={<MessageCircle size={13} />}>
           {coach ? `Conversation avec Coach ${coach.last_name}` : "Conversation avec ton coach"}
         </SectionHead>
-        <div className="mt-4">
-          <MessageThread
-            playerId={user.id}
-            currentUserId={user.id}
-            initialMessages={messages}
-            variant="editorial"
-          />
-        </div>
+        <MessageThread
+          playerId={user.id}
+          currentUserId={user.id}
+          initialMessages={messages}
+          variant="editorial"
+          className="mt-4 h-[calc(100dvh-420px)] min-h-[320px] max-h-[640px]"
+        />
       </section>
 
-      {/* Ma fiche basket */}
-      <section className="mt-6">
-        <SectionHead>Ma fiche basket</SectionHead>
-        <div className="mt-4">
-          <PlayerInfoForm
-            initial={{
-              category: playerRow?.category ?? "",
-              position: playerRow?.position ?? "",
-              club: playerRow?.club ?? "",
-              season_goal: playerRow?.season_goal ?? "",
-            }}
-          />
+      {/* Tout le réglage du compte part dans le panneau flottant (icône
+          engrenage, à gauche de la cloche) : la page reste une messagerie. */}
+      <SettingsSheet>
+        <section className="mt-4">
+          <SectionHead>Ma fiche basket</SectionHead>
+          <div className="mt-4">
+            <PlayerInfoForm
+              initial={{
+                category: playerRow?.category ?? "",
+                position: playerRow?.position ?? "",
+                club: playerRow?.club ?? "",
+                season_goal: playerRow?.season_goal ?? "",
+              }}
+            />
+          </div>
+        </section>
+
+        <section className="mt-8">
+          <SectionHead icon={<BellIcon size={13} />}>Notifications</SectionHead>
+          <div className="mt-4">
+            <NotificationsToggle enabled={profile?.notifications_enabled ?? true} />
+          </div>
+        </section>
+
+        <section className="mt-8">
+          <SectionHead>Mot de passe</SectionHead>
+          <div className="mt-4">
+            <PasswordForm />
+          </div>
+        </section>
+
+        <RulesCard />
+
+        <div className="mt-6">
+          <LogoutButton />
         </div>
-      </section>
-
-      {/* Notifications */}
-      <section className="mt-8">
-        <SectionHead icon={<BellIcon size={13} />}>Notifications</SectionHead>
-        <div className="mt-4">
-          <NotificationsToggle enabled={profile?.notifications_enabled ?? true} />
-        </div>
-      </section>
-
-      {/* Mot de passe */}
-      <section className="mt-8">
-        <SectionHead>Mot de passe</SectionHead>
-        <div className="mt-4">
-          <PasswordForm />
-        </div>
-      </section>
-
-      <RulesCard />
-
-      <div className="mt-6">
-        <LogoutButton />
-      </div>
+      </SettingsSheet>
     </>
   );
 }

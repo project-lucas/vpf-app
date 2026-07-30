@@ -29,6 +29,7 @@ import { Card, CardTitle } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { ReviewReplyBox } from "@/components/coach/ReviewReplyBox";
 import { SelectionsLink } from "@/components/coach/SelectionsLink";
+import { PushPrompt } from "@/components/PushPrompt";
 
 export const metadata = { title: "Dashboard coach — VPF" };
 export const dynamic = "force-dynamic";
@@ -132,7 +133,7 @@ export default async function CoachDashboardPage() {
 
   // Remontées joueurs et check-ins ne dépendent que de la liste des joueurs :
   // les enchaîner coûtait un aller-retour réseau de plus avant l'affichage.
-  const [overview, { data: checkinRows }] = await Promise.all([
+  const [overview, { data: checkinRows }, { data: profile }] = await Promise.all([
     getCoachOverview(supabase, players),
     // ---- Santé : dernier check-in énergie et douleurs de chaque joueur ----
     players.length === 0
@@ -146,6 +147,14 @@ export default async function CoachDashboardPage() {
           )
           .order("created_at", { ascending: false })
           .limit(200),
+    // état du toggle notifications du staff (bandeau d'autorisation ci-dessous)
+    user
+      ? supabase
+          .from("profiles")
+          .select("notifications_enabled")
+          .eq("id", user.id)
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
   ]);
 
   const weekStart = currentWeekStart();
@@ -493,6 +502,16 @@ export default async function CoachDashboardPage() {
         <Activity size={13} /> Les données remontent automatiquement dès que tes joueurs les
         saisissent.
       </p>
+
+      {/* Autorisation push demandée sur l'écran d'accueil du staff (celui où
+          l'on atterrit après connexion) plutôt que dans le layout : le layout
+          coach n'interroge pas la base, on ne lui ajoute pas une requête
+          profils à chaque navigation. */}
+      <PushPrompt
+        notificationsEnabled={profile?.notifications_enabled ?? true}
+        title="Active tes notifications"
+        description="Messages des joueurs et des parents, alertes douleur."
+      />
     </>
   );
 }

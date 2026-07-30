@@ -384,6 +384,8 @@ export async function setReviewReply(reviewId: string, content: string): Promise
         title: "Réponse de ton coach 💬",
         body: clean.length > 120 ? `${clean.slice(0, 117)}…` : clean,
         url: "/planning",
+        // même vibration que la messagerie : c'est le coach qui s'adresse au joueur
+        kind: "message",
       });
     }
   }

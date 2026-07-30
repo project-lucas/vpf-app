@@ -19,7 +19,11 @@ export async function setNotificationsEnabled(enabled: boolean): Promise<ActionR
     .update({ notifications_enabled: enabled })
     .eq("id", user.id);
   if (error) return { ok: false, error: "Enregistrement impossible." };
+  // les trois interfaces portent le réglage (joueur, staff, parent)
   revalidatePath("/parametres");
+  revalidatePath("/coach/parametres");
+  revalidatePath("/coach");
+  revalidatePath("/parent/profil");
   return { ok: true };
 }
 
