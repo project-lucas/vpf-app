@@ -3,6 +3,7 @@ import { createClient, getCachedUser } from "@/lib/supabase/server";
 import { getParentChild } from "@/lib/parent-data";
 import { canUseHygiene } from "@/lib/offers";
 import { BottomNav } from "@/components/BottomNav";
+import { getStaffUnreadPlayerIds } from "@/lib/conversations";
 import { PushPrompt } from "@/components/PushPrompt";
 import { InstallPrompt } from "@/components/InstallPrompt";
 import { CalendarIcon, GearIcon, HeartIcon, HomeIcon } from "@/components/icons";
@@ -13,15 +14,20 @@ export default async function ParentLayout({ children }: { children: React.React
   const showHygiene = child !== null && canUseHygiene(child.offer);
 
   let notificationsEnabled = true;
+  // pastille rouge sur l'onglet Messages : un mot du coach ne doit pas attendre
+  // qu'on pense à ouvrir le fil
+  let hasUnreadMessages = false;
   const user = await getCachedUser();
   if (user) {
     const supabase = await createClient();
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("notifications_enabled")
-      .eq("id", user.id)
-      .maybeSingle();
+    const [{ data: profile }, unread] = await Promise.all([
+      supabase.from("profiles").select("notifications_enabled").eq("id", user.id).maybeSingle(),
+      child
+        ? getStaffUnreadPlayerIds(supabase, user.id, [child.playerId])
+        : Promise.resolve(new Set<string>()),
+    ]);
     notificationsEnabled = profile?.notifications_enabled ?? true;
+    hasUnreadMessages = unread.size > 0;
   }
 
   return (
@@ -31,10 +37,16 @@ export default async function ParentLayout({ children }: { children: React.React
       <PushPrompt notificationsEnabled={notificationsEnabled} />
       <InstallPrompt />
       <BottomNav
+        messagesHref="/parent/messages"
         items={[
           { href: "/parent", label: "Suivi", icon: <HomeIcon />, exact: true },
           { href: "/parent/planning", label: "Planning", icon: <CalendarIcon /> },
-          { href: "/parent/messages", label: "Messages", icon: <MessageCircle size={22} /> },
+          {
+            href: "/parent/messages",
+            label: "Messages",
+            icon: <MessageCircle size={22} />,
+            dot: hasUnreadMessages,
+          },
           ...(showHygiene
             ? [{ href: "/parent/hygiene", label: "Hygiène", icon: <HeartIcon /> }]
             : []),

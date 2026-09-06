@@ -1,23 +1,73 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { getNavUnreadFlag } from "@/app/actions/messages";
+
+/** Cadence du guet des messages non lus — celle du reste de la messagerie. */
+const UNREAD_POLL_MS = 30_000;
 
 export interface NavItem {
   href: string;
   label: string;
   icon: React.ReactNode;
   exact?: boolean;
+  /** pastille rouge sur l'icône : du non-lu attend derrière cet onglet */
+  dot?: boolean;
+}
+
+/** Pastille de non-lu, posée sur le coin de l'icône. */
+function Dot({ variant }: { variant: "default" | "editorial" }) {
+  return (
+    <span
+      aria-hidden
+      className={`absolute right-[calc(50%-16px)] top-1.5 h-2.5 w-2.5 rounded-full ${
+        variant === "editorial" ? "border-2 border-tan bg-orange" : "border-2 border-white bg-danger"
+      }`}
+    />
+  );
 }
 
 export function BottomNav({
   items,
   variant = "default",
+  messagesHref,
 }: {
   items: NavItem[];
   variant?: "default" | "editorial";
+  /**
+   * Onglet qui porte la messagerie (Profil côté joueur, Joueurs côté staff).
+   * Sa pastille se rafraîchit toute seule : un message qui arrive doit se voir
+   * sans navigation, sinon la pastille ne prévient de rien.
+   */
+  messagesHref?: string;
 }) {
   const pathname = usePathname();
+  // null tant qu'on n'a pas mesuré : la valeur du serveur fait foi d'ici là
+  const [liveUnread, setLiveUnread] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (!messagesHref) return;
+
+    // la navigation vient de rapporter une valeur serveur fraîche : on repart
+    // d'elle, la mesure vivante la reprendra au tour suivant
+    setLiveUnread(null);
+
+    const check = async () => setLiveUnread(await getNavUnreadFlag());
+    const id = setInterval(() => void check(), UNREAD_POLL_MS);
+    const onFocus = () => void check();
+    window.addEventListener("focus", onFocus);
+    return () => {
+      clearInterval(id);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [messagesHref, pathname]);
+
+  // une fois mesurée, la valeur vivante remplace celle du serveur — sinon la
+  // pastille resterait allumée après avoir lu le fil
+  const showDot = (item: NavItem) =>
+    item.href === messagesHref && liveUnread !== null ? liveUnread : item.dot;
 
   if (variant === "editorial") {
     return (
@@ -40,6 +90,7 @@ export function BottomNav({
                 {active && (
                   <span aria-hidden className="absolute top-0 h-[3px] w-8 bg-orange" />
                 )}
+                {showDot(item) && <Dot variant="editorial" />}
                 {item.icon}
                 {/* truncate : en offre formation la barre porte 5 onglets, et
                     « PROGRAMME » en mono espacé frôle la largeur d'une case sur
@@ -79,6 +130,7 @@ export function BottomNav({
                   className="absolute top-0 h-[3px] w-7 -skew-x-12 rounded-b-sm bg-gold"
                 />
               )}
+              {showDot(item) && <Dot variant="default" />}
               {item.icon}
               <span className="truncate">{item.label}</span>
             </Link>

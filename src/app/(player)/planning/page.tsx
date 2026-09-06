@@ -4,7 +4,7 @@ import { addDays, currentWeekStart, formatDateFr, isoWeekNumber, parisNow } from
 import { activeDayStreak } from "@/lib/discipline";
 import { canUseHygiene, toOffer } from "@/lib/offers";
 import { HYGIENE_MISSION_START } from "@/lib/hygiene";
-import { PlanningView } from "@/components/planning/PlanningView";
+import { PlanningView, type ProgramEntry } from "@/components/planning/PlanningView";
 import { WeeklyReviewLauncher } from "@/components/planning/WeeklyReviewLauncher";
 import { MatchSheetLauncher } from "@/components/planning/MatchSheetLauncher";
 import { StreakBanner } from "@/components/planning/StreakBanner";
@@ -19,6 +19,7 @@ import type {
   MatchStat,
   PlannedEvent,
   ReviewHealthStatus,
+  SessionPole,
 } from "@/lib/types";
 
 export const metadata = { title: "Planning — VPF" };
@@ -46,6 +47,7 @@ export default async function PlanningPage() {
     { data: matchStats },
     { data: hygieneToday },
     { data: hygieneDates },
+    { data: programRows },
   ] = await Promise.all([
     supabase
       .from("planned_events")
@@ -104,7 +106,34 @@ export default async function PlanningPage() {
       .select("log_date")
       .eq("player_id", user.id)
       .gte("log_date", HYGIENE_MISSION_START),
+    // programme du coach rangé par jour (0035) : le planning annonce les
+    // séances prévues et renvoie vers l'onglet Programme
+    supabase
+      .from("session_assignments")
+      .select("id, weekday, session:library_sessions!inner(name, pole, duration_minutes), completion:session_completions(status)")
+      .eq("player_id", user.id)
+      .is("removed_at", null)
+      .not("weekday", "is", null)
+      .order("order_index"),
   ]);
+
+  // Séances du programme, jour par jour : Supabase renvoie les relations en
+  // tableau ou en objet selon la requête, d'où la normalisation.
+  const programByDay: ProgramEntry[] = (programRows ?? []).flatMap((row) => {
+    const session = Array.isArray(row.session) ? row.session[0] : row.session;
+    const completion = Array.isArray(row.completion) ? row.completion[0] : row.completion;
+    if (!session || row.weekday === null) return [];
+    return [
+      {
+        id: row.id as string,
+        weekday: row.weekday as number,
+        name: session.name as string,
+        pole: session.pole as SessionPole,
+        durationMinutes: session.duration_minutes as number,
+        done: completion?.status === "done",
+      },
+    ];
+  });
 
   // Contact coach : gardé pour l'intitulé du bouton (l'équipe échange sur Discord)
   const coach = coachRow?.coach
@@ -269,6 +298,7 @@ export default async function PlanningPage() {
         streakOnComplete={streakOnComplete}
         hygieneMission={hygieneMission}
         weeklyReview={weeklyReview}
+        programByDay={programByDay}
       />
 
       {/* Réponse du coach au bilan hebdo : carte éditoriale sous le planning */}

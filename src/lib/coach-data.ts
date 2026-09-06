@@ -23,6 +23,8 @@ export interface PlayerDiscipline {
   /** null si aucune donnée exploitable */
   discipline: number | null;
   planningEmpty: boolean;
+  /** création du compte joueur (ISO) — sert à ne pas alerter sur un compte tout neuf */
+  created_at: string;
 }
 
 /**
@@ -43,7 +45,7 @@ export async function getPlayersWithDiscipline(
   let query = supabase
     .from("players")
     .select(
-      "id, coach_id, season_goal, availability, offer, profile:profiles!players_id_fkey(first_name, last_name, whatsapp_number)"
+      "id, coach_id, season_goal, availability, offer, created_at, profile:profiles!players_id_fkey(first_name, last_name, whatsapp_number)"
     )
     .eq("status", "active");
   if (coachId) query = query.eq("coach_id", coachId);
@@ -94,6 +96,7 @@ export async function getPlayersWithDiscipline(
         availability: (p.availability ?? "available") as PlayerAvailability,
         discipline,
         planningEmpty: plannedCount === 0,
+        created_at: p.created_at,
       };
     })
     .sort((a, b) => a.first_name.localeCompare(b.first_name, "fr"));
@@ -256,4 +259,108 @@ export async function getCoachOverview(
     reviews: reviewsWithPlayer.filter((r) => r.week_start >= prevWeekStart),
     activity,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Vues de la liste unique des joueurs : santé et semaine en cours. Une seule
+// liste dans toute l'app, trois colonnes commutables — ces deux helpers
+// fournissent les deux colonnes qui ne sont pas la discipline.
+// ---------------------------------------------------------------------------
+
+export interface HealthEntry {
+  energy: { score: number; at: string } | null;
+  pain: { score: number; at: string } | null;
+}
+
+/** Dernier check-in énergie et douleurs de chaque joueur. */
+export async function getHealthByPlayer(
+  supabase: SupabaseClient,
+  playerIds: string[]
+): Promise<Map<string, HealthEntry>> {
+  const health = new Map<string, HealthEntry>();
+  if (playerIds.length === 0) return health;
+
+  const { data: checkins } = await supabase
+    .from("checkins")
+    .select("player_id, question, score, created_at")
+    .in("player_id", playerIds)
+    .order("created_at", { ascending: false })
+    .limit(200);
+
+  for (const c of checkins ?? []) {
+    const entry = health.get(c.player_id) ?? { energy: null, pain: null };
+    const key = c.question === "energy" ? "energy" : "pain";
+    if (!entry[key]) entry[key] = { score: c.score, at: c.created_at };
+    health.set(c.player_id, entry);
+  }
+  return health;
+}
+
+export interface WeekTracking {
+  /** événements de la semaine : pointés + prévus pas encore pointés */
+  planned: number;
+  done: number;
+  /** points de la feuille de match de la semaine, null si aucune */
+  sheetPoints: number | null;
+  hasReview: boolean;
+}
+
+/**
+ * Suivi de la semaine en cours par joueur : pointages, feuille de match, bilan.
+ * Même décompte que le planning coach — un événement de la semaine type non
+ * pointé compte comme prévu, un pointage fait comme réalisé.
+ */
+export async function getWeekTracking(
+  supabase: SupabaseClient,
+  playerIds: string[],
+  weekStart: string
+): Promise<Map<string, WeekTracking>> {
+  const tracking = new Map<string, WeekTracking>();
+  if (playerIds.length === 0) return tracking;
+
+  const [{ data: events }, { data: completions }, { data: sheets }, { data: reviews }] =
+    await Promise.all([
+      supabase.from("planned_events").select("id, player_id").in("player_id", playerIds),
+      supabase
+        .from("event_completions")
+        .select("player_id, planned_event_id, status")
+        .eq("week_start", weekStart)
+        .in("player_id", playerIds),
+      supabase
+        .from("match_stats")
+        .select("player_id, points")
+        .gte("match_date", weekStart)
+        .lte("match_date", addDays(weekStart, 6))
+        .in("player_id", playerIds),
+      supabase
+        .from("weekly_reviews")
+        .select("player_id")
+        .eq("week_start", weekStart)
+        .in("player_id", playerIds),
+    ]);
+
+  for (const id of playerIds) {
+    tracking.set(id, { planned: 0, done: 0, sheetPoints: null, hasReview: false });
+  }
+  const pointed = new Set((completions ?? []).map((c) => c.planned_event_id).filter(Boolean));
+
+  for (const c of completions ?? []) {
+    const t = tracking.get(c.player_id);
+    if (!t) continue;
+    t.planned += 1;
+    if (c.status === "done") t.done += 1;
+  }
+  for (const e of events ?? []) {
+    const t = tracking.get(e.player_id);
+    if (t && !pointed.has(e.id)) t.planned += 1;
+  }
+  for (const s of sheets ?? []) {
+    const t = tracking.get(s.player_id);
+    if (t && t.sheetPoints === null) t.sheetPoints = s.points;
+  }
+  for (const r of reviews ?? []) {
+    const t = tracking.get(r.player_id);
+    if (t) t.hasReview = true;
+  }
+  return tracking;
 }

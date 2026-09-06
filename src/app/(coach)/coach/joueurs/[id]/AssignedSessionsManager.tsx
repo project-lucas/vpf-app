@@ -7,9 +7,12 @@ import {
   assignSession,
   removeAssignment,
   reorderAssignments,
+  setAssignmentWeekday,
   setVisibleNote,
 } from "@/app/actions/coach";
-import { CATEGORIES, VISIBLE_NOTE_MAX_LENGTH } from "@/lib/constants";
+import { CATEGORIES, VISIBLE_NOTE_MAX_LENGTH, WEEKDAY_LABELS } from "@/lib/constants";
+import { parisNow } from "@/lib/dates";
+import { WeekdayPicker, WeekdaySelect, weekdaysLabel } from "@/components/coach/WeekdayPicker";
 import { Button } from "@/components/ui/Button";
 import { Card, CardTitle } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
@@ -45,15 +48,40 @@ export function AssignedSessionsManager({
   const [noteSaved, setNoteSaved] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // jours appliqués aux séances affectées depuis ce panneau (0035) — un ou
+  // plusieurs, « chaque jour » pour une routine
+  const [addDays, setAddDays] = useState<number[]>(() => [parisNow().isoWeekday]);
 
   const active = assignments.filter((a) => !a.removed_at);
   const removed = assignments.filter((a) => a.removed_at && a.completion);
 
-  function move(index: number, delta: number) {
-    const target = index + delta;
-    if (target < 0 || target >= active.length) return;
+  // Le programme se lit par jour : les séances d'avant 0035 restées sans jour
+  // ouvrent la liste, elles sont invisibles pour le joueur tant qu'on ne les
+  // a pas rangées.
+  const dayGroups = [
+    ...(active.some((a) => a.weekday === null)
+      ? [{ day: null as number | null, label: "À replacer", items: active.filter((a) => a.weekday === null) }]
+      : []),
+    ...WEEKDAY_LABELS.map((label, i) => ({
+      day: i + 1 as number | null,
+      label,
+      items: active.filter((a) => a.weekday === i + 1),
+    })).filter((g) => g.items.length > 0),
+  ];
+
+  /** Échange une séance avec sa voisine du MÊME jour (l'ordre est global). */
+  function move(assignmentId: string, delta: number) {
+    const sameDay = active.filter(
+      (a) => a.weekday === active.find((x) => x.id === assignmentId)?.weekday
+    );
+    const pos = sameDay.findIndex((a) => a.id === assignmentId);
+    const neighbour = sameDay[pos + delta];
+    if (!neighbour) return;
+
     const ids = active.map((a) => a.id);
-    [ids[index], ids[target]] = [ids[target], ids[index]];
+    const from = ids.indexOf(assignmentId);
+    const to = ids.indexOf(neighbour.id);
+    [ids[from], ids[to]] = [ids[to], ids[from]];
     startTransition(async () => {
       const result = await reorderAssignments(playerId, ids);
       setError(result.ok ? null : result.error);
@@ -71,7 +99,18 @@ export function AssignedSessionsManager({
 
   function add(sessionId: string) {
     startTransition(async () => {
-      const result = await assignSession(sessionId, [playerId]);
+      const result = await assignSession(sessionId, [playerId], addDays);
+      setError(result.ok ? null : result.error);
+      if (result.ok) {
+        setAddOpen(false);
+        router.refresh();
+      }
+    });
+  }
+
+  function changeDay(assignmentId: string, weekday: number) {
+    startTransition(async () => {
+      const result = await setAssignmentWeekday(assignmentId, playerId, weekday);
       setError(result.ok ? null : result.error);
       if (result.ok) router.refresh();
     });
@@ -149,51 +188,74 @@ export function AssignedSessionsManager({
         {active.length === 0 ? (
           <p className="text-sm text-navy-400">Aucune séance affectée.</p>
         ) : (
-          <div className="space-y-2">
-            {active.map((a, i) => (
-              <div key={a.id} className="rounded-xl border border-navy-100 p-3">
-                <div className="flex items-center gap-2">
-                  <div className="flex flex-col">
-                    <button
-                      onClick={() => move(i, -1)}
-                      disabled={isPending || i === 0}
-                      aria-label="Monter"
-                      className="text-navy-300 hover:text-navy-700 disabled:opacity-30"
-                    >
-                      <ChevronUpIcon size={16} />
-                    </button>
-                    <button
-                      onClick={() => move(i, 1)}
-                      disabled={isPending || i === active.length - 1}
-                      aria-label="Descendre"
-                      className="text-navy-300 hover:text-navy-700 disabled:opacity-30"
-                    >
-                      <ChevronDownIcon size={16} />
-                    </button>
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-bold text-navy-900">{a.session.name}</p>
-                    <p className="text-xs text-navy-400">
-                      {(a.session.categories ?? []).join(", ")} · {a.session.duration_minutes} min
-                    </p>
-                  </div>
-                  {completionBadge(a)}
-                  <IconButton
-                    tone="danger"
-                    onClick={() => remove(a.id)}
-                    disabled={isPending}
-                    aria-label="Retirer"
-                  >
-                    <TrashIcon size={16} />
-                  </IconButton>
+          /* Groupé par jour : c'est ainsi que le joueur lit son programme */
+          <div className="space-y-4">
+            {dayGroups.map((group) => (
+              <section key={group.label}>
+                <h3
+                  className={`mb-1.5 text-xs font-bold uppercase tracking-wide ${
+                    group.day === null ? "text-warning" : "text-navy-400"
+                  }`}
+                >
+                  {group.label}
+                  {group.day === null && " — invisible pour le joueur tant qu'aucun jour n'est choisi"}
+                </h3>
+                <div className="space-y-2">
+                  {group.items.map((a, i) => (
+                    <div key={a.id} className="rounded-xl border border-navy-100 p-3">
+                      <div className="flex items-center gap-2">
+                        <div className="flex flex-col">
+                          <button
+                            onClick={() => move(a.id, -1)}
+                            disabled={isPending || i === 0}
+                            aria-label="Monter"
+                            className="text-navy-300 hover:text-navy-700 disabled:opacity-30"
+                          >
+                            <ChevronUpIcon size={16} />
+                          </button>
+                          <button
+                            onClick={() => move(a.id, 1)}
+                            disabled={isPending || i === group.items.length - 1}
+                            aria-label="Descendre"
+                            className="text-navy-300 hover:text-navy-700 disabled:opacity-30"
+                          >
+                            <ChevronDownIcon size={16} />
+                          </button>
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-bold text-navy-900">
+                            {a.session.name}
+                          </p>
+                          <p className="text-xs text-navy-400">
+                            {(a.session.categories ?? []).join(", ")} · {a.session.duration_minutes}{" "}
+                            min
+                          </p>
+                        </div>
+                        <WeekdaySelect
+                          value={a.weekday}
+                          onChange={(day) => changeDay(a.id, day)}
+                          disabled={isPending}
+                        />
+                        {completionBadge(a)}
+                        <IconButton
+                          tone="danger"
+                          onClick={() => remove(a.id)}
+                          disabled={isPending}
+                          aria-label="Retirer"
+                        >
+                          <TrashIcon size={16} />
+                        </IconButton>
+                      </div>
+                      {a.completion?.comment && (
+                        <p className="mt-1.5 flex items-start gap-1.5 border-t border-navy-50 pt-1.5 text-xs text-navy-500">
+                          <MessageCircle size={13} className="mt-0.5 shrink-0" />
+                          <span className="min-w-0">{a.completion.comment}</span>
+                        </p>
+                      )}
+                    </div>
+                  ))}
                 </div>
-                {a.completion?.comment && (
-                  <p className="mt-1.5 flex items-start gap-1.5 border-t border-navy-50 pt-1.5 text-xs text-navy-500">
-                    <MessageCircle size={13} className="mt-0.5 shrink-0" />
-                    <span className="min-w-0">{a.completion.comment}</span>
-                  </p>
-                )}
-              </div>
+              </section>
             ))}
           </div>
         )}
@@ -236,6 +298,21 @@ export function AssignedSessionsManager({
           <p className="text-sm text-navy-400">La bibliothèque est vide pour ce pôle.</p>
         ) : (
           <div className="space-y-4">
+            {/* Les jours se choisissent AVANT la séance : ils conditionnent
+                l'endroit où le joueur la trouvera dans son programme. Un jour
+                = une affectation = un pointage. */}
+            <div className="rounded-xl bg-navy-50 p-3">
+              <p className="mb-2 text-xs font-bold uppercase tracking-wide text-navy-500">
+                Jours de la séance
+              </p>
+              <WeekdayPicker value={addDays} onChange={setAddDays} disabled={isPending} />
+              <p className="mt-2 text-xs text-navy-400">
+                {addDays.length === 0
+                  ? "Choisis au moins un jour."
+                  : `Le joueur la verra ${weekdaysLabel(addDays)} dans son programme, et la cochera chaque fois.`}
+              </p>
+            </div>
+
             {CATEGORIES[pole]
               .filter((c) => library.some((s) => (s.categories ?? []).includes(c)))
               .map((category) => (

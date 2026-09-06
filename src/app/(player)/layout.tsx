@@ -1,6 +1,7 @@
 import { createClient, getCachedUser } from "@/lib/supabase/server";
 import { daysBetween, parisNow } from "@/lib/dates";
 import { canUseHygiene, toOffer } from "@/lib/offers";
+import { fetchNavUnread, hasNavUnread } from "@/lib/conversations";
 import { CHECKIN_INTERVAL_DAYS } from "@/lib/constants";
 import { BottomNav } from "@/components/BottomNav";
 import { CheckinModal } from "@/components/CheckinModal";
@@ -17,6 +18,9 @@ export default async function PlayerLayout({ children }: { children: React.React
   // Hygiène : réservée à l'offre formation (lue avec le coach ci-dessous).
   let showHygiene = false;
 
+  // pastille rouge sur l'onglet Profil : un message attend dans l'un des fils
+  let hasUnreadMessages = false;
+
   let checkinQuestion: CheckinQuestion | null = null;
   let notificationsEnabled = false;
   let announcements: Announcement[] = [];
@@ -29,6 +33,7 @@ export default async function PlayerLayout({ children }: { children: React.React
       { data: playerRow },
       { data: announcementRows },
       { data: announcementReads },
+      navUnread,
     ] = await Promise.all([
       supabase
         .from("checkins")
@@ -42,9 +47,14 @@ export default async function PlayerLayout({ children }: { children: React.React
       // annonces du club : la RLS filtre déjà selon l'offre du joueur
       supabase.from("announcements").select("*").order("created_at", { ascending: false }),
       supabase.from("announcement_reads").select("announcement_id").eq("user_id", user.id),
+      // messagerie : la lecture part avec le reste, le verdict dépend de
+      // l'offre (les fils privés n'existent qu'en formation)
+      fetchNavUnread(supabase, user.id),
     ]);
 
-    showHygiene = canUseHygiene(toOffer(playerRow?.offer));
+    const offer = toOffer(playerRow?.offer);
+    showHygiene = canUseHygiene(offer);
+    hasUnreadMessages = hasNavUnread(navUnread, offer);
 
     announcements = (announcementRows ?? []) as Announcement[];
     const readIds = new Set((announcementReads ?? []).map((r) => r.announcement_id));
@@ -83,6 +93,7 @@ export default async function PlayerLayout({ children }: { children: React.React
       />
       <BottomNav
         variant="editorial"
+        messagesHref="/parametres"
         items={[
           // Hygiène : offre formation uniquement (src/lib/offers.ts) — un
           // joueur perf garde les 3 onglets du socle.
@@ -92,7 +103,13 @@ export default async function PlayerLayout({ children }: { children: React.React
           { href: "/seances", label: "Programme", icon: <BallIcon size={22} /> },
           { href: "/planning", label: "Planning", icon: <CalendarIcon size={22} /> },
           { href: "/dashboard", label: "Dashboard", icon: <ChartIcon size={22} /> },
-          { href: "/parametres", label: "Profil", icon: <UserIcon size={22} /> },
+          // Profil = la messagerie : la pastille prévient sans ouvrir l'onglet
+          {
+            href: "/parametres",
+            label: "Profil",
+            icon: <UserIcon size={22} />,
+            dot: hasUnreadMessages,
+          },
         ]}
       />
     </div>

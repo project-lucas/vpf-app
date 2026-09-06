@@ -1,13 +1,16 @@
 import { createClient } from "@/lib/supabase/server";
+import { parisNow } from "@/lib/dates";
 import { Overline, DisplayTitle, DoubleRule } from "@/components/editorial/primitives";
-import { SessionsPoleTabs } from "./SessionsPoleTabs";
+import { SessionsDayTabs } from "./SessionsDayTabs";
 import type { SessionAssignmentWithSession, SessionPole } from "@/lib/types";
 
 /**
- * "Mes séances" : les séances que le coach a rendues visibles pour le joueur,
- * filtrées par 3 onglets (Physique / Technique / Routine).
+ * « Mes séances » : le programme préparé par le coach, rangé par JOUR de la
+ * semaine (0035) — on ouvre sur aujourd'hui. Une séance sans jour (affectation
+ * d'avant la migration) n'est pas affichée : le coach la voit « à replacer »
+ * dans la fiche du joueur.
  */
-export async function AssignedSessionsList() {
+export async function AssignedSessionsList({ initialDay }: { initialDay?: number }) {
   const supabase = await createClient();
   const {
     data: { user },
@@ -51,7 +54,7 @@ export async function AssignedSessionsList() {
       <DisplayTitle className="mt-2 text-[42px]">Mes Séances</DisplayTitle>
       <DoubleRule className="mt-3" />
 
-      {list.length === 0 ? (
+      {list.filter((a) => a.weekday !== null).length === 0 ? (
         <div className="mt-8 rounded-md border-2 border-ink bg-card px-5 py-10 text-center">
           <p className="ed-display text-[24px] text-ink">Aucune séance</p>
           <p className="ed-meta mt-2 text-[10px] leading-relaxed text-meta">
@@ -60,9 +63,11 @@ export async function AssignedSessionsList() {
         </div>
       ) : (
         <div className="mt-5">
-          <SessionsPoleTabs
+          <SessionsDayTabs
             list={list}
             notes={(notes ?? []) as { pole: SessionPole; content: string }[]}
+            todayWeekday={parisNow().isoWeekday}
+            initialDay={initialDay}
           />
         </div>
       )}

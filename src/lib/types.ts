@@ -221,6 +221,12 @@ export interface SessionAssignment {
   session_id: string;
   player_id: string;
   assigned_by: string | null;
+  /**
+   * Jour du programme (1 = lundi … 7 = dimanche, comme `planned_events`).
+   * null = affectation d'avant 0035 restée à replacer : le joueur ne la voit
+   * pas, le coach la retrouve dans « À replacer » sur la fiche.
+   */
+  weekday: number | null;
   order_index: number;
   removed_at: string | null;
   created_at: string;
@@ -377,17 +383,65 @@ export interface Announcement {
 /** Message du fil de discussion d'un joueur (joueur, coach, admin, parent). */
 export interface ConversationMessage {
   id: string;
-  /** joueur dont c'est le fil (un joueur = une conversation) */
+  /** joueur dont c'est le fil */
   player_id: string;
+  /**
+   * Canal (0034) : null = fil coach & parents, sinon fil privé avec cet admin
+   * (offre formation uniquement).
+   */
+  channel_admin_id: string | null;
   sender_id: string | null;
   body: string;
   created_at: string;
+  /** Date de la dernière modification du corps, null si jamais retouché (0036). */
+  edited_at: string | null;
+  /** Chemin dans le bucket privé `messages` — jamais servi tel quel au client. */
+  attachment_path: string | null;
+  attachment_kind: AttachmentKind | null;
+  attachment_name: string | null;
+  attachment_size: number | null;
+  /** Durée en secondes (vocaux et vidéos), null sinon. */
+  attachment_duration: number | null;
 }
 
-/** Message enrichi pour l'affichage : nom et rôle de l'auteur. */
+/**
+ * Nature d'une pièce jointe : décide du rendu dans la bulle (visionneuse,
+ * lecteur vidéo, lecteur vocal, ou pastille de fichier).
+ */
+export type AttachmentKind = "image" | "video" | "audio" | "file";
+
+/**
+ * Canal ouvert dans le fil d'un joueur, tel que le voit celui qui regarde :
+ * l'étiquette (nom de l'admin) et le drapeau « du nouveau à lire ».
+ */
+export interface ConversationChannel {
+  /** null = fil coach & parents ; sinon fil privé de cet admin */
+  adminId: string | null;
+  /** prénom de l'admin porteur du fil privé (null pour le fil coach) */
+  adminName: string | null;
+  hasUnread: boolean;
+}
+
+/**
+ * Message enrichi pour l'affichage : nom et rôle de l'auteur, et URL signée de
+ * la pièce jointe. Le bucket étant privé, `attachment_url` est fabriquée à
+ * chaque lecture et périme (MESSAGE_SIGNED_URL_TTL_SECONDS) — ne jamais la
+ * stocker, ni la transmettre hors de l'interface.
+ */
 export interface ConversationMessageWithSender extends ConversationMessage {
   sender_name: string;
   sender_role: UserRole | null;
+  attachment_url: string | null;
+}
+
+/** Pièce jointe déposée dans le bucket, prête à accompagner un message. */
+export interface MessageAttachmentInput {
+  path: string;
+  kind: AttachmentKind;
+  name: string;
+  size: number;
+  /** Durée en secondes pour un vocal ou une vidéo, null sinon. */
+  duration: number | null;
 }
 
 export type ActionResult = { ok: true } | { ok: false; error: string };

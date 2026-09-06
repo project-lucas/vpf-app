@@ -52,8 +52,12 @@ export const WORK_EVENT_TYPES = new Set<EventType>([
   "mobilite",
 ]);
 
-// Choix de durée proposés dans l'éditeur de semaine type (minutes)
-export const DURATION_OPTIONS = [10, 15, 20, 30, 45, 60, 75, 90, 120, 150, 180];
+// Choix de durée proposés dans l'éditeur de semaine type (minutes). 2 et 5 min
+// couvrent les micro-routines (respiration, étirement ciblé, collation).
+export const DURATION_OPTIONS = [2, 5, 10, 15, 20, 30, 45, 60, 75, 90, 120, 150, 180];
+// Bornes acceptées par l'action serveur — alignées sur la contrainte SQL (0038)
+export const EVENT_DURATION_MIN = 1;
+export const EVENT_DURATION_MAX = 600;
 
 // Horaires en 24 h, séparés heures / minutes (deux sélecteurs courts plutôt
 // qu'une longue liste). Le champ natif <input type="time"> suit la locale du
@@ -282,6 +286,47 @@ export const CONVERSATION_HISTORY_LIMIT = 300;
 
 /** Messages affichés d'entrée dans le fil — le reste se déplie à la demande. */
 export const CONVERSATION_PAGE_SIZE = 25;
+
+/**
+ * Messages balayés pour composer la boîte de réception d'un admin (dernier
+ * message de chaque fil privé). Large devant le trafic réel d'un club.
+ */
+export const INBOX_SCAN_LIMIT = 1000;
+
+/**
+ * Messages balayés pour les pastilles de non-lu du staff (onglet Joueurs et
+ * liste des joueurs). Les marqueurs de lecture étant monotones par canal, le
+ * dernier message d'un fil suffit à trancher : il n'y a donc rien à remonter
+ * au-delà, sauf trafic exceptionnel sur un seul fil.
+ */
+export const STAFF_UNREAD_SCAN_LIMIT = 500;
+
+/**
+ * Clé d'un canal de discussion (0034) : le fil coach & parents n'a pas d'admin
+ * porteur, les fils privés sont identifiés par l'id de leur admin. Sert de clé
+ * d'onglet et de pastille non-lue, côté serveur comme côté client.
+ */
+export const STAFF_CHANNEL_KEY = "staff";
+
+export function channelKey(adminId: string | null): string {
+  return adminId ?? STAFF_CHANNEL_KEY;
+}
+
+// Pièces jointes des messages (migration 0036) — bucket privé `messages`
+export const MESSAGE_BUCKET = "messages";
+
+/** Plafond posé sur le bucket (50 Mo = limite du plan Supabase par fichier). */
+export const MESSAGE_ATTACHMENT_MAX_BYTES = 50 * 1024 * 1024;
+
+/**
+ * Validité des URL signées servies au client. Généreux devant la durée d'une
+ * session de lecture : le fil se recharge (temps réel ou sondage) bien avant
+ * l'expiration, et une URL fuitée ne vaut donc que quelques heures.
+ */
+export const MESSAGE_SIGNED_URL_TTL_SECONDS = 4 * 3600;
+
+/** Durée maximale d'un vocal (secondes) — au-delà, on écrit ou on appelle. */
+export const VOICE_MESSAGE_MAX_SECONDS = 300;
 
 // Annonces du club (admins → joueurs)
 export const ANNOUNCEMENT_TITLE_MAX_LENGTH = 80;

@@ -8,7 +8,7 @@ import { formatPercent } from "@/lib/discipline";
 import { AVAILABILITY_LABELS, LOW_DISCIPLINE_THRESHOLD } from "@/lib/constants";
 import { currentWeekStart } from "@/lib/dates";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { StatCard } from "@/components/ui/StatCard";
+import { StatStrip } from "@/components/ui/StatStrip";
 import { Card, CardTitle } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { ChevronLeftIcon } from "@/components/icons";
@@ -175,15 +175,17 @@ export default async function ClubCoachPage({ params }: { params: Promise<{ id: 
         </Badge>
       )}
 
-      <div className="grid grid-cols-3 gap-2.5">
-        <StatCard label="Joueurs actifs" value={`${players.length}`} />
-        <StatCard label="Discipline" value={formatPercent(averageDiscipline(players))} />
-        <StatCard
-          label="Bilans hebdo"
-          value={`${availablePlayers.filter((p) => withReview.has(p.id)).length}/${availablePlayers.length}`}
-          hint="cette semaine"
-        />
-      </div>
+      <StatStrip
+        items={[
+          { label: "Joueurs", value: `${players.length}` },
+          { label: "Discipline", value: formatPercent(averageDiscipline(players)) },
+          {
+            label: "Bilans",
+            value: `${availablePlayers.filter((p) => withReview.has(p.id)).length}/${availablePlayers.length}`,
+            hint: "cette semaine",
+          },
+        ]}
+      />
 
       <Card className="mt-5">
         <CardTitle>Joueurs</CardTitle>

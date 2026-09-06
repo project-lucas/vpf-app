@@ -1,6 +1,5 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
-import { ChevronRight, HeartPulse } from "lucide-react";
+import { HeartPulse, Megaphone, UserPlus } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { getAuthProfile } from "@/lib/auth";
 import { averageDiscipline, getPlayersWithDiscipline } from "@/lib/coach-data";
@@ -8,9 +7,11 @@ import { formatPercent } from "@/lib/discipline";
 import { LOW_DISCIPLINE_THRESHOLD } from "@/lib/constants";
 import { addDays, currentWeekStart, parisNow } from "@/lib/dates";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { StatCard } from "@/components/ui/StatCard";
-import { Card } from "@/components/ui/Card";
+import { StatStrip } from "@/components/ui/StatStrip";
+import { Section } from "@/components/ui/Section";
+import { Row } from "@/components/ui/Row";
 import { Badge } from "@/components/ui/Badge";
+import { DisclosureBar } from "@/components/ui/DisclosureBar";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { CreateCoachButton } from "./CreateCoachButton";
 import { AnnouncementsManager } from "./AnnouncementsManager";
@@ -33,6 +34,11 @@ interface StaffRow {
   alertCount: number;
 }
 
+/**
+ * Supervision du club (admins) : un coach par ligne, ceux qui demandent
+ * l'attention en premier. Les annonces et la création d'un coach — gestes
+ * rares — sont derrière deux icônes en haut, plus au milieu de la page.
+ */
 export default async function ClubPage() {
   const { profile } = await getAuthProfile();
   if (!profile || profile.role !== "admin") redirect("/coach");
@@ -105,93 +111,109 @@ export default async function ClubPage() {
 
   // les coachs qui demandent l'attention remontent en premier
   rows.sort((a, b) => b.alertCount - a.alertCount || a.name.localeCompare(b.name, "fr"));
+  const totalAlerts = rows.reduce((s, r) => s + r.alertCount, 0);
+  const clubDiscipline = averageDiscipline(players);
 
   return (
     <>
       <PageHeader
         title="Staff"
-        subtitle="L'essentiel sur chaque coach et ses joueurs, en un coup d'œil."
+        subtitle={
+          totalAlerts > 0
+            ? `${totalAlerts} point${totalAlerts > 1 ? "s" : ""} d'attention dans le club.`
+            : "Le club en un coup d'œil."
+        }
       />
 
-      <div className="grid grid-cols-3 gap-2.5">
-        <StatCard label="Coachs" value={`${rows.length}`} />
-        <StatCard label="Joueurs actifs" value={`${players.length}`} />
-        <StatCard
-          label="Discipline"
-          value={formatPercent(averageDiscipline(players))}
-          hint="moyenne club"
-        />
-      </div>
+      <StatStrip
+        items={[
+          { label: "Coachs", value: `${rows.length}` },
+          { label: "Joueurs", value: `${players.length}` },
+          {
+            label: "Discipline",
+            value: formatPercent(clubDiscipline),
+            hint: "moyenne club",
+            tone:
+              clubDiscipline !== null && clubDiscipline < LOW_DISCIPLINE_THRESHOLD
+                ? "warning"
+                : "default",
+          },
+        ]}
+      />
 
-      <div className="mt-5">
-        <AnnouncementsManager announcements={(announcements ?? []) as Announcement[]} />
-      </div>
+      <DisclosureBar
+        className="mt-4"
+        items={[
+          {
+            key: "annonces",
+            icon: <Megaphone size={16} />,
+            label: "Annonces",
+            count: (announcements ?? []).length,
+            content: <AnnouncementsManager announcements={(announcements ?? []) as Announcement[]} />,
+          },
+          {
+            key: "coach",
+            icon: <UserPlus size={16} />,
+            label: "Nouveau coach",
+            content: <CreateCoachButton />,
+          },
+        ]}
+      />
 
-      <div className="mt-5">
-        <CreateCoachButton />
-      </div>
+      <Section className="mt-6" title="Coachs">
+        {rows.length === 0 ? (
+          <EmptyState>Aucun coach pour le moment.</EmptyState>
+        ) : (
+          <div>
+            {rows.map((r) => {
+              const details = [
+                `${r.playersCount} joueur${r.playersCount > 1 ? "s" : ""}`,
+                `Discipline ${formatPercent(r.discipline)}`,
+                `Bilans ${r.reviewsReceived}/${r.reviewsExpected}`,
+              ];
+              const alerts = [
+                r.painAlerts > 0 ? `${r.painAlerts} douleur${r.painAlerts > 1 ? "s" : ""}` : null,
+                r.emptyPlannings > 0
+                  ? `${r.emptyPlannings} planning${r.emptyPlannings > 1 ? "s" : ""} vide${r.emptyPlannings > 1 ? "s" : ""}`
+                  : null,
+                r.lowDiscipline > 0
+                  ? `${r.lowDiscipline} discipline${r.lowDiscipline > 1 ? "s" : ""} faible${r.lowDiscipline > 1 ? "s" : ""}`
+                  : null,
+              ].filter(Boolean);
 
-      {rows.length === 0 ? (
-        <EmptyState>Aucun coach pour le moment.</EmptyState>
-      ) : (
-        <div className="mt-4 space-y-3">
-          {rows.map((r) => (
-            <Link key={r.id} href={`/coach/club/${r.id}`} className="block">
-              <Card>
-                <div className="flex items-center justify-between gap-2">
-                  <p className="min-w-0 truncate font-bold text-navy-900">
-                    {r.name}
-                    {r.isAdmin && (
-                      <Badge tone="navy" className="ml-1.5 align-middle">
-                        Admin
+              return (
+                <Row
+                  key={r.id}
+                  href={`/coach/club/${r.id}`}
+                  dot={r.alertCount > 0}
+                  emphasis={r.alertCount > 0}
+                  title={
+                    <span className="flex items-center gap-1.5">
+                      <span className="truncate">{r.name}</span>
+                      {r.isAdmin && <Badge tone="navy">Admin</Badge>}
+                    </span>
+                  }
+                  subtitle={
+                    <>
+                      {details.join(" · ")}
+                      {alerts.length > 0 && (
+                        <span className="font-semibold text-danger"> · {alerts.join(", ")}</span>
+                      )}
+                    </>
+                  }
+                  right={
+                    r.alertCount > 0 ? (
+                      <Badge tone="danger">
+                        <HeartPulse size={11} /> {r.alertCount}
                       </Badge>
-                    )}
-                  </p>
-                  <span className="flex shrink-0 items-center gap-1 text-xs font-semibold text-navy-400">
-                    {r.playersCount} joueur{r.playersCount > 1 ? "s" : ""}
-                    <ChevronRight size={15} />
-                  </span>
-                </div>
-
-                <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs">
-                  <Badge
-                    tone={
-                      r.discipline !== null && r.discipline < LOW_DISCIPLINE_THRESHOLD
-                        ? "danger"
-                        : "neutral"
-                    }
-                  >
-                    Discipline {formatPercent(r.discipline)}
-                  </Badge>
-                  <Badge tone={r.reviewsReceived < r.reviewsExpected ? "warning" : "success"}>
-                    Bilans {r.reviewsReceived}/{r.reviewsExpected}
-                  </Badge>
-                  {r.painAlerts > 0 && (
-                    <Badge tone="danger">
-                      <HeartPulse size={11} /> {r.painAlerts} douleur{r.painAlerts > 1 ? "s" : ""}
-                    </Badge>
-                  )}
-                  {r.emptyPlannings > 0 && (
-                    <Badge tone="warning">
-                      {r.emptyPlannings} planning{r.emptyPlannings > 1 ? "s" : ""} vide
-                      {r.emptyPlannings > 1 ? "s" : ""}
-                    </Badge>
-                  )}
-                  {r.lowDiscipline > 0 && (
-                    <Badge tone="danger">
-                      {r.lowDiscipline} discipline{r.lowDiscipline > 1 ? "s" : ""} faible
-                      {r.lowDiscipline > 1 ? "s" : ""}
-                    </Badge>
-                  )}
-                  {r.alertCount === 0 && r.playersCount > 0 && (
-                    <Badge tone="success">Aucune alerte</Badge>
-                  )}
-                </div>
-              </Card>
-            </Link>
-          ))}
-        </div>
-      )}
+                    ) : undefined
+                  }
+                />
+              );
+            })}
+          </div>
+        )}
+      </Section>
     </>
   );
 }

@@ -3,7 +3,13 @@
 import { revalidatePath } from "next/cache";
 import { createClient, getCachedUser } from "@/lib/supabase/server";
 import { currentWeekStart, addDays, parisNow } from "@/lib/dates";
-import { HABIT_COLORS, HABIT_ICON_NAMES } from "@/lib/constants";
+import {
+  EVENT_DURATION_MAX,
+  EVENT_DURATION_MIN,
+  HABIT_COLORS,
+  HABIT_ICON_NAMES,
+} from "@/lib/constants";
+import { weekdaysLabel } from "@/lib/weekdays";
 import type { ActionResult, CompletionStatus, EventType, HabitColor } from "@/lib/types";
 
 /** Heure valide "HH:MM" (00-23 / 00-59), suivie au plus de ":SS". */
@@ -15,25 +21,37 @@ function revalidatePlanning(playerId: string) {
   revalidatePath(`/coach/joueurs/${playerId}`);
 }
 
-/** Ajoute un événement à la semaine type (joueur lui-même, coach référent ou admin — RLS). */
+/**
+ * Ajoute un événement à la semaine type (joueur lui-même, coach référent ou
+ * admin — RLS), sur un ou plusieurs jours en une seule action : « lundi,
+ * mercredi et vendredi 18 h » = trois lignes, une requête.
+ *
+ * Règle inchangée : pas deux événements à la même heure le même jour. Les jours
+ * déjà pris sont **sautés**, les autres sont créés, et le message le dit — un
+ * refus en bloc obligerait à recommencer jour par jour.
+ */
 export async function addPlannedEvent(
   playerId: string,
   event: {
     event_type: EventType;
-    weekday: number;
+    /** un jour, ou plusieurs (1 = lundi … 7 = dimanche) */
+    weekday: number | number[];
     event_time: string;
     duration_minutes: number;
     /** activité perso (event_type = "autre") : nom + icône lucide + clé couleur */
     custom_name?: string;
     custom_icon?: string;
     custom_color?: string;
-  }
+  },
 ): Promise<ActionResult> {
   const duration = Math.round(event.duration_minutes);
+  const days = [...new Set(Array.isArray(event.weekday) ? event.weekday : [event.weekday])]
+    .filter((d) => Number.isInteger(d) && d >= 1 && d <= 7)
+    .sort((a, b) => a - b);
   if (
-    !(event.weekday >= 1 && event.weekday <= 7) ||
+    days.length === 0 ||
     !TIME_RE.test(event.event_time) ||
-    !(duration >= 5 && duration <= 600)
+    !(duration >= EVENT_DURATION_MIN && duration <= EVENT_DURATION_MAX)
   ) {
     return { ok: false, error: "Événement invalide." };
   }
@@ -55,29 +73,60 @@ export async function addPlannedEvent(
 
   const supabase = await createClient();
 
-  // Règle : pas deux événements à la même heure le même jour.
   const targetTime = event.event_time.slice(0, 5);
-  const { data: sameDay } = await supabase
+  const { data: existing } = await supabase
     .from("planned_events")
-    .select("event_time")
+    .select("weekday, event_time")
     .eq("player_id", playerId)
-    .eq("weekday", event.weekday);
-  if ((sameDay ?? []).some((e) => String(e.event_time).slice(0, 5) === targetTime)) {
-    return { ok: false, error: "Un événement est déjà prévu à cette heure ce jour-là." };
+    .in("weekday", days);
+  const taken = new Set(
+    (existing ?? [])
+      .filter((e) => String(e.event_time).slice(0, 5) === targetTime)
+      .map((e) => e.weekday as number),
+  );
+  const free = days.filter((d) => !taken.has(d));
+  const skipped = days.filter((d) => taken.has(d));
+
+  if (free.length === 0) {
+    return {
+      ok: false,
+      error:
+        days.length === 1
+          ? "Un événement est déjà prévu à cette heure ce jour-là."
+          : `Un événement est déjà prévu à ${targetTime} ${weekdaysLabel(days)}.`,
+    };
   }
 
-  const { error } = await supabase.from("planned_events").insert({
-    player_id: playerId,
-    event_type: event.event_type,
-    weekday: event.weekday,
-    event_time: event.event_time,
-    duration_minutes: duration,
-    custom_name: customName,
-    custom_icon: customIcon,
-    custom_color: customColor,
-  });
-  if (error) return { ok: false, error: "Ajout impossible." };
+  const { error } = await supabase.from("planned_events").insert(
+    free.map((weekday) => ({
+      player_id: playerId,
+      event_type: event.event_type,
+      weekday,
+      event_time: event.event_time,
+      duration_minutes: duration,
+      custom_name: customName,
+      custom_icon: customIcon,
+      custom_color: customColor,
+    })),
+  );
+  if (error) {
+    console.error("[addPlannedEvent] insert refusé", {
+      playerId,
+      days: free,
+      code: error.code,
+      message: error.message,
+    });
+    return { ok: false, error: `Ajout impossible : ${error.message}` };
+  }
   revalidatePlanning(playerId);
+
+  if (skipped.length > 0) {
+    // créé pour les jours libres ; on signale ceux qu'on a dû sauter
+    return {
+      ok: false,
+      error: `Ajouté ${weekdaysLabel(free)}. Déjà pris à ${targetTime} : ${weekdaysLabel(skipped)}.`,
+    };
+  }
   return { ok: true };
 }
 
@@ -89,7 +138,7 @@ export async function updatePlannedEvent(
     weekday?: number;
     event_time?: string;
     duration_minutes?: number;
-  }
+  },
 ): Promise<ActionResult> {
   // Reconstruction champ par champ : mêmes validations que l'ajout, et aucune
   // colonne hors whitelist ne peut passer via un payload forgé.
@@ -101,7 +150,8 @@ export async function updatePlannedEvent(
   } = {};
   if (fields.duration_minutes !== undefined) {
     const duration = Math.round(fields.duration_minutes);
-    if (!(duration >= 5 && duration <= 600)) return { ok: false, error: "Durée invalide." };
+    if (!(duration >= EVENT_DURATION_MIN && duration <= EVENT_DURATION_MAX))
+      return { ok: false, error: "Durée invalide." };
     patch.duration_minutes = duration;
   }
   if (fields.weekday !== undefined) {
@@ -165,7 +215,7 @@ export async function deletePlannedEvent(eventId: string, playerId: string): Pro
  */
 export async function copyWeekTemplate(
   fromPlayerId: string,
-  toPlayerId: string
+  toPlayerId: string,
 ): Promise<ActionResult> {
   if (fromPlayerId === toPlayerId) return { ok: false, error: "Choisis un autre joueur." };
   const supabase = await createClient();
@@ -173,7 +223,7 @@ export async function copyWeekTemplate(
   const { data: source, error: readError } = await supabase
     .from("planned_events")
     .select(
-      "event_type, weekday, event_time, duration_minutes, custom_name, custom_icon, custom_color"
+      "event_type, weekday, event_time, duration_minutes, custom_name, custom_icon, custom_color",
     )
     .eq("player_id", fromPlayerId);
   if (readError) return { ok: false, error: "Lecture impossible." };
@@ -201,7 +251,11 @@ export async function copyWeekTemplate(
       .from("planned_events")
       .delete()
       .in("id", previousIds);
-    if (deleteError) return { ok: false, error: "Copie faite, mais l'ancienne semaine n'a pas pu être retirée — réessaie." };
+    if (deleteError)
+      return {
+        ok: false,
+        error: "Copie faite, mais l'ancienne semaine n'a pas pu être retirée — réessaie.",
+      };
   }
 
   revalidatePlanning(toPlayerId);
@@ -218,7 +272,7 @@ export async function copyWeekTemplate(
 export async function checkEvent(
   plannedEventId: string,
   weekStart: string,
-  status: CompletionStatus
+  status: CompletionStatus,
 ): Promise<ActionResult> {
   const supabase = await createClient();
   const user = await getCachedUser();
@@ -266,7 +320,7 @@ export async function checkEvent(
       custom_color: event.custom_color ?? "",
       status,
     },
-    { onConflict: "planned_event_id,week_start", ignoreDuplicates: true }
+    { onConflict: "planned_event_id,week_start", ignoreDuplicates: true },
   );
   if (insertError) return { ok: false, error: "Pointage impossible." };
 
@@ -284,7 +338,7 @@ export async function checkEvent(
 /** Commentaire optionnel du joueur sur une réalisation. */
 export async function setCompletionComment(
   completionId: string,
-  comment: string
+  comment: string,
 ): Promise<ActionResult> {
   const supabase = await createClient();
   const user = await getCachedUser();

@@ -37,6 +37,19 @@ function parseNavCookie(value: string | undefined, userId: string): NavState | n
   return { role };
 }
 
+/**
+ * Vrai si la requête porte encore un cookie de session Supabase
+ * (`sb-<projet>-auth-token`, éventuellement découpé en `.0`, `.1`…).
+ *
+ * Sert à distinguer « cet appareil n'est pas connecté » de « la session est
+ * là mais on n'a pas réussi à la vérifier à l'instant ». supabase-js purge
+ * lui-même ces cookies quand le jeton de rafraîchissement est réellement
+ * invalide : leur présence signifie que la session est encore bonne.
+ */
+function hasSessionCookie(request: NextRequest): boolean {
+  return request.cookies.getAll().some((c) => /^sb-.+-auth-token(\.\d+)?$/.test(c.name));
+}
+
 export async function middleware(request: NextRequest) {
   let response = NextResponse.next({ request });
 
@@ -84,7 +97,15 @@ export async function middleware(request: NextRequest) {
   };
 
   if (!user) {
-    return isPublic ? response : redirect("/login");
+    if (isPublic) return response;
+    // Jeton non vérifiable alors que les cookies de session sont toujours là :
+    // c'est un incident passager (Supabase injoignable, rafraîchissement du
+    // jeton en échec), pas une déconnexion. Renvoyer au login ferait retaper
+    // email + mot de passe pour une panne de quelques secondes — on laisse
+    // passer, la session reste intacte et la navigation suivante repart bien.
+    // Une session réellement expirée voit ses cookies purgés par supabase-js :
+    // on tombe alors dans le cas ci-dessous.
+    return hasSessionCookie(request) ? response : redirect("/login");
   }
 
   const cached = parseNavCookie(request.cookies.get(NAV_COOKIE)?.value, user.id);
@@ -93,14 +114,26 @@ export async function middleware(request: NextRequest) {
   if (cached) {
     role = cached.role;
   } else {
-    const { data: profile } = await supabase
+    const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select("role, players!players_id_fkey(status, onboarding_completed)")
       .eq("id", user.id)
-      .single();
+      .maybeSingle();
+
+    // `maybeSingle` sépare les deux cas que `single` confondait : une erreur
+    // (base injoignable, timeout) n'est PAS l'absence de profil. Déconnecter
+    // sur une erreur passagère renvoyait le joueur au login toutes les 15 min
+    // (à l'expiration du cache de rôle) sans qu'il ait rien fait.
+    if (profileError) {
+      // On laisse passer sans mettre le rôle en cache : le routage par rôle
+      // saute pour cette requête, la RLS et les gardes de page restent la
+      // vraie barrière d'accès.
+      return response;
+    }
 
     if (!profile) {
-      await supabase.auth.signOut();
+      // Compte sans profil : la session ne mène nulle part.
+      await supabase.auth.signOut({ scope: "local" });
       return redirect("/login");
     }
 
@@ -109,7 +142,7 @@ export async function middleware(request: NextRequest) {
     if (role === "player") {
       const player = Array.isArray(profile.players) ? profile.players[0] : profile.players;
       if (!player || player.status === "archived") {
-        await supabase.auth.signOut();
+        await supabase.auth.signOut({ scope: "local" });
         return redirect("/login");
       }
       if (!player.onboarding_completed) {

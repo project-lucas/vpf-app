@@ -2,37 +2,44 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient, getCachedUser } from "@/lib/supabase/server";
 import { getConversationMessages } from "@/app/actions/messages";
-import { MessageThread } from "@/components/messages/MessageThread";
+import { ConversationPanel } from "@/components/messages/ConversationPanel";
+import { getConversationChannels } from "@/lib/conversations";
+import { getNavRole } from "@/lib/auth";
 import {
   ageFromBirthdate,
   currentWeekStart,
+  formatAgoFr,
   formatDateFr,
   formatTime,
   parisNow,
 } from "@/lib/dates";
-import {
-  computeBadges,
-  computeXp,
-  levelTitle,
-  longestRun,
-} from "@/lib/gamification";
+import { computeBadges, computeXp, levelTitle, longestRun } from "@/lib/gamification";
 import { HabitCard } from "@/components/habits/HabitCard";
 import { PlayerRadar } from "@/app/(player)/dashboard/PlayerRadar";
-import { MessageCircle, Star } from "lucide-react";
-import { eventLabel, REVIEW_HEALTH_LABELS, WEEKDAY_LABELS } from "@/lib/constants";
+import { HeartPulse, History, ListChecks, MessageCircle, Star, Target, Zap } from "lucide-react";
+import {
+  AVAILABILITY_LABELS,
+  channelKey,
+  eventLabel,
+  REVIEW_HEALTH_LABELS,
+  STAFF_CHANNEL_KEY,
+  WEEKDAY_LABELS,
+} from "@/lib/constants";
 import { EventTypeIcon } from "@/components/planning/EventIcon";
 import { formatPercent } from "@/lib/discipline";
 import { Tabs } from "@/components/ui/Tabs";
 import { Card, CardTitle } from "@/components/ui/Card";
+import { Section } from "@/components/ui/Section";
 import { Badge } from "@/components/ui/Badge";
 import { ChevronLeftIcon } from "@/components/icons";
 import { PlanningEditor } from "@/components/planning/PlanningEditor";
+import { DisclosureBar } from "@/components/ui/DisclosureBar";
 import { PlayerProfileForm } from "./PlayerProfileForm";
 import { WeekFocusForm } from "./WeekFocusForm";
 import { AssignedSessionsManager } from "./AssignedSessionsManager";
 import { CoachNotesPanel } from "./CoachNotesPanel";
 import { ReviewReplyBox } from "@/components/coach/ReviewReplyBox";
-import { AvailabilityControl } from "@/components/coach/AvailabilityControl";
+import { RowMenu } from "@/components/coach/RowMenu";
 import { CopyWeekTemplate } from "@/components/coach/CopyWeekTemplate";
 import { GoalsManager } from "@/components/coach/GoalsManager";
 import { PlayerWhatsAppLink } from "@/components/coach/PlayerWhatsAppLink";
@@ -54,6 +61,7 @@ import type {
   LibrarySession,
   MatchStat,
   PlannedEvent,
+  PlayerAvailability,
   PlayerGoal,
   SessionAssignmentWithSession,
   WeeklyReview,
@@ -65,10 +73,15 @@ export const dynamic = "force-dynamic";
 
 export default async function PlayerDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ onglet?: string; canal?: string }>;
 }) {
   const { id } = await params;
+  const { onglet, canal } = await searchParams;
+  // canal ouvert d'entrée dans l'onglet Messages (lien depuis la liste, push)
+  const initialChannelAdminId = canal && canal !== STAFF_CHANNEL_KEY ? canal : null;
   const supabase = await createClient();
   const user = await getCachedUser();
   const weekStart = currentWeekStart();
@@ -103,7 +116,7 @@ export default async function PlayerDetailPage({
     supabase
       .from("players")
       .select(
-        "*, profile:profiles!players_id_fkey(first_name, last_name, whatsapp_number, notifications_enabled)"
+        "*, profile:profiles!players_id_fkey(first_name, last_name, whatsapp_number, notifications_enabled)",
       )
       .eq("id", id)
       .maybeSingle(),
@@ -162,10 +175,7 @@ export default async function PlayerDetailPage({
       .maybeSingle(),
     supabase.from("habits").select("*").eq("player_id", id).order("position"),
     // toutes les coches (heatmap + calcul XP/badges : séries, totaux)
-    supabase
-      .from("habit_checks")
-      .select("habit_id, check_date")
-      .eq("player_id", id),
+    supabase.from("habit_checks").select("habit_id, check_date").eq("player_id", id),
     supabase.from("coach_focus").select("content").eq("player_id", id).maybeSingle(),
     supabase
       .from("event_completions")
@@ -185,7 +195,7 @@ export default async function PlayerDetailPage({
       .eq("player_id", id)
       .order("log_date", { ascending: false }),
     // fil de discussion du joueur (lecture RLS : coach référent + admin)
-    getConversationMessages(id),
+    getConversationMessages(id, initialChannelAdminId),
     // vidéothèque hygiène : catalogue complet + activations de ce joueur
     supabase.from("hygiene_videos").select("*").order("category").order("title"),
     supabase.from("hygiene_video_assignments").select("video_id").eq("player_id", id),
@@ -201,19 +211,43 @@ export default async function PlayerDetailPage({
   if (!playerRaw) notFound();
   const profile = Array.isArray(playerRaw.profile) ? playerRaw.profile[0] : playerRaw.profile;
 
+  // Fils privés (0034) : réservés aux admins côté staff — un coach référent
+  // n'y a pas accès. getNavRole ne coûte pas de requête et ne sert qu'à
+  // afficher les onglets : la RLS reste seule juge de ce qui se lit.
+  const isAdminViewer = (await getNavRole()) === "admin";
+
   // Après le notFound() seulement : la lecture ci-dessus s'est faite sous RLS,
   // c'est elle qui prouve que l'utilisateur a le droit de consulter ce joueur.
   // Le comptage et les noms des parents, eux, contournent la RLS
   // (voir countPushDevices / getPlayerParents).
-  const [pushDeviceCount, playerParents] = await Promise.all([
+  const [pushDeviceCount, playerParents, channels] = await Promise.all([
     countPushDevices(id),
     getPlayerParents(id),
+    getConversationChannels(supabase, {
+      playerId: id,
+      viewerId: user?.id ?? "",
+      offer: toOffer(playerRaw.offer),
+      // admin : tous les fils privés ; coach référent : le sien (0037)
+      includePrivate: isAdminViewer ? true : playerRaw.coach_id === user?.id ? "own" : false,
+    }),
   ]);
+
+  // « Global » = joueur + parents + tout le staff ; un prénom = le fil privé
+  // entre le joueur et ce membre du staff
+  const conversationChannels = channels.map((c) => ({
+    key: channelKey(c.adminId),
+    adminId: c.adminId,
+    label: c.adminId ? (c.adminName ?? "Staff") : "Global",
+    hasUnread: c.hasUnread,
+  }));
 
   const otherPlayers = (otherPlayersRaw ?? [])
     .map((p) => {
       const pr = Array.isArray(p.profile) ? p.profile[0] : p.profile;
-      return { id: p.id, name: `${pr?.first_name ?? ""} ${pr?.last_name ?? ""}`.trim() };
+      return {
+        id: p.id,
+        name: `${pr?.first_name ?? ""} ${pr?.last_name ?? ""}`.trim(),
+      };
     })
     .sort((a, b) => a.name.localeCompare(b.name, "fr"));
 
@@ -233,23 +267,24 @@ export default async function PlayerDetailPage({
 
   const matchStats = (stats ?? []) as MatchStat[];
   const avgPoints =
-    matchStats.length > 0
-      ? matchStats.reduce((s, m) => s + m.points, 0) / matchStats.length
-      : null;
+    matchStats.length > 0 ? matchStats.reduce((s, m) => s + m.points, 0) / matchStats.length : null;
   const avgMinutes =
     matchStats.length > 0
       ? matchStats.reduce((s, m) => s + m.minutes, 0) / matchStats.length
       : null;
-  const recordPoints =
-    matchStats.length > 0 ? Math.max(...matchStats.map((m) => m.points)) : null;
+  const recordPoints = matchStats.length > 0 ? Math.max(...matchStats.map((m) => m.points)) : null;
   const checkin = lastCheckin as Checkin | null;
   const age = ageFromBirthdate(playerRaw.birthdate);
+  const availability = (playerRaw.availability ?? "available") as PlayerAvailability;
   const offer = toOffer(playerRaw.offer);
   const allHygieneLogs = (hygieneLogs ?? []) as HygieneLog[];
 
   // ---- Gamification : mêmes calculs que le dashboard joueur (XP, niveau,
   // badges) — le coach voit exactement ce que voit son joueur ----
-  const allHabitChecks = (habitChecks ?? []) as { habit_id: string; check_date: string }[];
+  const allHabitChecks = (habitChecks ?? []) as {
+    habit_id: string;
+    check_date: string;
+  }[];
   const checksByHabit = new Map<string, string[]>();
   for (const c of allHabitChecks) {
     if (!checksByHabit.has(c.habit_id)) checksByHabit.set(c.habit_id, []);
@@ -257,7 +292,7 @@ export default async function PlayerDetailPage({
   }
   const bestHabitRun = Math.max(
     0,
-    ...[...checksByHabit.values()].map((dates) => longestRun(dates))
+    ...[...checksByHabit.values()].map((dates) => longestRun(dates)),
   );
   const sessionsDone = allAssignments.filter((a) => a.completion?.status === "done").length;
   const eventsDone = eventsDoneCount ?? 0;
@@ -278,7 +313,7 @@ export default async function PlayerDetailPage({
     recordBeaten:
       matchStats.length >= 2 && maxPointsMatch !== null && maxPointsMatch.id !== oldestMatch.id,
     perfectWeekCount: allSummaries.filter(
-      (s) => s.planned_count > 0 && s.done_count >= s.planned_count
+      (s) => s.planned_count > 0 && s.done_count >= s.planned_count,
     ).length,
     sessionsDone,
     habitChecks: allHabitChecks.length,
@@ -324,278 +359,448 @@ export default async function PlayerDetailPage({
       </Link>
 
       <div className="mb-4">
-        <div className="flex items-center justify-between gap-3">
-          <h1 className="text-xl font-extrabold text-navy-900">
-            {profile?.first_name} {profile?.last_name}
-          </h1>
-          <PlayerWhatsAppLink
-            whatsappNumber={profile?.whatsapp_number}
-            playerName={`${profile?.first_name ?? ""} ${profile?.last_name ?? ""}`.trim()}
-            size="md"
-          />
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h1 className="font-display text-2xl font-bold uppercase leading-none tracking-wide text-navy-900">
+              {profile?.first_name} {profile?.last_name}
+            </h1>
+            <span aria-hidden className="mt-1.5 block h-1 w-9 -skew-x-12 rounded-sm bg-gold" />
+            <p className="mt-1.5 text-sm text-navy-400">
+              {[playerRaw.position, playerRaw.club, age !== null ? `${age} ans` : null]
+                .filter(Boolean)
+                .join(" · ")}
+            </p>
+          </div>
+          {/* les gestes courants : WhatsApp, et le menu ⋯ (écrire, disponibilité) */}
+          <div className="flex shrink-0 items-center gap-1.5">
+            <PlayerWhatsAppLink
+              whatsappNumber={profile?.whatsapp_number}
+              playerName={`${profile?.first_name ?? ""} ${profile?.last_name ?? ""}`.trim()}
+              size="md"
+            />
+            <RowMenu
+              playerId={id}
+              playerName={`${profile?.first_name ?? ""} ${profile?.last_name ?? ""}`.trim()}
+              availability={availability}
+              hideFicheLink
+            />
+          </div>
         </div>
-        <p className="mt-0.5 text-sm text-navy-400">
-          {[playerRaw.position, playerRaw.club, age !== null ? `${age} ans` : null]
-            .filter(Boolean)
-            .join(" · ")}
-        </p>
-        <div className="mt-2 flex flex-wrap items-center gap-2">
-          {/* offre souscrite : se change dans l'onglet Profil */}
-          <Badge tone={offer === "formation" ? "navy" : "neutral"}>
-            Offre {OFFER_LABELS[offer]}
+
+        {/* la ligne de contexte — la même que sur un fil ouvert : ce qu'il faut
+            savoir avant de lire la suite, en pilules discrètes */}
+        <div className="mt-3 flex flex-wrap items-center gap-1.5">
+          <Badge tone={availability === "injured" ? "danger" : "neutral"}>
+            {AVAILABILITY_LABELS[availability]}
+            {availability !== "available" && playerRaw.availability_since
+              ? ` · depuis le ${formatDateFr(playerRaw.availability_since)}`
+              : ""}
           </Badge>
-          <AvailabilityControl playerId={id} availability={playerRaw.availability ?? "available"} />
-          {playerRaw.availability !== "available" && playerRaw.availability_since && (
-            <span className="text-[11px] text-navy-400">
-              depuis le {formatDateFr(playerRaw.availability_since)} — série et discipline gelées
-            </span>
+          <Badge tone={offer === "formation" ? "navy" : "neutral"}>{OFFER_LABELS[offer]}</Badge>
+          {weekEvents.length > 0 && (
+            <Badge>
+              Semaine {Math.min(weekDone, weekEvents.length)}/{weekEvents.length}
+            </Badge>
+          )}
+          {checkin && (
+            <Badge tone={checkin.question === "pain" && checkin.score >= 5 ? "danger" : "neutral"}>
+              {checkin.question === "energy" ? <Zap size={11} /> : <HeartPulse size={11} />}
+              {checkin.score}/10 · {formatAgoFr(checkin.created_at)}
+            </Badge>
           )}
         </div>
-        {checkin && (
-          <div className="mt-2">
-            <Badge tone={checkin.question === "pain" && checkin.score >= 5 ? "warning" : "neutral"}>
-              Dernier check-in : {checkin.question === "energy" ? "énergie" : "douleurs"}{" "}
-              {checkin.score}/10 · {formatDateFr(checkin.created_at.slice(0, 10))}
-            </Badge>
-          </div>
+        {availability !== "available" && (
+          <p className="mt-1.5 text-[11px] text-navy-400">
+            Série et discipline gelées, hors moyennes et alertes.
+          </p>
         )}
       </div>
 
+      {/* Cinq onglets au lieu de onze : Messages en premier (c'est la priorité
+          du service), puis ce qu'on regarde par semaine, le programme par pôle,
+          les chiffres, et la fiche administrative. Rien n'a disparu — tout est
+          regroupé. `?onglet=` ouvre directement le bon. */}
       <Tabs
+        initialKey={onglet}
         items={[
           {
-            label: "Profil",
-            content: (
-              <div className="space-y-5">
-                <PlayerProfileForm
-                  playerId={id}
-                  initial={{
-                    first_name: profile?.first_name ?? "",
-                    last_name: profile?.last_name ?? "",
-                    whatsapp_number: profile?.whatsapp_number ?? "",
-                    position: playerRaw.position,
-                    club: playerRaw.club,
-                    birthdate: playerRaw.birthdate,
-                    height_cm: playerRaw.height_cm,
-                    weight_kg: playerRaw.weight_kg,
-                    season_goal: playerRaw.season_goal,
-                    offer,
-                  }}
-                />
-                <PlayerNotificationsCard
-                  enabled={profile?.notifications_enabled ?? true}
-                  deviceCount={pushDeviceCount}
-                />
-                <PlayerParentsCard
-                  playerId={id}
-                  parents={playerParents}
-                  invitations={parentInvitations ?? []}
-                />
-                <Card>
-                  <CardTitle>Objectifs mesurables</CardTitle>
-                  <GoalsManager playerId={id} goals={(goals ?? []) as PlayerGoal[]} />
-                </Card>
-              </div>
-            ),
-          },
-          {
+            key: "messages",
             label: "Messages",
+            dot: conversationChannels.some((c) => c.hasUnread),
             content: (
               <Card>
-                <CardTitle>
-                  Conversation avec {profile?.first_name ?? "le joueur"}
-                </CardTitle>
-                <MessageThread
+                <CardTitle>Conversation avec {profile?.first_name ?? "le joueur"}</CardTitle>
+                <ConversationPanel
                   playerId={id}
                   currentUserId={user?.id ?? ""}
+                  channels={conversationChannels}
+                  initialChannelKey={channelKey(initialChannelAdminId)}
                   initialMessages={conversationMessages}
                   variant="coach"
+                  className="h-[460px]"
                 />
               </Card>
             ),
           },
           {
-            label: "Planning",
+            key: "semaine",
+            label: "Semaine",
             content: (
-              <div className="space-y-5">
-                <Card>
-                  <CardTitle>Focus de la semaine</CardTitle>
-                  <WeekFocusForm playerId={id} initialContent={weekFocus?.content ?? ""} />
-                </Card>
-
-                <Card>
-                  <CardTitle>Semaine en cours</CardTitle>
-
-                  {/* Assiduité : jauge hebdo + détail jour par jour */}
-                  {weekEvents.length > 0 && (
-                    <div className="mb-4">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-semibold text-navy-500">
-                          Assiduité de la semaine
-                        </span>
-                        <span className="text-sm font-extrabold text-navy-800">
-                          {Math.min(weekDone, weekEvents.length)}/{weekEvents.length} ·{" "}
-                          {formatPercent(Math.min(1, weekDone / weekEvents.length))}
-                        </span>
-                      </div>
-                      <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-navy-50">
-                        <div
-                          className={`h-full rounded-full transition-all ${
-                            weekDone >= weekEvents.length
-                              ? "bg-gold"
-                              : weekDone / weekEvents.length < 0.6
-                                ? "bg-danger/70"
-                                : "bg-navy-700"
-                          }`}
-                          style={{ width: `${Math.min(1, weekDone / weekEvents.length) * 100}%` }}
-                        />
-                      </div>
-                      <div className="mt-2.5 grid grid-cols-7 gap-1">
-                        {dayBreakdown.map((d) => (
-                          <div key={d.day} className="text-center">
-                            <p
-                              className={`text-[9px] font-bold ${
-                                d.day === todayWeekday ? "text-navy-800" : "text-navy-300"
-                              }`}
-                            >
-                              {WEEKDAY_LABELS[d.day - 1].slice(0, 3)}
-                            </p>
-                            <p
-                              className={`mt-0.5 rounded-md py-0.5 text-[10px] font-bold ${
-                                d.planned === 0
-                                  ? "bg-navy-50 text-navy-200"
-                                  : d.done >= d.planned
-                                    ? "bg-success-soft text-success"
-                                    : d.day < todayWeekday
-                                      ? "bg-danger-soft text-danger"
-                                      : "bg-navy-50 text-navy-500"
-                              }`}
-                            >
-                              {d.planned === 0 ? "—" : `${d.done}/${d.planned}`}
-                            </p>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {weekCompletions.length === 0 ? (
-                    <p className="text-sm text-navy-400">Aucun pointage cette semaine.</p>
-                  ) : (
-                    <div className="space-y-1.5">
-                      {weekCompletions.map((c) => (
-                        <div key={c.id} className="rounded-xl bg-navy-50 px-3 py-2">
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="text-sm font-semibold text-navy-800">
-                              <EventTypeIcon
-                                type={c.event_type}
-                                event={c}
-                                size={13}
-                                className="-mt-0.5 mr-1 inline"
-                                colored
-                              />
-                              {eventLabel(c)}
-                              <span className="ml-1.5 text-xs font-medium text-navy-400">
-                                {WEEKDAY_LABELS[c.weekday - 1]} {formatTime(c.event_time)}
+              <Tabs
+                variant="sub"
+                items={[
+                  {
+                    key: "planning",
+                    label: "Planning",
+                    content: (
+                      // Le sous-onglet Planning sert d'abord à PLANIFIER : la semaine
+                      // type arrive sans faire défiler trois cartes. La semaine en
+                      // cours tient en un bandeau (jauge + 7 jours) ; focus, pointages
+                      // et historique sont à un tap dans la barre dépliante — rien n'a
+                      // disparu, tout a cessé de pousser.
+                      <div className="space-y-4">
+                        {weekEvents.length > 0 && (
+                          <Section
+                            title="Semaine en cours"
+                            action={
+                              <span className="text-sm font-extrabold tabular-nums text-navy-800">
+                                {Math.min(weekDone, weekEvents.length)}/{weekEvents.length} ·{" "}
+                                {formatPercent(Math.min(1, weekDone / weekEvents.length))}
                               </span>
-                            </span>
-                            <Badge tone={c.status === "done" ? "success" : "danger"}>
-                              {c.status === "done" ? "Fait" : "Pas fait"}
-                            </Badge>
+                            }
+                          >
+                            <div className="h-2 overflow-hidden rounded-full bg-navy-50">
+                              <div
+                                className={`h-full rounded-full transition-all ${
+                                  weekDone >= weekEvents.length
+                                    ? "bg-gold"
+                                    : weekDone / weekEvents.length < 0.6
+                                      ? "bg-danger/70"
+                                      : "bg-navy-700"
+                                }`}
+                                style={{
+                                  width: `${Math.min(1, weekDone / weekEvents.length) * 100}%`,
+                                }}
+                              />
+                            </div>
+                            <div className="mt-2 grid grid-cols-7 gap-1">
+                              {dayBreakdown.map((d) => (
+                                <div key={d.day} className="text-center">
+                                  <p
+                                    className={`text-[9px] font-bold ${
+                                      d.day === todayWeekday ? "text-navy-800" : "text-navy-300"
+                                    }`}
+                                  >
+                                    {WEEKDAY_LABELS[d.day - 1].slice(0, 3)}
+                                  </p>
+                                  <p
+                                    className={`mt-0.5 rounded-md py-0.5 text-[10px] font-bold ${
+                                      d.planned === 0
+                                        ? "bg-navy-50 text-navy-200"
+                                        : d.done >= d.planned
+                                          ? "bg-success-soft text-success"
+                                          : d.day < todayWeekday
+                                            ? "bg-danger-soft text-danger"
+                                            : "bg-navy-50 text-navy-500"
+                                    }`}
+                                  >
+                                    {d.planned === 0 ? "—" : `${d.done}/${d.planned}`}
+                                  </p>
+                                </div>
+                              ))}
+                            </div>
+                          </Section>
+                        )}
+
+                        <DisclosureBar
+                          items={[
+                            {
+                              key: "focus",
+                              icon: <Target size={16} />,
+                              label: "Focus",
+                              count: weekFocus?.content ? 1 : 0,
+                              content: (
+                                <Card>
+                                  <CardTitle>Focus de la semaine</CardTitle>
+                                  <WeekFocusForm
+                                    playerId={id}
+                                    initialContent={weekFocus?.content ?? ""}
+                                  />
+                                </Card>
+                              ),
+                            },
+                            {
+                              key: "pointages",
+                              icon: <ListChecks size={16} />,
+                              label: "Pointages",
+                              count: weekCompletions.length,
+                              content: (
+                                <Section title="Pointages de la semaine">
+                                  {weekCompletions.length === 0 ? (
+                                    <p className="text-sm text-navy-400">
+                                      Aucun pointage cette semaine.
+                                    </p>
+                                  ) : (
+                                    <div className="space-y-1.5">
+                                      {weekCompletions.map((c) => (
+                                        <div key={c.id} className="rounded-xl bg-navy-50 px-3 py-2">
+                                          <div className="flex items-center justify-between gap-2">
+                                            <span className="text-sm font-semibold text-navy-800">
+                                              <EventTypeIcon
+                                                type={c.event_type}
+                                                event={c}
+                                                size={13}
+                                                className="-mt-0.5 mr-1 inline"
+                                                colored
+                                              />
+                                              {eventLabel(c)}
+                                              <span className="ml-1.5 text-xs font-medium text-navy-400">
+                                                {WEEKDAY_LABELS[c.weekday - 1]}{" "}
+                                                {formatTime(c.event_time)}
+                                              </span>
+                                            </span>
+                                            <Badge
+                                              tone={c.status === "done" ? "success" : "danger"}
+                                            >
+                                              {c.status === "done" ? "Fait" : "Pas fait"}
+                                            </Badge>
+                                          </div>
+                                          {c.comment && (
+                                            <p className="mt-1 flex items-start gap-1.5 text-xs text-navy-500">
+                                              <MessageCircle
+                                                size={13}
+                                                className="mt-0.5 shrink-0"
+                                              />
+                                              <span className="min-w-0">{c.comment}</span>
+                                            </p>
+                                          )}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </Section>
+                              ),
+                            },
+                            ...((summaries ?? []).length > 0
+                              ? [
+                                  {
+                                    key: "historique",
+                                    icon: <History size={16} />,
+                                    label: "Historique",
+                                    content: (
+                                      <Section title="Historique des semaines">
+                                        <div className="divide-y divide-navy-50">
+                                          {allSummaries.slice(0, 8).map((s) => (
+                                            <div
+                                              key={s.id}
+                                              className="flex items-center justify-between py-2"
+                                            >
+                                              <span className="text-sm text-navy-500">
+                                                Semaine du {formatDateFr(s.week_start)}
+                                              </span>
+                                              <span className="text-sm font-bold text-navy-800">
+                                                {s.done_count}/{s.planned_count} ·{" "}
+                                                {formatPercent(
+                                                  s.planned_count > 0
+                                                    ? s.done_count / s.planned_count
+                                                    : null,
+                                                )}
+                                                {s.planned_count > 0 &&
+                                                  s.done_count >= s.planned_count && (
+                                                    <Star
+                                                      size={12}
+                                                      className="-mt-0.5 ml-1 inline text-gold"
+                                                    />
+                                                  )}
+                                              </span>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </Section>
+                                    ),
+                                  },
+                                ]
+                              : []),
+                          ]}
+                        />
+
+                        <div>
+                          <div className="mb-2 flex items-center justify-between gap-2">
+                            <h3 className="text-sm font-bold uppercase tracking-wide text-navy-500">
+                              Semaine type du joueur
+                            </h3>
+                            <CopyWeekTemplate
+                              playerId={id}
+                              playerName={profile?.first_name ?? "ce joueur"}
+                              otherPlayers={otherPlayers}
+                            />
                           </div>
-                          {c.comment && (
-                            <p className="mt-1 flex items-start gap-1.5 text-xs text-navy-500">
-                              <MessageCircle size={13} className="mt-0.5 shrink-0" />
-                              <span className="min-w-0">{c.comment}</span>
+                          <PlanningEditor playerId={id} events={(events ?? []) as PlannedEvent[]} />
+                        </div>
+                      </div>
+                    ),
+                  },
+                  {
+                    key: "bilans",
+                    label: "Bilans",
+                    content: (
+                      <div className="space-y-3">
+                        {(reviews ?? []).length === 0 ? (
+                          <Card>
+                            <p className="text-sm text-navy-400">
+                              Aucun bilan hebdomadaire pour le moment.
                             </p>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </Card>
-
-                {(summaries ?? []).length > 0 && (
-                  <Card>
-                    <CardTitle>Historique des semaines</CardTitle>
-                    <div className="divide-y divide-navy-50">
-                      {allSummaries.slice(0, 8).map((s) => (
-                        <div key={s.id} className="flex items-center justify-between py-2">
-                          <span className="text-sm text-navy-500">
-                            Semaine du {formatDateFr(s.week_start)}
-                          </span>
-                          <span className="text-sm font-bold text-navy-800">
-                            {s.done_count}/{s.planned_count} ·{" "}
-                            {formatPercent(s.planned_count > 0 ? s.done_count / s.planned_count : null)}
-                            {s.planned_count > 0 && s.done_count >= s.planned_count && (
-                              <Star size={12} className="-mt-0.5 ml-1 inline text-gold" />
-                            )}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </Card>
-                )}
-
-                <div>
-                  <div className="mb-2 flex items-center justify-between gap-2">
-                    <h3 className="text-sm font-bold uppercase tracking-wide text-navy-500">
-                      Semaine type du joueur
-                    </h3>
-                    <CopyWeekTemplate
-                      playerId={id}
-                      playerName={profile?.first_name ?? "ce joueur"}
-                      otherPlayers={otherPlayers}
-                    />
-                  </div>
-                  <PlanningEditor playerId={id} events={(events ?? []) as PlannedEvent[]} />
-                </div>
-              </div>
-            ),
-          },
-          {
-            label: "Technique",
-            content: (
-              <AssignedSessionsManager
-                playerId={id}
-                pole="basket"
-                assignments={allAssignments.filter((a) => a.session.pole === "basket")}
-                library={((library ?? []) as LibrarySession[]).filter((s) => s.pole === "basket")}
-                visibleNote={
-                  (visibleNotes ?? []).find((n) => n.pole === "basket")?.content ?? ""
-                }
+                          </Card>
+                        ) : (
+                          ((reviews ?? []) as WeeklyReview[]).map((r) => (
+                            <Card key={r.id}>
+                              <p className="mb-2 text-xs font-bold uppercase tracking-wide text-navy-400">
+                                Semaine du {formatDateFr(r.week_start)}
+                              </p>
+                              <p className="text-sm text-navy-800">
+                                <span className="font-semibold text-success">Bien fait : </span>
+                                {r.went_well || "—"}
+                              </p>
+                              <p className="mt-2 text-sm text-navy-800">
+                                <span className="font-semibold text-warning">À améliorer : </span>
+                                {r.to_improve || "—"}
+                              </p>
+                              {/* Question santé (migration 0032) — absente des bilans antérieurs */}
+                              {r.health_status && (
+                                <p className="mt-2 text-sm text-navy-800">
+                                  <span
+                                    className={`font-semibold ${
+                                      r.health_status === "ok" ? "text-success" : "text-danger"
+                                    }`}
+                                  >
+                                    Santé : {REVIEW_HEALTH_LABELS[r.health_status]}
+                                  </span>
+                                  {r.health_note ? ` — ${r.health_note}` : ""}
+                                </p>
+                              )}
+                              <ReviewReplyBox reviewId={r.id} initialReply={r.coach_reply} />
+                            </Card>
+                          ))
+                        )}
+                      </div>
+                    ),
+                  },
+                  {
+                    key: "habitudes",
+                    label: "Habitudes",
+                    content: (
+                      <div className="space-y-3">
+                        {habitsWithChecks.length === 0 ? (
+                          <Card>
+                            <p className="text-sm text-navy-400">
+                              Ce joueur n&apos;a pas encore créé d&apos;habitudes.
+                            </p>
+                          </Card>
+                        ) : (
+                          habitsWithChecks.map((h) => (
+                            <HabitCard key={h.id} habit={h} today={today} readOnly />
+                          ))
+                        )}
+                      </div>
+                    ),
+                  },
+                ]}
               />
             ),
           },
           {
-            label: "Physique",
+            key: "programme",
+            label: "Programme",
             content: (
-              <AssignedSessionsManager
-                playerId={id}
-                pole="physique"
-                assignments={allAssignments.filter((a) => a.session.pole === "physique")}
-                library={((library ?? []) as LibrarySession[]).filter((s) => s.pole === "physique")}
-                visibleNote={
-                  (visibleNotes ?? []).find((n) => n.pole === "physique")?.content ?? ""
-                }
+              <Tabs
+                variant="sub"
+                items={[
+                  {
+                    key: "technique",
+                    label: "Technique",
+                    content: (
+                      <AssignedSessionsManager
+                        playerId={id}
+                        pole="basket"
+                        assignments={allAssignments.filter((a) => a.session.pole === "basket")}
+                        library={((library ?? []) as LibrarySession[]).filter(
+                          (s) => s.pole === "basket",
+                        )}
+                        visibleNote={
+                          (visibleNotes ?? []).find((n) => n.pole === "basket")?.content ?? ""
+                        }
+                      />
+                    ),
+                  },
+                  {
+                    key: "physique",
+                    label: "Physique",
+                    content: (
+                      <AssignedSessionsManager
+                        playerId={id}
+                        pole="physique"
+                        assignments={allAssignments.filter((a) => a.session.pole === "physique")}
+                        library={((library ?? []) as LibrarySession[]).filter(
+                          (s) => s.pole === "physique",
+                        )}
+                        visibleNote={
+                          (visibleNotes ?? []).find((n) => n.pole === "physique")?.content ?? ""
+                        }
+                      />
+                    ),
+                  },
+                  {
+                    key: "routine",
+                    label: "Routine",
+                    content: (
+                      <AssignedSessionsManager
+                        playerId={id}
+                        pole="routine"
+                        assignments={allAssignments.filter((a) => a.session.pole === "routine")}
+                        library={((library ?? []) as LibrarySession[]).filter(
+                          (s) => s.pole === "routine",
+                        )}
+                        visibleNote={
+                          (visibleNotes ?? []).find((n) => n.pole === "routine")?.content ?? ""
+                        }
+                      />
+                    ),
+                  },
+                  // Hygiène : offre formation ; reste affiché pour un joueur
+                  // repassé en perf tant qu'il a un historique à consulter.
+                  ...(canUseHygiene(offer) || allHygieneLogs.length > 0
+                    ? [
+                        {
+                          key: "hygiene",
+                          label: "Hygiène",
+                          content: (
+                            <div className="space-y-5">
+                              {/* activation des vidéos éducatives : offre formation
+                                        uniquement (verrou RLS 0029 côté base) */}
+                              {canUseHygiene(offer) && (
+                                <PlayerHygieneVideosCard
+                                  playerId={id}
+                                  videos={(hygieneVideos ?? []) as HygieneVideo[]}
+                                  initialAssignedIds={(hygieneVideoAssignments ?? []).map(
+                                    (a) => a.video_id,
+                                  )}
+                                />
+                              )}
+                              <PlayerHygieneCard
+                                logs={allHygieneLogs}
+                                isFormation={canUseHygiene(offer)}
+                              />
+                            </div>
+                          ),
+                        },
+                      ]
+                    : []),
+                ]}
               />
             ),
           },
           {
-            label: "Routine",
-            content: (
-              <AssignedSessionsManager
-                playerId={id}
-                pole="routine"
-                assignments={allAssignments.filter((a) => a.session.pole === "routine")}
-                library={((library ?? []) as LibrarySession[]).filter((s) => s.pole === "routine")}
-                visibleNote={
-                  (visibleNotes ?? []).find((n) => n.pole === "routine")?.content ?? ""
-                }
-              />
-            ),
-          },
-          {
+            key: "stats",
             label: "Stats",
             content: (
               <div className="space-y-5">
@@ -612,7 +817,9 @@ export default async function PlayerDetailPage({
                   <div className="mt-2 h-2 overflow-hidden rounded-full bg-navy-50">
                     <div
                       className="h-full rounded-full bg-gold"
-                      style={{ width: `${Math.min(100, (xp.levelXp / xp.levelTarget) * 100)}%` }}
+                      style={{
+                        width: `${Math.min(100, (xp.levelXp / xp.levelTarget) * 100)}%`,
+                      }}
                     />
                   </div>
                   <p className="mt-4 text-xs font-bold uppercase tracking-wide text-navy-400">
@@ -646,169 +853,140 @@ export default async function PlayerDetailPage({
 
                 <Card>
                   <CardTitle>Statistiques match</CardTitle>
-                {matchStats.length === 0 ? (
-                  <p className="text-sm text-navy-400">Aucun match saisi par le joueur.</p>
-                ) : (
-                  <>
-                    {/* Vue d'ensemble de la saison */}
-                    <div className="mb-4 grid grid-cols-4 gap-1.5">
-                      {[
-                        { label: "Matchs", value: `${matchStats.length}` },
-                        { label: "Pts/match", value: avgPoints?.toFixed(1) ?? "—" },
-                        { label: "Min/match", value: avgMinutes?.toFixed(0) ?? "—" },
-                        { label: "Record", value: recordPoints !== null ? `${recordPoints}` : "—" },
-                      ].map((s) => (
-                        <div key={s.label} className="rounded-xl bg-navy-50 px-1 py-2 text-center">
-                          <p className="text-[10px] font-semibold uppercase tracking-wide text-navy-400">
-                            {s.label}
-                          </p>
-                          <p className="mt-0.5 text-base font-extrabold text-navy-800">{s.value}</p>
-                        </div>
-                      ))}
-                    </div>
+                  {matchStats.length === 0 ? (
+                    <p className="text-sm text-navy-400">Aucun match saisi par le joueur.</p>
+                  ) : (
+                    <>
+                      {/* Vue d'ensemble de la saison */}
+                      <div className="mb-4 grid grid-cols-4 gap-1.5">
+                        {[
+                          { label: "Matchs", value: `${matchStats.length}` },
+                          {
+                            label: "Pts/match",
+                            value: avgPoints?.toFixed(1) ?? "—",
+                          },
+                          {
+                            label: "Min/match",
+                            value: avgMinutes?.toFixed(0) ?? "—",
+                          },
+                          {
+                            label: "Record",
+                            value: recordPoints !== null ? `${recordPoints}` : "—",
+                          },
+                        ].map((s) => (
+                          <div
+                            key={s.label}
+                            className="rounded-xl bg-navy-50 px-1 py-2 text-center"
+                          >
+                            <p className="text-[10px] font-semibold uppercase tracking-wide text-navy-400">
+                              {s.label}
+                            </p>
+                            <p className="mt-0.5 text-base font-extrabold text-navy-800">
+                              {s.value}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
 
-                    <div className="divide-y divide-navy-50">
-                      {matchStats.map((s) => (
-                        <div key={s.id} className="py-2.5">
-                          <div className="flex items-center justify-between gap-2">
-                            <p className="text-sm font-semibold text-navy-800">
-                              {formatDateFr(s.match_date)}
-                              <Badge
-                                tone={s.is_starter ? "navy" : "neutral"}
-                                className="ml-1.5 align-middle"
-                              >
-                                {s.is_starter ? "Titulaire" : "Remplaçant"}
-                              </Badge>
+                      <div className="divide-y divide-navy-50">
+                        {matchStats.map((s) => (
+                          <div key={s.id} className="py-2.5">
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="text-sm font-semibold text-navy-800">
+                                {formatDateFr(s.match_date)}
+                                <Badge
+                                  tone={s.is_starter ? "navy" : "neutral"}
+                                  className="ml-1.5 align-middle"
+                                >
+                                  {s.is_starter ? "Titulaire" : "Remplaçant"}
+                                </Badge>
+                              </p>
+                              <p className="shrink-0 text-lg font-extrabold text-navy-800">
+                                {s.points}{" "}
+                                <span className="text-xs font-semibold text-navy-400">pts</span>
+                              </p>
+                            </div>
+                            <p className="mt-0.5 text-xs text-navy-400">
+                              {s.minutes} min · {s.shots_made} tir
+                              {s.shots_made > 1 ? "s" : ""} réussi
+                              {s.shots_made > 1 ? "s" : ""} · {s.fouls} faute
+                              {s.fouls > 1 ? "s" : ""}
                             </p>
-                            <p className="shrink-0 text-lg font-extrabold text-navy-800">
-                              {s.points}{" "}
-                              <span className="text-xs font-semibold text-navy-400">pts</span>
-                            </p>
+                            <div className="mt-1.5 flex flex-wrap gap-1.5">
+                              {[
+                                {
+                                  label: "2 pts int.",
+                                  value: s.twos_inside_made,
+                                },
+                                {
+                                  label: "2 pts ext.",
+                                  value: s.twos_outside_made,
+                                },
+                                { label: "3 pts", value: s.threes_made },
+                                { label: "LF", value: s.free_throws_made },
+                              ].map((c) => (
+                                <span
+                                  key={c.label}
+                                  className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                                    c.value > 0
+                                      ? "bg-navy-100 text-navy-600"
+                                      : "bg-navy-50 text-navy-300"
+                                  }`}
+                                >
+                                  {c.label} ×{c.value}
+                                </span>
+                              ))}
+                            </div>
                           </div>
-                          <p className="mt-0.5 text-xs text-navy-400">
-                            {s.minutes} min · {s.shots_made} tir{s.shots_made > 1 ? "s" : ""}{" "}
-                            réussi{s.shots_made > 1 ? "s" : ""} · {s.fouls} faute
-                            {s.fouls > 1 ? "s" : ""}
-                          </p>
-                          <div className="mt-1.5 flex flex-wrap gap-1.5">
-                            {[
-                              { label: "2 pts int.", value: s.twos_inside_made },
-                              { label: "2 pts ext.", value: s.twos_outside_made },
-                              { label: "3 pts", value: s.threes_made },
-                              { label: "LF", value: s.free_throws_made },
-                            ].map((c) => (
-                              <span
-                                key={c.label}
-                                className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
-                                  c.value > 0
-                                    ? "bg-navy-100 text-navy-600"
-                                    : "bg-navy-50 text-navy-300"
-                                }`}
-                              >
-                                {c.label} ×{c.value}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                )}
+                        ))}
+                      </div>
+                    </>
+                  )}
                 </Card>
               </div>
             ),
           },
           {
-            label: "Bilans",
+            key: "fiche",
+            label: "Fiche",
             content: (
-              <div className="space-y-3">
-                {(reviews ?? []).length === 0 ? (
+              <div className="space-y-5">
+                <div className="space-y-5">
+                  <PlayerProfileForm
+                    playerId={id}
+                    initial={{
+                      first_name: profile?.first_name ?? "",
+                      last_name: profile?.last_name ?? "",
+                      whatsapp_number: profile?.whatsapp_number ?? "",
+                      position: playerRaw.position,
+                      club: playerRaw.club,
+                      birthdate: playerRaw.birthdate,
+                      height_cm: playerRaw.height_cm,
+                      weight_kg: playerRaw.weight_kg,
+                      season_goal: playerRaw.season_goal,
+                      offer,
+                    }}
+                  />
+                  <PlayerNotificationsCard
+                    enabled={profile?.notifications_enabled ?? true}
+                    deviceCount={pushDeviceCount}
+                  />
+                  <PlayerParentsCard
+                    playerId={id}
+                    parents={playerParents}
+                    invitations={parentInvitations ?? []}
+                  />
                   <Card>
-                    <p className="text-sm text-navy-400">Aucun bilan hebdomadaire pour le moment.</p>
+                    <CardTitle>Objectifs mesurables</CardTitle>
+                    <GoalsManager playerId={id} goals={(goals ?? []) as PlayerGoal[]} />
                   </Card>
-                ) : (
-                  ((reviews ?? []) as WeeklyReview[]).map((r) => (
-                    <Card key={r.id}>
-                      <p className="mb-2 text-xs font-bold uppercase tracking-wide text-navy-400">
-                        Semaine du {formatDateFr(r.week_start)}
-                      </p>
-                      <p className="text-sm text-navy-800">
-                        <span className="font-semibold text-success">Bien fait : </span>
-                        {r.went_well || "—"}
-                      </p>
-                      <p className="mt-2 text-sm text-navy-800">
-                        <span className="font-semibold text-warning">À améliorer : </span>
-                        {r.to_improve || "—"}
-                      </p>
-                      {/* Question santé (migration 0032) — absente des bilans antérieurs */}
-                      {r.health_status && (
-                        <p className="mt-2 text-sm text-navy-800">
-                          <span
-                            className={`font-semibold ${
-                              r.health_status === "ok" ? "text-success" : "text-danger"
-                            }`}
-                          >
-                            Santé : {REVIEW_HEALTH_LABELS[r.health_status]}
-                          </span>
-                          {r.health_note ? ` — ${r.health_note}` : ""}
-                        </p>
-                      )}
-                      <ReviewReplyBox reviewId={r.id} initialReply={r.coach_reply} />
-                    </Card>
-                  ))
-                )}
+                </div>
+
+                <Section title="Notes privées">
+                  <CoachNotesPanel playerId={id} notes={(notes ?? []) as CoachNote[]} />
+                </Section>
               </div>
             ),
-          },
-          // Hygiène : onglet de l'offre formation ; il reste affiché pour un
-          // joueur repassé en perf tant qu'il a un historique à consulter.
-          ...(canUseHygiene(offer) || allHygieneLogs.length > 0
-            ? [
-                {
-                  label: "Hygiène",
-                  content: (
-                    <div className="space-y-5">
-                      {/* activation des vidéos éducatives : offre formation
-                          uniquement (verrou RLS 0029 côté base) */}
-                      {canUseHygiene(offer) && (
-                        <PlayerHygieneVideosCard
-                          playerId={id}
-                          videos={(hygieneVideos ?? []) as HygieneVideo[]}
-                          initialAssignedIds={(hygieneVideoAssignments ?? []).map(
-                            (a) => a.video_id
-                          )}
-                        />
-                      )}
-                      <PlayerHygieneCard
-                        logs={allHygieneLogs}
-                        isFormation={canUseHygiene(offer)}
-                      />
-                    </div>
-                  ),
-                },
-              ]
-            : []),
-          {
-            label: "Habitudes",
-            content: (
-              <div className="space-y-3">
-                {habitsWithChecks.length === 0 ? (
-                  <Card>
-                    <p className="text-sm text-navy-400">
-                      Ce joueur n&apos;a pas encore créé d&apos;habitudes.
-                    </p>
-                  </Card>
-                ) : (
-                  habitsWithChecks.map((h) => (
-                    <HabitCard key={h.id} habit={h} today={today} readOnly />
-                  ))
-                )}
-              </div>
-            ),
-          },
-          {
-            label: "Notes privées",
-            content: <CoachNotesPanel playerId={id} notes={(notes ?? []) as CoachNote[]} />,
           },
         ]}
       />

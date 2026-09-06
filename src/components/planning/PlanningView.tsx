@@ -16,10 +16,23 @@ import { DayActionList } from "./DayActionList";
 import { DisciplineCalendar, type DayOutcome } from "./DisciplineCalendar";
 import { EventCheckRow } from "./EventCheckRow";
 import { PlanningEditor } from "./PlanningEditor";
-import type { CompletionStatus, EventCompletion, HygieneLog, PlannedEvent } from "@/lib/types";
+import type {
+  CompletionStatus,
+  EventCompletion,
+  HygieneLog,
+  PlannedEvent,
+  SessionPole,
+} from "@/lib/types";
 
 // Messages de « journée bouclée » : on en montre un différent selon le jour de
 // la semaine pour que la récompense ne se répète pas à l'identique.
+/** Étiquette courte du pôle dans le rappel « Programme du coach » du jour. */
+const POLE_TAG: Record<SessionPole, string> = {
+  physique: "Physique",
+  basket: "Technique",
+  routine: "Routine",
+};
+
 const DAY_DONE_MESSAGES = [
   "Tous tes événements du jour sont faits. C'est comme ça qu'on progresse.",
   "Journée solide — les pros se construisent jour après jour.",
@@ -54,6 +67,21 @@ interface Props {
    * offres confondues — affiché dans la journée du dimanche, non supprimable.
    */
   weeklyReview: WeeklyReviewState;
+  /**
+   * Séances du programme rangées par jour (0035) : le planning annonce ce que
+   * le coach a prévu ce jour-là et renvoie vers l'onglet Programme. Le
+   * pointage, lui, reste propre à chaque écran.
+   */
+  programByDay: ProgramEntry[];
+}
+
+export interface ProgramEntry {
+  id: string;
+  weekday: number;
+  name: string;
+  pole: SessionPole;
+  durationMinutes: number;
+  done: boolean;
 }
 
 export function PlanningView({
@@ -69,6 +97,7 @@ export function PlanningView({
   streakOnComplete,
   hygieneMission,
   weeklyReview,
+  programByDay,
 }: Props) {
   const [selectedDay, setSelectedDay] = useState(todayWeekday);
   const [editMode, setEditMode] = useState(false);
@@ -187,6 +216,7 @@ export function PlanningView({
   }
 
   const dayEvents = events.filter((e) => e.weekday === selectedDay);
+  const dayProgram = programByDay.filter((s) => s.weekday === selectedDay);
 
   const completionFor = (list: EventCompletion[], eventId: string) =>
     list.find((c) => c.planned_event_id === eventId);
@@ -411,6 +441,40 @@ export function PlanningView({
               Modifier ma semaine
             </button>
           </div>
+
+          {/* Programme du coach pour ce jour (0035) : le planning dit ce qui
+              est prévu, l'onglet Programme porte le contenu et le pointage. */}
+          {dayProgram.length > 0 && (
+            <Link
+              href={`/seances?jour=${selectedDay}`}
+              className="mb-4 block rounded-md border-2 border-ink bg-card p-3.5 transition-colors hover:bg-tan"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <Overline>Programme du coach</Overline>
+                <span className="ed-meta text-[10px] text-orange">
+                  {dayProgram.filter((s) => s.done).length}/{dayProgram.length}
+                </span>
+              </div>
+              <ul className="mt-2 space-y-1">
+                {dayProgram.map((s) => (
+                  <li key={s.id} className="flex items-center gap-2 text-sm text-ink">
+                    <span aria-hidden className="text-orange">
+                      {s.done ? "✓" : "•"}
+                    </span>
+                    <span className={`min-w-0 truncate ${s.done ? "line-through opacity-60" : ""}`}>
+                      {s.name}
+                    </span>
+                    <span className="ed-meta shrink-0 text-[10px] text-meta">
+                      {POLE_TAG[s.pole]} · {s.durationMinutes} min
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              <p className="ed-meta mt-2 text-[10px] text-meta underline underline-offset-2">
+                Ouvrir mes séances
+              </p>
+            </Link>
+          )}
 
           {/* Mission du jour (offre formation) : posée avant les tâches du
               planning, et présente même quand la semaine type est vide — elle

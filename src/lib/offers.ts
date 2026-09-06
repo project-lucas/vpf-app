@@ -1,11 +1,13 @@
 /**
  * Offres VPF — source unique de ce que chaque offre débloque.
  *
- *  * « perf » (offre 1) : toute l'application, sauf l'hygiène de vie.
- *  * « formation » (offre 2) : tout, hygiène de vie comprise.
+ *  * « perf » (offre 1) : toute l'application, sauf l'hygiène de vie et les
+ *    fils privés avec les admins.
+ *  * « formation » (offre 2) : tout.
  *
- * À ce jour, l'hygiène de vie est la SEULE différence entre les deux offres.
- * Tout est écrit en mode formation ; c'est l'offre perf qui RETIRE un écran.
+ * Deux différences à ce jour : l'hygiène de vie et les fils privés (le joueur
+ * formation écrit à chaque admin en plus du fil coach & parents).
+ * Tout est écrit en mode formation ; c'est l'offre perf qui RETIRE.
  * Ajouter une restriction = ajouter un helper ici, jamais un test `=== "perf"`
  * disséminé dans les pages.
  *
@@ -39,9 +41,18 @@ export function toOffer(value: unknown): PlayerOffer {
 
 /**
  * Hygiène de vie (onglet joueur + saisie quotidienne) : offre formation.
- * Seule différence entre les deux offres — tout le reste (planning, dashboard,
- * séances, bilans, objectifs mesurables) est identique en perf et en formation.
  */
 export function canUseHygiene(offer: PlayerOffer): boolean {
+  return offer === "formation";
+}
+
+/**
+ * Fils privés avec les admins (0034) : offre formation. Un joueur perf n'a
+ * qu'un seul fil, celui de son coach (et de ses parents).
+ *
+ * L'historique n'est jamais perdu : repasser en perf masque les fils privés,
+ * repasser en formation les retrouve intacts.
+ */
+export function canUsePrivateChannels(offer: PlayerOffer): boolean {
   return offer === "formation";
 }

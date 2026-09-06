@@ -1,11 +1,16 @@
 "use server";
 
+import { weekdaysLabel } from "@/lib/weekdays";
+
 import { revalidatePath } from "next/cache";
 import { createClient, getCachedUser } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendPushToUser } from "@/lib/push";
 import { parisNow } from "@/lib/dates";
-import { REVIEW_REPLY_MAX_LENGTH, VISIBLE_NOTE_MAX_LENGTH } from "@/lib/constants";
+import {
+  REVIEW_REPLY_MAX_LENGTH,
+  VISIBLE_NOTE_MAX_LENGTH,
+} from "@/lib/constants";
 import { toOffer } from "@/lib/offers";
 import type { ActionResult, PlayerAvailability, PlayerOffer, SessionPole } from "@/lib/types";
 
@@ -116,7 +121,9 @@ export async function setPlayerOffer(
 export async function setSessionVisibility(
   sessionId: string,
   checkedPlayerIds: string[],
-  managedPlayerIds: string[]
+  managedPlayerIds: string[],
+  /** jours du programme appliqués aux joueurs nouvellement cochés (0035) */
+  weekdays: number[]
 ): Promise<ActionResult> {
   const supabase = await createClient();
   const user = await getCachedUser();
@@ -136,7 +143,7 @@ export async function setSessionVisibility(
   const toAdd = managedPlayerIds.filter((id) => checked.has(id) && !currentIds.has(id));
   const toRemove = (current ?? []).filter((a) => !checked.has(a.player_id));
 
-  const addResult = await assignSession(sessionId, toAdd);
+  const addResult = await assignSession(sessionId, toAdd, weekdays);
   if (!addResult.ok && toAdd.length > 0) return addResult;
 
   for (const a of toRemove) {
@@ -148,12 +155,25 @@ export async function setSessionVisibility(
   return { ok: true };
 }
 
-/** Affecte une séance de la bibliothèque à un ou plusieurs joueurs. */
+/**
+ * Affecte une séance de la bibliothèque à un ou plusieurs joueurs, sur un ou
+ * plusieurs jours (1 = lundi … 7 = dimanche, migration 0035).
+ *
+ * Chaque jour est une affectation à part entière — donc un pointage à part :
+ * une routine « chaque jour » se coche sept fois par semaine, une technique
+ * « lundi et jeudi » deux fois. C'est le modèle de 0035 (`session_completions`
+ * référence l'affectation, pas la séance) ; rien à migrer. Au moins un jour
+ * est obligatoire : une séance sans jour n'apparaît dans aucun onglet.
+ */
 export async function assignSession(
   sessionId: string,
-  playerIds: string[]
+  playerIds: string[],
+  weekdays: number[]
 ): Promise<ActionResult> {
   if (playerIds.length === 0) return { ok: true };
+  const days = [...new Set(weekdays)].filter((d) => Number.isInteger(d) && d >= 1 && d <= 7);
+  if (days.length === 0) return { ok: false, error: "Choisis au moins un jour." };
+
   const supabase = await createClient();
   const user = await getCachedUser();
   if (!user) return { ok: false, error: "Session expirée." };
@@ -162,16 +182,17 @@ export async function assignSession(
   const newlyAssigned: string[] = [];
 
   for (const playerId of playerIds) {
-    // anti-doublon : si la séance est déjà affectée et active pour ce joueur,
-    // on ne recrée pas de ligne (double-clic ou ré-affectation).
-    const { data: already } = await supabase
+    // anti-doublon PAR JOUR : la séance peut vivre plusieurs jours, mais pas
+    // deux fois le même (double-clic, ré-affectation).
+    const { data: existing } = await supabase
       .from("session_assignments")
-      .select("id")
+      .select("weekday")
       .eq("player_id", playerId)
       .eq("session_id", sessionId)
-      .is("removed_at", null)
-      .maybeSingle();
-    if (already) continue;
+      .is("removed_at", null);
+    const taken = new Set((existing ?? []).map((a) => a.weekday));
+    const toInsert = days.filter((d) => !taken.has(d));
+    if (toInsert.length === 0) continue;
 
     const { data: maxRow } = await supabase
       .from("session_assignments")
@@ -180,14 +201,29 @@ export async function assignSession(
       .order("order_index", { ascending: false })
       .limit(1)
       .maybeSingle();
+    const base = maxRow?.order_index ?? 0;
 
-    const { error } = await supabase.from("session_assignments").insert({
-      session_id: sessionId,
-      player_id: playerId,
-      assigned_by: user.id,
-      order_index: (maxRow?.order_index ?? 0) + 1,
-    });
-    if (error) return { ok: false, error: "Affectation impossible." };
+    const { error } = await supabase.from("session_assignments").insert(
+      toInsert.map((weekday, i) => ({
+        session_id: sessionId,
+        player_id: playerId,
+        assigned_by: user.id,
+        weekday,
+        order_index: base + i + 1,
+      }))
+    );
+    if (error) {
+      // le message Postgres dit la vraie cause (RLS, contrainte, colonne) :
+      // sans lui, « Affectation impossible » ne se diagnostique pas
+      console.error("[assignSession] insert refusé", {
+        sessionId,
+        playerId,
+        days: toInsert,
+        code: error.code,
+        message: error.message,
+      });
+      return { ok: false, error: `Affectation impossible : ${error.message}` };
+    }
     newlyAssigned.push(playerId);
     revalidatePlayer(playerId);
   }
@@ -207,10 +243,11 @@ export async function assignSession(
       newlyAssigned.map((playerId) =>
         pushToPlayerIfEnabled(playerId, {
           title: "Nouvelle séance de ton coach 🏀",
+          // les jours situent la séance dans la semaine dès la notification
           body: session?.name
-            ? `${session.name} t'attend dans ton programme.`
-            : "Une nouvelle séance t'attend dans ton programme.",
-          url: "/seances",
+            ? `${session.name} — ${weekdaysLabel(days)}.`
+            : `Une nouvelle séance t'attend (${weekdaysLabel(days)}).`,
+          url: `/seances?jour=${days[0]}`,
         })
       )
     );
@@ -229,7 +266,33 @@ export async function removeAssignment(
     .from("session_assignments")
     .update({ removed_at: new Date().toISOString() })
     .eq("id", assignmentId);
-  if (error) return { ok: false, error: "Retrait impossible." };
+  if (error) {
+    console.error("[removeAssignment] update refusé", { assignmentId, playerId, code: error.code, message: error.message });
+    return { ok: false, error: `Retrait impossible : ${error.message}` };
+  }
+  revalidatePlayer(playerId);
+  return { ok: true };
+}
+
+/**
+ * Déplace une séance affectée sur un autre jour du programme (0035). Sert
+ * aussi à ranger les séances d'avant la migration restées sans jour.
+ */
+export async function setAssignmentWeekday(
+  assignmentId: string,
+  playerId: string,
+  weekday: number
+): Promise<ActionResult> {
+  if (!Number.isInteger(weekday) || weekday < 1 || weekday > 7) {
+    return { ok: false, error: "Jour invalide." };
+  }
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("session_assignments")
+    .update({ weekday })
+    .eq("id", assignmentId)
+    .eq("player_id", playerId);
+  if (error) return { ok: false, error: "Changement de jour impossible." };
   revalidatePlayer(playerId);
   return { ok: true };
 }

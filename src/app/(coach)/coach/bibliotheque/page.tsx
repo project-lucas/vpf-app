@@ -77,6 +77,8 @@ export default async function CoachLibraryPage() {
             : "Coche pour chaque séance les joueurs qui peuvent la voir."
         }
       />
+      {/* La vidéothèque hygiène est un onglet à part entière, au même rang que
+          les pôles de séances — elle ne se découvre plus en bas de page. */}
       <LibraryView
         sessions={allSessions}
         players={assignablePlayers.map(({ id, name }) => ({ id, name }))}
@@ -84,16 +86,15 @@ export default async function CoachLibraryPage() {
         editable
         manageableIds={manageableIds}
         isAdmin={isAdmin}
+        hygiene={
+          <HygieneVideoLibrary
+            videos={(hygieneVideos ?? []) as HygieneVideo[]}
+            players={formationPlayers}
+            visibility={hygieneVisibility}
+            isAdmin={isAdmin}
+          />
+        }
       />
-
-      <div className="mt-6">
-        <HygieneVideoLibrary
-          videos={(hygieneVideos ?? []) as HygieneVideo[]}
-          players={formationPlayers}
-          visibility={hygieneVisibility}
-          isAdmin={isAdmin}
-        />
-      </div>
     </>
   );
 }

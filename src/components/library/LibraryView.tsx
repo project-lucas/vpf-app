@@ -6,6 +6,8 @@ import { Check, Eye, Search, Timer, Wrench } from "lucide-react";
 import { setSessionVisibility } from "@/app/actions/coach";
 import { deleteLibrarySession } from "@/app/actions/admin";
 import { CATEGORIES, POLE_LABELS } from "@/lib/constants";
+import { parisNow } from "@/lib/dates";
+import { WeekdayPicker } from "@/components/coach/WeekdayPicker";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { IconButton } from "@/components/ui/IconButton";
@@ -50,6 +52,19 @@ function SheetPreview({ session }: { session: LibrarySession }) {
   );
 }
 
+/** Onglet de la bibliothèque : un pôle de séances, ou la vidéothèque hygiène. */
+type LibraryTab = SessionPole | "hygiene";
+
+/** Bucket des séances sans catégorie connue — sinon elles seraient invisibles. */
+const UNCATEGORIZED = "__autres__";
+
+const TAB_LABELS: Record<LibraryTab, string> = {
+  basket: "Technique",
+  physique: "Physique",
+  routine: POLE_LABELS.routine,
+  hygiene: "Hygiène",
+};
+
 interface Props {
   sessions: LibrarySession[];
   players: AssignablePlayer[];
@@ -60,6 +75,11 @@ interface Props {
   manageableIds?: string[];
   /** admin : peut déposer une vidéo sur le stockage du club */
   isAdmin: boolean;
+  /**
+   * Vidéothèque « Hygiène de vie », affichée dans son propre onglet — elle vit
+   * à côté des séances et ne doit plus se découvrir en bas de page.
+   */
+  hygiene?: React.ReactNode;
 }
 
 export function LibraryView({
@@ -69,23 +89,32 @@ export function LibraryView({
   editable,
   manageableIds,
   isAdmin,
+  hygiene,
 }: Props) {
   // La création de séance est réservée à l'admin : le coach affecte la
   // bibliothèque du club et retouche au plus ses propres séances.
   const canCreate = editable && isAdmin;
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
-  const [pole, setPole] = useState<SessionPole>("basket");
+  const [tab, setTab] = useState<LibraryTab>("basket");
+  // catégorie choisie dans le pôle courant (null = la première du pôle)
+  const [category, setCategory] = useState<string | null>(null);
   const [videoOpen, setVideoOpen] = useState<string | null>(null);
   const [assignTarget, setAssignTarget] = useState<LibrarySession | null>(null);
   const [selectedPlayers, setSelectedPlayers] = useState<string[]>([]);
   const [assignMessage, setAssignMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  // jour du programme appliqué aux joueurs nouvellement cochés (0035)
+  const [assignDays, setAssignDays] = useState<number[]>(() => [parisNow().isoWeekday]);
   const [formTarget, setFormTarget] = useState<LibrarySession | "new" | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<LibrarySession | null>(null);
   const [query, setQuery] = useState("");
 
   const manageable = manageableIds === undefined ? null : new Set(manageableIds);
   const canManage = (s: LibrarySession) => editable && (manageable === null || manageable.has(s.id));
+
+  // l'onglet hygiène n'a pas de pôle : on retient le dernier pôle utile pour
+  // le formulaire de création (defaultPole)
+  const pole: SessionPole = tab === "hygiene" ? "basket" : tab;
 
   const q = query.trim().toLowerCase();
   const poleSessions = sessions.filter(
@@ -95,6 +124,39 @@ export function LibraryView({
         s.name.toLowerCase().includes(q) ||
         (s.categories ?? []).some((c) => c.toLowerCase().includes(q)))
   );
+
+  // Catégories du pôle, en filtres plutôt qu'en sections empilées : le coach
+  // atteint « Cœur de séance » sans dérouler tout « Début de séance ».
+  // Une séance multi-catégories compte dans chacun de ses filtres.
+  const inCategory = (s: LibrarySession, key: string) =>
+    key === UNCATEGORIZED
+      ? !(s.categories ?? []).some((c) => CATEGORIES[pole].includes(c))
+      : (s.categories ?? []).includes(key);
+
+  const buckets = [
+    ...CATEGORIES[pole].map((c) => ({ key: c, label: c })),
+    // catégorie inconnue (import, ancienne saisie) : sans ce bucket la séance
+    // n'apparaîtrait nulle part
+    ...(sessions.some((s) => s.pole === pole && inCategory(s, UNCATEGORIZED))
+      ? [{ key: UNCATEGORIZED, label: "Autres" }]
+      : []),
+  ].map((b) => ({ ...b, count: poleSessions.filter((s) => inCategory(s, b.key)).length }));
+
+  // Pendant une recherche, on se pose sur le premier filtre qui a des
+  // résultats — sinon on cherche dans le vide sans savoir où regarder.
+  const chosen = category ?? buckets[0]?.key ?? "";
+  const activeCategory =
+    q && (buckets.find((b) => b.key === chosen)?.count ?? 0) === 0
+      ? (buckets.find((b) => b.count > 0)?.key ?? chosen)
+      : chosen;
+
+  const visibleSessions = poleSessions.filter((s) => inCategory(s, activeCategory));
+
+  function openTab(next: LibraryTab) {
+    setTab(next);
+    // chaque pôle a ses propres catégories : on repart de la première
+    setCategory(null);
+  }
 
   function togglePlayer(id: string) {
     setSelectedPlayers((prev) =>
@@ -108,7 +170,8 @@ export function LibraryView({
       const result = await setSessionVisibility(
         assignTarget.id,
         selectedPlayers,
-        players.map((p) => p.id)
+        players.map((p) => p.id),
+        assignDays
       );
       if (result.ok) {
         setAssignMessage({ ok: true, text: "Visibilité enregistrée" });
@@ -134,163 +197,193 @@ export function LibraryView({
 
   return (
     <div>
+      {/* Pôles + vidéothèque hygiène : quatre destinations de même rang, la
+          vidéothèque ne se découvre plus en bas de page. */}
       <div className="mb-4 flex gap-1.5">
-        {(Object.keys(POLE_LABELS) as SessionPole[]).map((p) => (
-          <button
-            key={p}
-            onClick={() => setPole(p)}
-            className={`flex-1 rounded-xl px-1 py-2 text-[13px] font-bold transition-colors ${
-              pole === p ? "bg-navy-800 text-white" : "border border-navy-200 bg-white text-navy-500"
-            }`}
-          >
-            {/* onglets compacts : le libellé complet est côté joueur */}
-            {p === "physique" ? "Physique" : p === "basket" ? "Technique" : POLE_LABELS[p]}
-          </button>
-        ))}
+        {(Object.keys(TAB_LABELS) as LibraryTab[])
+          .filter((t) => t !== "hygiene" || hygiene)
+          .map((t) => (
+            <button
+              key={t}
+              onClick={() => openTab(t)}
+              className={`min-w-0 flex-1 truncate rounded-xl px-1 py-2 text-[13px] font-bold transition-colors ${
+                tab === t ? "bg-navy-800 text-white" : "border border-navy-200 bg-white text-navy-500"
+              }`}
+            >
+              {/* onglets compacts : le libellé complet est côté joueur */}
+              {TAB_LABELS[t]}
+            </button>
+          ))}
       </div>
 
-      {canCreate && (
-        <Button full className="mb-4" onClick={() => setFormTarget("new")}>
-          <PlusIcon size={16} /> Nouvelle séance
-        </Button>
-      )}
-
-      <div className="relative mb-4">
-        <Search
-          size={15}
-          className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-navy-300"
-        />
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Rechercher une séance…"
-          className="w-full rounded-xl border border-navy-200 bg-white py-2.5 pl-9 pr-3.5 text-sm focus:border-navy-600 focus:outline-none"
-        />
-      </div>
-
-      {poleSessions.length === 0 ? (
-        <EmptyState>
-          {q
-            ? `Aucune séance ne correspond à « ${query} » dans ce pôle.`
-            : "Aucune séance dans ce pôle pour le moment."}
-        </EmptyState>
+      {tab === "hygiene" ? (
+        hygiene
       ) : (
-        <div className="space-y-5">
-          {/* une séance multi-catégories apparaît dans chacune de ses sections */}
-          {CATEGORIES[pole]
-            .filter((c) => poleSessions.some((s) => (s.categories ?? []).includes(c)))
-            .map((category) => (
-              <section key={category}>
-                <h2 className="mb-2 text-sm font-bold uppercase tracking-wide text-navy-500">
-                  {category}
-                </h2>
-                <div className="space-y-2.5">
-                  {poleSessions
-                    .filter((s) => (s.categories ?? []).includes(category))
-                    .map((s) => (
-                      <Card key={s.id}>
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <h3 className="font-bold text-navy-900">{s.name}</h3>
-                            <p className="mt-0.5 text-xs text-navy-400">
-                              <Timer size={12} className="-mt-0.5 inline" /> {s.duration_minutes}{" "}
-                              min
-                              {s.equipment && (
-                                <>
-                                  {" · "}
-                                  <Wrench size={12} className="-mt-0.5 inline" /> {s.equipment}
-                                </>
-                              )}
-                            </p>
-                            {(s.categories ?? []).length > 1 && (
-                              /* rappel : la séance est aussi listée ailleurs */
-                              <p className="mt-0.5 text-xs text-navy-400">
-                                Aussi en{" "}
-                                {(s.categories ?? [])
-                                  .filter((c) => c !== category)
-                                  .join(", ")
-                                  .toLowerCase()}
-                              </p>
-                            )}
-                            {(s.positions ?? []).length > 0 && (
-                              <div className="mt-1.5 flex flex-wrap gap-1">
-                                {(s.positions ?? []).map((p) => (
-                                  <span
-                                    key={p}
-                                    className="rounded-full bg-navy-50 px-2 py-0.5 text-[10px] font-semibold text-navy-500"
-                                  >
-                                    {p}
-                                  </span>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                          {canManage(s) && (
-                            <div className="flex shrink-0 gap-1">
-                              <button
-                                onClick={() => setFormTarget(s)}
-                                className="rounded-lg px-2 py-1 text-xs font-semibold text-navy-500 hover:bg-navy-50"
-                              >
-                                Modifier
-                              </button>
-                              <IconButton
-                                tone="danger"
-                                onClick={() => setDeleteTarget(s)}
-                                aria-label="Supprimer"
-                              >
-                                <TrashIcon size={15} />
-                              </IconButton>
-                            </div>
-                          )}
-                        </div>
+        <>
+          {canCreate && (
+            <Button full className="mb-4" onClick={() => setFormTarget("new")}>
+              <PlusIcon size={16} /> Nouvelle séance
+            </Button>
+          )}
 
-                        {videoOpen === s.id && (
-                          /* même ordre que côté joueur : fiche avant la vidéo
-                             en physique, après en technique/routine */
-                          <div className="mt-3 space-y-3">
-                            {s.pole === "physique" && <SheetPreview session={s} />}
-                            <YouTubeEmbed url={s.youtube_url} title={s.name} />
-                            {s.pole !== "physique" && <SheetPreview session={s} />}
-                          </div>
+          <div className="relative mb-3">
+            <Search
+              size={15}
+              className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-navy-300"
+            />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Rechercher une séance…"
+              className="w-full rounded-xl border border-navy-200 bg-white py-2.5 pl-9 pr-3.5 text-sm focus:border-navy-600 focus:outline-none"
+            />
+          </div>
+
+          {/* Filtres de catégorie — remplacent les anciens titres de section :
+              une catégorie à la fois, avec le nombre de séances de chacune. */}
+          {buckets.length > 1 && (
+            <div className="scrollbar-none -mx-4 mb-4 flex gap-1.5 overflow-x-auto px-4 pb-1">
+              {buckets.map((b) => (
+                <button
+                  key={b.key}
+                  onClick={() => setCategory(b.key)}
+                  aria-pressed={b.key === activeCategory}
+                  className={`flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-semibold transition-colors ${
+                    b.key === activeCategory
+                      ? "bg-navy-800 text-white"
+                      : b.count === 0
+                        ? "border border-navy-100 bg-white text-navy-300"
+                        : "border border-navy-200 bg-white text-navy-500"
+                  }`}
+                >
+                  {b.label}
+                  <span
+                    className={`rounded-full px-1.5 py-px text-[10px] font-bold ${
+                      b.key === activeCategory
+                        ? "bg-white/20 text-white"
+                        : "bg-navy-50 text-navy-500"
+                    }`}
+                  >
+                    {b.count}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {visibleSessions.length === 0 ? (
+            <EmptyState>
+              {q
+                ? `Aucune séance ne correspond à « ${query} » dans ce pôle.`
+                : buckets.length > 1
+                  ? "Aucune séance dans cette catégorie pour le moment."
+                  : "Aucune séance dans ce pôle pour le moment."}
+            </EmptyState>
+          ) : (
+            <div className="space-y-2.5">
+              {visibleSessions.map((s) => (
+                <Card key={s.id}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <h3 className="font-bold text-navy-900">{s.name}</h3>
+                      <p className="mt-0.5 text-xs text-navy-400">
+                        <Timer size={12} className="-mt-0.5 inline" /> {s.duration_minutes} min
+                        {s.equipment && (
+                          <>
+                            {" · "}
+                            <Wrench size={12} className="-mt-0.5 inline" /> {s.equipment}
+                          </>
                         )}
-
-                        <div className="mt-3 flex gap-2">
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => setVideoOpen(videoOpen === s.id ? null : s.id)}
-                          >
-                            {videoOpen === s.id
-                              ? "Masquer le contenu"
-                              : s.sheet_url
-                                ? "Voir fiche + vidéo"
-                                : "Voir la vidéo"}
-                          </Button>
-                          {players.length > 0 && (
-                            <Button
-                              size="sm"
-                              variant="secondary"
-                              onClick={() => {
-                                setAssignTarget(s);
-                                setSelectedPlayers(visibility[s.id] ?? []);
-                                setAssignMessage(null);
-                              }}
+                      </p>
+                      {(s.categories ?? []).filter((c) => c !== activeCategory).length > 0 && (
+                        /* rappel : la séance est aussi listée sous un autre
+                           filtre du pôle */
+                        <p className="mt-0.5 text-xs text-navy-400">
+                          Aussi en{" "}
+                          {(s.categories ?? [])
+                            .filter((c) => c !== activeCategory)
+                            .join(", ")
+                            .toLowerCase()}
+                        </p>
+                      )}
+                      {(s.positions ?? []).length > 0 && (
+                        <div className="mt-1.5 flex flex-wrap gap-1">
+                          {(s.positions ?? []).map((p) => (
+                            <span
+                              key={p}
+                              className="rounded-full bg-navy-50 px-2 py-0.5 text-[10px] font-semibold text-navy-500"
                             >
-                              <Eye size={14} /> Visibilité
-                              {(visibility[s.id]?.length ?? 0) > 0 && (
-                                <span className="ml-0.5 rounded-full bg-navy-800 px-1.5 py-px text-[10px] font-bold text-white">
-                                  {visibility[s.id].length}
-                                </span>
-                              )}
-                            </Button>
-                          )}
+                              {p}
+                            </span>
+                          ))}
                         </div>
-                      </Card>
-                    ))}
-                </div>
-              </section>
-            ))}
-        </div>
+                      )}
+                    </div>
+                    {canManage(s) && (
+                      <div className="flex shrink-0 gap-1">
+                        <button
+                          onClick={() => setFormTarget(s)}
+                          className="rounded-lg px-2 py-1 text-xs font-semibold text-navy-500 hover:bg-navy-50"
+                        >
+                          Modifier
+                        </button>
+                        <IconButton
+                          tone="danger"
+                          onClick={() => setDeleteTarget(s)}
+                          aria-label="Supprimer"
+                        >
+                          <TrashIcon size={15} />
+                        </IconButton>
+                      </div>
+                    )}
+                  </div>
+
+                  {videoOpen === s.id && (
+                    /* même ordre que côté joueur : fiche avant la vidéo en
+                       physique, après en technique/routine */
+                    <div className="mt-3 space-y-3">
+                      {s.pole === "physique" && <SheetPreview session={s} />}
+                      <YouTubeEmbed url={s.youtube_url} title={s.name} />
+                      {s.pole !== "physique" && <SheetPreview session={s} />}
+                    </div>
+                  )}
+
+                  <div className="mt-3 flex gap-2">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setVideoOpen(videoOpen === s.id ? null : s.id)}
+                    >
+                      {videoOpen === s.id
+                        ? "Masquer le contenu"
+                        : s.sheet_url
+                          ? "Voir fiche + vidéo"
+                          : "Voir la vidéo"}
+                    </Button>
+                    {players.length > 0 && (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => {
+                          setAssignTarget(s);
+                          setSelectedPlayers(visibility[s.id] ?? []);
+                          setAssignMessage(null);
+                        }}
+                      >
+                        <Eye size={14} /> Visibilité
+                        {(visibility[s.id]?.length ?? 0) > 0 && (
+                          <span className="ml-0.5 rounded-full bg-navy-800 px-1.5 py-px text-[10px] font-bold text-white">
+                            {visibility[s.id].length}
+                          </span>
+                        )}
+                      </Button>
+                    )}
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )}
+        </>
       )}
 
       {/* Modal de visibilité : coche = le joueur voit la séance */}
@@ -302,6 +395,17 @@ export function LibraryView({
         <p className="mb-3 text-sm text-navy-500">
           Coche les joueurs qui verront cette séance dans leur espace.
         </p>
+
+        {/* Le programme du joueur se lit par jour (0035) : une séance ajoutée
+            ici doit savoir où se ranger. Les joueurs déjà cochés gardent le
+            jour qui leur avait été donné. */}
+        <div className="mb-3 rounded-xl bg-navy-50 p-3">
+          <p className="mb-2 text-xs font-bold uppercase tracking-wide text-navy-500">
+            Jours des nouveaux joueurs cochés
+          </p>
+          <WeekdayPicker value={assignDays} onChange={setAssignDays} disabled={isPending} />
+        </div>
+
         <div className="space-y-1.5">
           {players.map((p) => (
             <label

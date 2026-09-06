@@ -7,7 +7,10 @@ import { PasswordForm } from "@/components/settings/PasswordForm";
 import { PlayerInfoForm } from "@/components/settings/PlayerInfoForm";
 import { RulesCard } from "@/components/settings/RulesCard";
 import { SettingsSheet } from "@/components/settings/SettingsSheet";
-import { MessageThread } from "@/components/messages/MessageThread";
+import { ConversationPanel } from "@/components/messages/ConversationPanel";
+import { getConversationChannels } from "@/lib/conversations";
+import { channelKey } from "@/lib/constants";
+import { toOffer } from "@/lib/offers";
 import { Overline, Serif, DoubleRule, SectionHead } from "@/components/editorial/primitives";
 import { BellIcon } from "@/components/icons";
 import { MessageCircle } from "lucide-react";
@@ -41,7 +44,7 @@ export default async function ProfilPage() {
     supabase
       .from("players")
       .select(
-        "category, position, club, season_goal, coach:profiles!players_coach_id_fkey(first_name, last_name)"
+        "category, position, club, season_goal, offer, coach:profiles!players_coach_id_fkey(first_name, last_name)"
       )
       .eq("id", user.id)
       .maybeSingle(),
@@ -57,6 +60,25 @@ export default async function ProfilPage() {
 
   const initials =
     `${profile?.first_name?.[0] ?? ""}${profile?.last_name?.[0] ?? ""}`.toUpperCase();
+
+  // Canaux du joueur : son fil coach & parents, plus un fil privé par admin
+  // en offre formation (0034). L'étiquette du fil coach nomme le coach ; les
+  // fils privés portent le prénom de l'admin (Lucas, Maxime).
+  const channels = (
+    await getConversationChannels(supabase, {
+      playerId: user.id,
+      viewerId: user.id,
+      offer: toOffer(playerRow?.offer),
+      includePrivate: true,
+    })
+  ).map((c) => ({
+    key: channelKey(c.adminId),
+    adminId: c.adminId,
+    // « Global » = toi, tes parents et tout le staff ; un prénom = ton fil
+    // privé avec ce membre du staff
+    label: c.adminId ? (c.adminName ?? "Staff VPF") : "Global",
+    hasUnread: c.hasUnread,
+  }));
 
   const metaParts = [
     playerRow?.position,
@@ -101,11 +123,16 @@ export default async function ProfilPage() {
           zone de saisie reste sous les yeux quel que soit l'historique. */}
       <section className="mt-6">
         <SectionHead icon={<MessageCircle size={13} />}>
-          {coach ? `Conversation avec Coach ${coach.last_name}` : "Conversation avec ton coach"}
+          {channels.length > 1
+            ? "Mes conversations"
+            : coach
+              ? `Conversation avec Coach ${coach.last_name}`
+              : "Conversation avec ton coach"}
         </SectionHead>
-        <MessageThread
+        <ConversationPanel
           playerId={user.id}
           currentUserId={user.id}
+          channels={channels}
           initialMessages={messages}
           variant="editorial"
           className="mt-4 h-[calc(100dvh-420px)] min-h-[320px] max-h-[640px]"

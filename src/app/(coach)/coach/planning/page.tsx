@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { ClipboardList, NotebookPen } from "lucide-react";
 import { createClient, getCachedUser } from "@/lib/supabase/server";
 import { getPlayersWithDiscipline } from "@/lib/coach-data";
 import {
@@ -10,18 +9,23 @@ import {
   weekStartOf,
 } from "@/lib/dates";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { StatCard } from "@/components/ui/StatCard";
-import { Card, CardTitle } from "@/components/ui/Card";
+import { StatStrip } from "@/components/ui/StatStrip";
 import { Badge } from "@/components/ui/Badge";
 import { ChevronLeftIcon } from "@/components/icons";
 import { DayView, type DayViewEntry } from "./DayView";
-import type { EventCompletion, MatchStat, PlannedEvent } from "@/lib/types";
+import { PlayerFilter } from "./PlayerFilter";
+import type { EventCompletion, PlannedEvent } from "@/lib/types";
 
 export const metadata = { title: "Planning coach — VPF" };
 export const dynamic = "force-dynamic";
 
 type DayEntry = DayViewEntry;
 
+/**
+ * Le planning de la semaine, jour par jour. Le suivi par joueur (pointages,
+ * feuille, bilan) a rejoint la vue « Semaine » de la liste des joueurs — ici,
+ * il ne reste que ce qu'aucun autre écran ne montre : le détail par jour.
+ */
 export default async function CoachPlanningPage({
   searchParams,
 }: {
@@ -30,8 +34,7 @@ export default async function CoachPlanningPage({
   const { w, j } = await searchParams;
   const thisWeek = currentWeekStart();
   // Semaine affichée : paramètre ?w= (ramené au lundi), sinon semaine courante
-  const weekStart =
-    w && /^\d{4}-\d{2}-\d{2}$/.test(w) ? weekStartOf(w) : thisWeek;
+  const weekStart = w && /^\d{4}-\d{2}-\d{2}$/.test(w) ? weekStartOf(w) : thisWeek;
   const isCurrentWeek = weekStart === thisWeek;
   const { date: today, isoWeekday: todayWeekday } = parisNow();
 
@@ -44,25 +47,14 @@ export default async function CoachPlanningPage({
   const ids = players.map((p) => p.id);
   const nameOf = new Map(players.map((p) => [p.id, `${p.first_name} ${p.last_name}`]));
 
-  const [{ data: events }, { data: completions }, { data: sheets }, { data: reviews }] =
+  const [{ data: events }, { data: completions }] =
     ids.length === 0
-      ? [{ data: [] }, { data: [] }, { data: [] }, { data: [] }]
+      ? [{ data: [] }, { data: [] }]
       : await Promise.all([
           supabase.from("planned_events").select("*").in("player_id", ids),
           supabase
             .from("event_completions")
             .select("*")
-            .eq("week_start", weekStart)
-            .in("player_id", ids),
-          supabase
-            .from("match_stats")
-            .select("id, player_id, points, match_date")
-            .gte("match_date", weekStart)
-            .lte("match_date", addDays(weekStart, 6))
-            .in("player_id", ids),
-          supabase
-            .from("weekly_reviews")
-            .select("id, player_id")
             .eq("week_start", weekStart)
             .in("player_id", ids),
         ]);
@@ -112,7 +104,9 @@ export default async function CoachPlanningPage({
   }
 
   for (const day of byDay) {
-    day.sort((a, b) => (a.time === b.time ? a.playerName.localeCompare(b.playerName, "fr") : a.time < b.time ? -1 : 1));
+    day.sort((a, b) =>
+      a.time === b.time ? a.playerName.localeCompare(b.playerName, "fr") : a.time < b.time ? -1 : 1
+    );
   }
 
   // Vue filtrée sur un joueur : le détail jour par jour et les compteurs suivent
@@ -123,14 +117,6 @@ export default async function CoachPlanningPage({
   const totalEntries = shownByDay.reduce((s, d) => s + d.length, 0);
   const doneCount = shownByDay.flat().filter((e) => e.status === "done").length;
 
-  // Suivi par joueur : pointages, feuille de match et bilan de la semaine affichée
-  const sheetByPlayer = new Map(
-    ((sheets ?? []) as Pick<MatchStat, "id" | "player_id" | "points" | "match_date">[]).map(
-      (s) => [s.player_id, s]
-    )
-  );
-  const reviewedPlayers = new Set((reviews ?? []).map((r) => r.player_id));
-
   const weekHref = (week: string) =>
     `/coach/planning?w=${week}${selectedPlayer ? `&j=${selectedPlayer}` : ""}`;
   const prevHref = weekHref(addDays(weekStart, -7));
@@ -138,10 +124,10 @@ export default async function CoachPlanningPage({
 
   return (
     <>
-      <PageHeader title="Planning" subtitle="La semaine de tous tes joueurs." />
+      <PageHeader title="Planning" subtitle="La semaine de tes joueurs, jour par jour." />
 
       {/* Navigation de semaine */}
-      <div className="mb-4 flex items-center justify-between rounded-2xl border border-navy-100 bg-white px-2 py-2 shadow-sm">
+      <div className="mb-3 flex items-center justify-between rounded-2xl border border-navy-100 bg-white px-2 py-1.5">
         <Link
           href={prevHref}
           aria-label="Semaine précédente"
@@ -149,12 +135,14 @@ export default async function CoachPlanningPage({
         >
           <ChevronLeftIcon size={18} />
         </Link>
-        <div className="text-center">
+        <div className="flex items-center gap-2 text-center">
           <p className="text-sm font-bold text-navy-800">Semaine {formatWeekFr(weekStart)}</p>
-          {isCurrentWeek && (
-            <Badge tone="navy" className="mt-0.5">
-              En cours
-            </Badge>
+          {isCurrentWeek ? (
+            <Badge tone="navy">En cours</Badge>
+          ) : (
+            <Link href={weekHref(thisWeek)} className="text-[11px] font-bold text-navy-500 underline">
+              Revenir à aujourd&apos;hui
+            </Link>
           )}
         </div>
         <Link
@@ -166,95 +154,27 @@ export default async function CoachPlanningPage({
         </Link>
       </div>
 
-      {!isCurrentWeek && (
-        <Link
-          href={weekHref(thisWeek)}
-          className="mb-4 block rounded-xl border border-navy-200 bg-white py-2 text-center text-xs font-bold text-navy-600 hover:bg-navy-50"
-        >
-          ↩ Revenir à la semaine en cours
-        </Link>
-      )}
-
-      {/* Filtre par joueur */}
       {players.length > 1 && (
-        <div className="mb-4 flex gap-1.5 overflow-x-auto pb-1 pointer-fine:flex-wrap pointer-fine:overflow-x-visible">
-          <Link
-            href={`/coach/planning?w=${weekStart}`}
-            className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-bold ${
-              selectedPlayer === null
-                ? "bg-navy-800 text-white"
-                : "border border-navy-200 bg-white text-navy-500"
-            }`}
-          >
-            Tous
-          </Link>
-          {players.map((p) => (
-            <Link
-              key={p.id}
-              href={`/coach/planning?w=${weekStart}&j=${p.id}`}
-              className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-bold ${
-                selectedPlayer === p.id
-                  ? "bg-navy-800 text-white"
-                  : "border border-navy-200 bg-white text-navy-500"
-              }`}
-            >
-              {p.first_name}
-            </Link>
-          ))}
+        <div className="mb-3">
+          <PlayerFilter
+            players={players.map((p) => ({ id: p.id, name: `${p.first_name} ${p.last_name}` }))}
+            selected={selectedPlayer}
+            weekStart={weekStart}
+          />
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-2.5">
-        <StatCard label="Événements" value={`${totalEntries}`} hint="tous joueurs confondus" />
-        <StatCard
-          label="Réalisés"
-          value={totalEntries > 0 ? `${doneCount}/${totalEntries}` : "—"}
-          hint={totalEntries > 0 ? `${Math.round((doneCount / totalEntries) * 100)} %` : undefined}
-        />
-      </div>
-
-      {/* Suivi par joueur : pointages + feuille de match + bilan */}
-      <Card className="mt-5">
-        <CardTitle>Suivi de la semaine par joueur</CardTitle>
-        {players.length === 0 ? (
-          <p className="text-sm text-navy-400">Aucun joueur actif pour le moment.</p>
-        ) : (
-          <div className="divide-y divide-navy-50">
-            {players
-              .filter((p) => !selectedPlayer || p.id === selectedPlayer)
-              .map((p) => {
-              const entries = byDay.flat().filter((e) => e.playerId === p.id);
-              const done = entries.filter((e) => e.status === "done").length;
-              const sheet = sheetByPlayer.get(p.id);
-              const hasReview = reviewedPlayers.has(p.id);
-              return (
-                <Link
-                  key={p.id}
-                  href={`/coach/joueurs/${p.id}`}
-                  className="flex items-center justify-between gap-2 py-2.5"
-                >
-                  <span className="min-w-0 truncate text-sm font-semibold text-navy-800">
-                    {p.first_name} {p.last_name}
-                  </span>
-                  <span className="flex shrink-0 items-center gap-1.5">
-                    <Badge tone={entries.length > 0 && done === entries.length ? "success" : "neutral"}>
-                      {entries.length > 0 ? `${done}/${entries.length}` : "—"}
-                    </Badge>
-                    <Badge tone={sheet ? "success" : "neutral"}>
-                      <ClipboardList size={11} />
-                      {sheet ? `${sheet.points} pts` : "—"}
-                    </Badge>
-                    <Badge tone={hasReview ? "success" : "neutral"}>
-                      <NotebookPen size={11} />
-                      {hasReview ? "Bilan" : "—"}
-                    </Badge>
-                  </span>
-                </Link>
-              );
-            })}
-          </div>
-        )}
-      </Card>
+      <StatStrip
+        className="mb-5"
+        items={[
+          { label: "Événements", value: `${totalEntries}`, hint: selectedPlayer ? undefined : "tous joueurs" },
+          {
+            label: "Réalisés",
+            value: totalEntries > 0 ? `${doneCount}/${totalEntries}` : "—",
+            hint: totalEntries > 0 ? `${Math.round((doneCount / totalEntries) * 100)} %` : undefined,
+          },
+        ]}
+      />
 
       {/* Détail par jour : barre de filtre Lun → Dim, le jour choisi est isolé.
           key = semaine+filtre pour repartir sur le bon jour quand on navigue. */}
