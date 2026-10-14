@@ -2,9 +2,9 @@
 
 import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
-import { Plus, Settings2, Trash2, UserMinus, X } from "lucide-react";
-import { createGroup, deleteGroup, renameGroup, setGroupStaff } from "@/app/actions/groups";
-import { archivePlayer } from "@/app/actions/admin";
+import { MoreHorizontal, Plus, Settings2, Trash2, UserMinus, X } from "lucide-react";
+import { createGroup, deleteGroup, moveStaffToGroup, renameGroup, setGroupStaff } from "@/app/actions/groups";
+import { archivePlayer, deleteCoach } from "@/app/actions/admin";
 import { OfferMark } from "@/components/coach/HomeCells";
 import { formatPercent } from "@/lib/discipline";
 import { LOW_DISCIPLINE_THRESHOLD } from "@/lib/constants";
@@ -23,10 +23,6 @@ export interface BoardStaff {
   id: string;
   name: string;
   isAdmin: boolean;
-  /** ce que rend ce membre du staff : « 7 joueurs · bilans 0/7 · actif il y a 3 j » */
-  summary: string;
-  /** ce qui l'attend : « 2 fils sans réponse », « 1 douleur »… */
-  alerts: string[];
 }
 
 export interface BoardGroup {
@@ -43,13 +39,23 @@ type Run = (action: () => Promise<Result>, after?: () => void) => void;
 
 /**
  * Le cœur de l'onglet Admin : une colonne par groupe, côte à côte, sans
- * défilement de page. Chaque colonne montre son staff (et le travail de
- * chacun), puis ses joueurs ; un joueur qui quitte le club se retire en TROIS
+ * défilement de page. Chaque colonne montre son staff (un nom par ligne, un
+ * menu pour le déplacer, le retirer du groupe ou supprimer son compte), puis
+ * ses joueurs ; un joueur qui quitte le club se retire en TROIS
  * clics (icône → « Retirer du club ? » → « Confirmer le départ ») — c'est un
  * archivage : il ne peut plus se connecter, son historique reste, la fiche
  * coach permet de le réactiver. La dernière colonne crée le groupe suivant.
  */
-export function GroupBoard({ groups, staff }: { groups: BoardGroup[]; staff: BoardStaff[] }) {
+export function GroupBoard({
+  groups,
+  staff,
+  meId,
+}: {
+  groups: BoardGroup[];
+  staff: BoardStaff[];
+  /** l'admin connecté : il ne peut pas supprimer son propre compte */
+  meId: string;
+}) {
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const [newName, setNewName] = useState("");
@@ -72,7 +78,15 @@ export function GroupBoard({ groups, staff }: { groups: BoardGroup[]; staff: Boa
       )}
       <div className="grid min-h-0 flex-1 gap-4 lg:auto-cols-[minmax(300px,1fr)] lg:grid-flow-col lg:overflow-x-auto lg:pb-1">
         {groups.map((g) => (
-          <GroupColumn key={g.id} group={g} staff={staff} disabled={pending} run={run} />
+          <GroupColumn
+            key={g.id}
+            group={g}
+            groups={groups}
+            staff={staff}
+            meId={meId}
+            disabled={pending}
+            run={run}
+          />
         ))}
 
         {/* créer le groupe suivant */}
@@ -119,12 +133,16 @@ function initials(name: string): string {
 
 function GroupColumn({
   group,
+  groups,
   staff,
+  meId,
   disabled,
   run,
 }: {
   group: BoardGroup;
+  groups: BoardGroup[];
   staff: BoardStaff[];
+  meId: string;
   disabled: boolean;
   run: Run;
 }) {
@@ -213,50 +231,18 @@ function GroupColumn({
         ) : shown.length === 0 ? (
           <p className="text-[12.5px] text-navy-400">Personne : « Modifier » pour y mettre un coach.</p>
         ) : (
-          <ul className="space-y-1">
-            {shown.map((s) => (
-              <li key={s.id}>
-                <Link
-                  href={`/coach/club/${s.id}`}
-                  className="flex items-start gap-2 rounded-lg px-1.5 py-1 hover:bg-cream"
-                >
-                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-navy-800 text-[10.5px] font-extrabold text-white">
-                    {initials(s.name)}
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="flex items-center gap-1.5 text-[13px] font-bold text-navy-900">
-                      <span className="truncate">{s.name}</span>
-                      {s.isAdmin && (
-                        <span className="rounded bg-navy-800 px-1 text-[9.5px] font-extrabold uppercase text-white">
-                          Admin
-                        </span>
-                      )}
-                      {!group.staffIds.includes(s.id) && (
-                        <span
-                          className="rounded px-1 text-[9.5px] font-extrabold uppercase text-navy-500 ring-1 ring-inset ring-sand"
-                          title="Coach référent de joueurs du groupe, pas dans son staff"
-                        >
-                          Référent
-                        </span>
-                      )}
-                      {s.alerts.length > 0 && (
-                        <span className="ml-auto rounded-full bg-danger-soft px-1.5 text-[11px] font-extrabold text-danger">
-                          {s.alerts.length}
-                        </span>
-                      )}
-                    </span>
-                    <span className="block truncate text-[11.5px] text-navy-400">{s.summary}</span>
-                    {s.alerts.length > 0 && (
-                      <span
-                        className="block truncate text-[11.5px] font-semibold text-danger"
-                        title={s.alerts.join(" · ")}
-                      >
-                        {s.alerts.join(" · ")}
-                      </span>
-                    )}
-                  </span>
-                </Link>
-              </li>
+          <ul className="space-y-0.5">
+            {shown.map((m) => (
+              <StaffLine
+                key={m.id}
+                member={m}
+                group={group}
+                groups={groups}
+                isStaff={group.staffIds.includes(m.id)}
+                isMe={m.id === meId}
+                disabled={disabled}
+                run={run}
+              />
             ))}
           </ul>
         )}
@@ -359,6 +345,158 @@ function PlayerLine({ player: p, disabled, run }: { player: BoardPlayer; disable
             <X size={13} />
           </button>
         </span>
+      )}
+    </li>
+  );
+}
+
+/**
+ * Un membre du staff dans la colonne d'un groupe : son nom, et un menu ⋯ —
+ * déplacer vers un autre groupe, retirer de ce groupe, supprimer le compte.
+ * La suppression se confirme en TROIS clics (« Supprimer le compte » →
+ * « Supprimer ? » → « Confirmer ») : elle est définitive, ses joueurs passent
+ * à l'admin qui supprime, et ses fils privés avec les joueurs sont effacés.
+ */
+function StaffLine({
+  member: m,
+  group,
+  groups,
+  isStaff,
+  isMe,
+  disabled,
+  run,
+}: {
+  member: BoardStaff;
+  group: BoardGroup;
+  groups: BoardGroup[];
+  isStaff: boolean;
+  isMe: boolean;
+  disabled: boolean;
+  run: Run;
+}) {
+  const [open, setOpen] = useState(false);
+  // 0 = repos ; 1 et 2 = confirmations de la suppression du compte
+  const [step, setStep] = useState(0);
+
+  useEffect(() => {
+    if (step === 0) return;
+    const t = setTimeout(() => setStep(0), 6000);
+    return () => clearTimeout(t);
+  }, [step]);
+
+  const others = groups.filter((g) => g.id !== group.id && !g.staffIds.includes(m.id));
+  const firstName = m.name.split(" ")[0] ?? m.name;
+
+  return (
+    <li className={`rounded-lg ${open ? "bg-cream" : ""}`}>
+      <div className="flex items-center gap-2 px-1.5 py-1">
+        <Link href={`/coach/club/${m.id}`} className="flex min-w-0 flex-1 items-center gap-2 hover:underline">
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-navy-800 text-[10.5px] font-extrabold text-white">
+            {initials(m.name)}
+          </span>
+          <span className="truncate text-[13px] font-bold text-navy-900">{m.name}</span>
+          {m.isAdmin && (
+            <span className="rounded bg-navy-800 px-1 text-[9.5px] font-extrabold uppercase text-white">Admin</span>
+          )}
+          {!isStaff && (
+            <span
+              className="rounded px-1 text-[9.5px] font-extrabold uppercase text-navy-500 ring-1 ring-inset ring-sand"
+              title="Coach référent de joueurs du groupe, pas dans son staff"
+            >
+              Référent
+            </span>
+          )}
+        </Link>
+        <button
+          type="button"
+          onClick={() => {
+            setOpen((v) => !v);
+            setStep(0);
+          }}
+          aria-expanded={open}
+          aria-label={`Actions pour ${m.name}`}
+          className="flex h-7 w-7 items-center justify-center rounded-md text-navy-400 hover:bg-white hover:text-navy-900"
+        >
+          <MoreHorizontal size={16} />
+        </button>
+      </div>
+
+      {open && (
+        <div className="flex flex-wrap items-center gap-1.5 px-1.5 pb-2">
+          {others.map((g) => (
+            <button
+              key={g.id}
+              type="button"
+              disabled={disabled}
+              onClick={() =>
+                run(() => moveStaffToGroup(m.id, isStaff ? group.id : null, g.id), () => setOpen(false))
+              }
+              className="rounded-md bg-white px-2 py-1 text-[11.5px] font-bold text-navy-800 ring-1 ring-inset ring-sand hover:text-accent"
+            >
+              {isStaff ? "Déplacer vers" : "Ajouter à"} {g.name}
+            </button>
+          ))}
+          {!isStaff && (
+            <button
+              type="button"
+              disabled={disabled}
+              onClick={() => run(() => setGroupStaff(group.id, m.id, true), () => setOpen(false))}
+              className="rounded-md bg-white px-2 py-1 text-[11.5px] font-bold text-navy-800 ring-1 ring-inset ring-sand hover:text-accent"
+            >
+              Ajouter au staff de {group.name}
+            </button>
+          )}
+          {isStaff && (
+            <button
+              type="button"
+              disabled={disabled}
+              onClick={() => run(() => setGroupStaff(group.id, m.id, false), () => setOpen(false))}
+              className="rounded-md bg-white px-2 py-1 text-[11.5px] font-bold text-navy-600 ring-1 ring-inset ring-sand hover:text-navy-900"
+            >
+              Retirer de {group.name}
+            </button>
+          )}
+          {!isMe &&
+            (step === 0 ? (
+              <button
+                type="button"
+                disabled={disabled}
+                onClick={() => setStep(1)}
+                className="rounded-md px-2 py-1 text-[11.5px] font-bold text-danger ring-1 ring-inset ring-danger/30 hover:bg-danger-soft"
+              >
+                Supprimer le compte
+              </button>
+            ) : (
+              <span className="flex w-full flex-wrap items-center gap-1.5 rounded-md bg-danger-soft/70 px-2 py-1.5">
+                <span className="text-[11.5px] font-semibold text-danger">
+                  {step === 1
+                    ? `Supprimer le compte de ${firstName} ? C'est définitif.`
+                    : `Ses joueurs passent à toi, ses fils privés avec les joueurs sont effacés.`}
+                </span>
+                <button
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => {
+                    if (step === 1) setStep(2);
+                    else run(() => deleteCoach(m.id), () => setStep(0));
+                  }}
+                  className={`rounded-md px-2 py-1 text-[11.5px] font-extrabold ${
+                    step === 2 ? "bg-danger text-white" : "text-danger ring-1 ring-inset ring-danger/40"
+                  }`}
+                >
+                  {step === 1 ? "Supprimer ?" : "Confirmer la suppression"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStep(0)}
+                  aria-label="Annuler"
+                  className="flex h-6 w-6 items-center justify-center rounded-md text-navy-400 hover:bg-white"
+                >
+                  <X size={13} />
+                </button>
+              </span>
+            ))}
+        </div>
       )}
     </li>
   );

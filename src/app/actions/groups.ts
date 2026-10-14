@@ -201,3 +201,24 @@ export async function setPlayerGroup(playerId: string, groupId: string): Promise
   revalidatePath(`/coach/joueurs/${playerId}`);
   return { ok: true };
 }
+
+/**
+ * Déplace un membre du staff (coach ou admin) d'un groupe vers un autre : il
+ * rejoint le staff du groupe cible et quitte celui d'origine (s'il y était).
+ * Ses joueurs référents ne bougent pas — un joueur change de groupe depuis sa
+ * fiche.
+ */
+export async function moveStaffToGroup(
+  profileId: string,
+  fromGroupId: string | null,
+  toGroupId: string,
+): Promise<ActionResult> {
+  if (fromGroupId === toGroupId) return { ok: true };
+  const added = await setGroupStaff(toGroupId, profileId, true);
+  if (!added.ok) return added;
+  if (fromGroupId) {
+    const removed = await setGroupStaff(fromGroupId, profileId, false);
+    if (!removed.ok) return removed;
+  }
+  return { ok: true };
+}

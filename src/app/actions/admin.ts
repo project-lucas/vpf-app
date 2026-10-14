@@ -110,8 +110,11 @@ export async function updateCoach(
  * Supprime définitivement un coach. Ses joueurs (actifs et archivés) sont
  * d'abord réassignés à l'admin qui exécute l'action — sinon la contrainte
  * `players.coach_id` (on delete restrict) bloquerait la suppression. La
- * suppression du compte auth cascade ensuite sur le profil, ses invitations et
- * ses subscriptions push. Un admin ne peut pas être supprimé par cette voie.
+ * suppression du compte auth cascade ensuite sur le profil, ses invitations,
+ * ses subscriptions push, sa place dans les groupes — et ses fils privés avec
+ * les joueurs (`conversation_messages.channel_admin_id` en cascade) : l'écran
+ * le dit avant la confirmation. Depuis le 15/10/2026, un admin peut aussi
+ * supprimer un autre admin ; jamais lui-même, il en reste donc toujours un.
  */
 export async function deleteCoach(coachId: string): Promise<ActionResult> {
   const guard = await requireAdmin();
@@ -126,8 +129,8 @@ export async function deleteCoach(coachId: string): Promise<ActionResult> {
     .eq("id", coachId)
     .maybeSingle();
   if (!target) return { ok: false, error: "Coach introuvable." };
-  if (target.role !== "coach") {
-    return { ok: false, error: "Seuls les coachs peuvent être supprimés." };
+  if (target.role !== "coach" && target.role !== "admin") {
+    return { ok: false, error: "Seuls les membres du staff peuvent être supprimés ici." };
   }
 
   // Réassigne tous ses joueurs (actifs + archivés) à l'admin avant suppression.
