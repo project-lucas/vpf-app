@@ -29,7 +29,7 @@ export function DeleteCoachButton({
       setLoading(false);
       return;
     }
-    router.push("/coach/club");
+    router.push("/coach/admin");
   }
 
   return (

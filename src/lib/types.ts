@@ -36,6 +36,8 @@ export interface Profile {
 export interface Player {
   id: string;
   coach_id: string;
+  /** groupe de suivi (0040) ; null seulement si tous les groupes ont disparu */
+  group_id: string | null;
   position: string;
   club: string;
   birthdate: string | null;
@@ -442,6 +444,54 @@ export interface MessageAttachmentInput {
   size: number;
   /** Durée en secondes pour un vocal ou une vidéo, null sinon. */
   duration: number | null;
+}
+
+/** Groupe de suivi : un staff à plusieurs sur un ensemble de joueurs (0040). */
+export interface Group {
+  id: string;
+  name: string;
+  position: number;
+  created_at: string;
+}
+
+/** Un membre du staff tel que le groupe le présente : un id, un prénom. */
+export interface GroupStaffMember {
+  id: string;
+  first_name: string;
+}
+
+/** Un membre du staff du club, pour composer le staff d'un groupe (admin). */
+export interface StaffProfile extends GroupStaffMember {
+  last_name: string;
+  role: UserRole;
+}
+
+export interface GroupWithStaff extends Group {
+  staff: GroupStaffMember[];
+}
+
+/** Prise en charge d'une ligne du brief (« Je prends ») — 0040. */
+export interface TaskClaim {
+  id: string;
+  player_id: string;
+  kind: string;
+  ref_key: string;
+  claimed_by: string;
+  claimed_at: string;
+}
+
+/** Qui a fait quoi : le staff, et demain le passage automatique du matin. */
+export type JournalActorKind = "staff" | "claude" | "system";
+
+export interface StaffJournalEntry {
+  id: string;
+  actor_id: string | null;
+  actor_kind: JournalActorKind;
+  player_id: string | null;
+  action: string;
+  /** la phrase sans son sujet : « a répondu au bilan de Théo » */
+  summary: string;
+  created_at: string;
 }
 
 export type ActionResult = { ok: true } | { ok: false; error: string };

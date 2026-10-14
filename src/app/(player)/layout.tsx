@@ -8,7 +8,7 @@ import { CheckinModal } from "@/components/CheckinModal";
 import { PushPrompt } from "@/components/PushPrompt";
 import { InstallPrompt } from "@/components/InstallPrompt";
 import { AnnouncementsBell } from "@/components/messages/AnnouncementsBell";
-import { BallIcon, CalendarIcon, ChartIcon, HeartIcon, UserIcon } from "@/components/icons";
+import { BallIcon, CalendarIcon, ChartIcon, HeartIcon, MessageIcon } from "@/components/icons";
 import type { Announcement, CheckinQuestion } from "@/lib/types";
 
 export default async function PlayerLayout({ children }: { children: React.ReactNode }) {
@@ -18,7 +18,7 @@ export default async function PlayerLayout({ children }: { children: React.React
   // Hygiène : réservée à l'offre formation (lue avec le coach ci-dessous).
   let showHygiene = false;
 
-  // pastille rouge sur l'onglet Profil : un message attend dans l'un des fils
+  // pastille rouge sur l'onglet Messages : un message attend dans l'un des fils
   let hasUnreadMessages = false;
 
   let checkinQuestion: CheckinQuestion | null = null;
@@ -86,7 +86,7 @@ export default async function PlayerLayout({ children }: { children: React.React
       <PushPrompt notificationsEnabled={notificationsEnabled} />
       <InstallPrompt />
       {/* Cloche des annonces du club — remplace l'ancien bouton WhatsApp :
-          la messagerie interne (onglet Profil) porte désormais le contact coach. */}
+          la messagerie interne (onglet Messages) porte désormais le contact coach. */}
       <AnnouncementsBell
         announcements={announcements}
         initialUnreadIds={unreadAnnouncementIds}
@@ -103,11 +103,12 @@ export default async function PlayerLayout({ children }: { children: React.React
           { href: "/seances", label: "Programme", icon: <BallIcon size={22} /> },
           { href: "/planning", label: "Planning", icon: <CalendarIcon size={22} /> },
           { href: "/dashboard", label: "Dashboard", icon: <ChartIcon size={22} /> },
-          // Profil = la messagerie : la pastille prévient sans ouvrir l'onglet
+          // Messages = la messagerie (la page porte aussi le profil) : la
+          // pastille prévient sans ouvrir l'onglet
           {
             href: "/parametres",
-            label: "Profil",
-            icon: <UserIcon size={22} />,
+            label: "Messages",
+            icon: <MessageIcon size={22} />,
             dot: hasUnreadMessages,
           },
         ]}

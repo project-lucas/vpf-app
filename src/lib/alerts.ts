@@ -18,6 +18,7 @@ export type AlertSeverity = "danger" | "warning";
 
 export type AlertKey =
   | "message"
+  | "review-reply"
   | "pain"
   | "hidden-sessions"
   | "planning-empty"
@@ -33,6 +34,12 @@ export interface PlayerAlert {
   label: string;
   /** onglet de la fiche à ouvrir pour agir */
   tab: "messages" | "semaine" | "programme" | "fiche";
+  /**
+   * Référence de l'occurrence : ce qui distingue « ce message-ci » du
+   * précédent (date du dernier message, du check-in, semaine concernée…).
+   * Sert à ne pas confondre deux alertes successives de même nature.
+   */
+  ref: string;
 }
 
 export interface PlayerAlertRow {
@@ -85,12 +92,18 @@ export async function getSessionCoverage(
 export interface AlertInput {
   player: PlayerDiscipline;
   hasUnread: boolean;
+  /** date ISO du message qui attend (référence de l'alerte « message ») */
+  unreadAt?: string | null;
+  /** un bilan reçu attend la réponse du coach : son id, sinon null */
+  pendingReviewId?: string | null;
   health: HealthEntry | null;
   coverage: SessionCoverage | null;
   /** date ISO du dernier message du joueur, tous canaux confondus */
   lastMessageAt: string | null;
   /** le bilan de la semaine passée est arrivé */
   hasLastWeekReview: boolean;
+  /** lundi de la semaine en cours (référence des alertes de la semaine) */
+  weekStart?: string;
   /** « maintenant » en ISO (heure de Paris) */
   nowIso: string;
 }
@@ -109,14 +122,39 @@ export function buildPlayerAlerts(input: AlertInput): PlayerAlert[] {
   const { player, health, coverage } = input;
   const alerts: PlayerAlert[] = [];
   const isAway = player.availability !== "available";
+  // les alertes « de la semaine » se référencent au lundi : une prise en
+  // charge vaut pour la semaine, pas pour toujours
+  const week = input.weekStart ?? input.nowIso.slice(0, 10);
 
   if (input.hasUnread) {
-    alerts.push({ key: "message", severity: "danger", label: "Message en attente", tab: "messages" });
+    alerts.push({
+      key: "message",
+      severity: "danger",
+      label: "Message en attente",
+      tab: "messages",
+      ref: input.unreadAt ?? week,
+    });
+  }
+
+  if (input.pendingReviewId) {
+    alerts.push({
+      key: "review-reply",
+      severity: "danger",
+      label: "Bilan à répondre",
+      tab: "semaine",
+      ref: input.pendingReviewId,
+    });
   }
 
   const pain = health?.pain;
   if (pain && pain.score >= PAIN_ALERT_SCORE && daysSince(pain.at, input.nowIso) <= PAIN_ALERT_DAYS) {
-    alerts.push({ key: "pain", severity: "danger", label: `Douleur ${pain.score}/10`, tab: "fiche" });
+    alerts.push({
+      key: "pain",
+      severity: "danger",
+      label: `Douleur ${pain.score}/10`,
+      tab: "fiche",
+      ref: pain.at,
+    });
   }
 
   if (isAway) return alerts;
@@ -127,18 +165,37 @@ export function buildPlayerAlerts(input: AlertInput): PlayerAlert[] {
       severity: "danger",
       label: `${coverage.hidden} séance${coverage.hidden > 1 ? "s" : ""} sans jour`,
       tab: "programme",
+      ref: week,
     });
   }
 
   if (player.planningEmpty) {
-    alerts.push({ key: "planning-empty", severity: "warning", label: "Planning vide", tab: "semaine" });
+    alerts.push({
+      key: "planning-empty",
+      severity: "warning",
+      label: "Planning vide",
+      tab: "semaine",
+      ref: week,
+    });
   }
 
   if (coverage && coverage.byPole.basket === 0) {
-    alerts.push({ key: "no-basket", severity: "warning", label: "Aucune séance technique", tab: "programme" });
+    alerts.push({
+      key: "no-basket",
+      severity: "warning",
+      label: "Aucune séance technique",
+      tab: "programme",
+      ref: week,
+    });
   }
   if (coverage && coverage.byPole.physique === 0) {
-    alerts.push({ key: "no-physique", severity: "warning", label: "Aucune séance physique", tab: "programme" });
+    alerts.push({
+      key: "no-physique",
+      severity: "warning",
+      label: "Aucune séance physique",
+      tab: "programme",
+      ref: week,
+    });
   }
 
   if (player.discipline !== null && player.discipline < LOW_DISCIPLINE_THRESHOLD) {
@@ -147,6 +204,7 @@ export function buildPlayerAlerts(input: AlertInput): PlayerAlert[] {
       severity: "warning",
       label: `Discipline ${formatPercent(player.discipline)}`,
       tab: "semaine",
+      ref: week,
     });
   }
 
@@ -161,11 +219,18 @@ export function buildPlayerAlerts(input: AlertInput): PlayerAlert[] {
         ? `Silence ${Math.floor(daysSince(input.lastMessageAt, input.nowIso))} j`
         : "Aucun échange",
       tab: "messages",
+      ref: week,
     });
   }
 
   if (!input.hasLastWeekReview && daysSince(player.created_at, input.nowIso) >= 7) {
-    alerts.push({ key: "review-missing", severity: "warning", label: "Bilan manquant", tab: "semaine" });
+    alerts.push({
+      key: "review-missing",
+      severity: "warning",
+      label: "Bilan manquant",
+      tab: "semaine",
+      ref: week,
+    });
   }
 
   return alerts;

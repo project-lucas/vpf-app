@@ -6,7 +6,10 @@ import { successFeedback } from "@/lib/feedback";
 import { YouTubeEmbed } from "@/components/YouTubeEmbed";
 import { SessionSheet } from "@/components/SessionSheet";
 import { SessionProgramme } from "./SessionProgramme";
-import { PlayIcon } from "@/components/icons";
+import { CheckIcon, PlayIcon, XIcon } from "@/components/icons";
+import { SquareIconButton } from "@/components/editorial/primitives";
+import { XpBurst } from "@/components/ui/XpBurst";
+import { XP_VALUES } from "@/lib/gamification";
 import type { SessionAssignmentWithSession } from "@/lib/types";
 
 export function SessionCard({
@@ -23,6 +26,7 @@ export function SessionCard({
   const [scoreOpen, setScoreOpen] = useState(false);
   const [score, setScore] = useState(assignment.completion?.challenge_score?.toString() ?? "");
   const [videoOpen, setVideoOpen] = useState(false);
+  const [xpBurst, setXpBurst] = useState(0);
 
   const { session, completion } = assignment;
   // ?? [] : tolère une base pas encore migrée (colonne exercises absente)
@@ -35,6 +39,19 @@ export function SessionCard({
   // Technique (et routine) : la vidéo d'abord, la fiche explicative ensuite.
   const sheetFirst = session.pole === "physique";
   const num = String(index).padStart(2, "0");
+
+  // Le verdict du joueur sur la séance. C'est LE geste qui crée la réalisation :
+  // sans lui, aucune `session_completion` n'existe, donc ni commentaire, ni score
+  // de challenge, ni XP, ni couverture de séances côté coach.
+  function mark(status: "done" | "not_done") {
+    if (status === "done" && completion?.status !== "done") {
+      successFeedback();
+      setXpBurst((b) => b + 1);
+    }
+    startTransition(async () => {
+      await markSessionCompletion(assignment.id, status, completion?.comment ?? "");
+    });
+  }
 
   function saveComment() {
     startTransition(async () => {
@@ -81,31 +98,46 @@ export function SessionCard({
        c'est un bandeau compact (sans vidéo, le 16:9 n'est qu'un trou navy). */
     <div className="rounded-lg border-2 border-ink bg-ink p-1.5">
       {hasVideo ? (
-        // max-h tant que la vidéo n'est pas lancée : en pleine largeur desktop,
-        // un 16:9 ferait ~650px de navy vide
-        <div
-          className={`relative aspect-video w-full overflow-hidden rounded-md border border-warm/25 bg-ink ${
-            videoOpen ? "" : "max-h-72"
-          }`}
-        >
-          {videoOpen ? (
-            <YouTubeEmbed url={session.youtube_url} title={session.name} />
-          ) : (
-            <>
-              <span className="ed-value absolute left-3 top-1 text-[54px] leading-tight text-paper">
-                {num}
-              </span>
-              <div className="absolute bottom-3 left-3 flex flex-wrap gap-1.5">{tags}</div>
-              <button
-                onClick={() => setVideoOpen(true)}
-                aria-label="Lire la vidéo"
-                className="absolute bottom-3 right-3 flex h-11 w-11 items-center justify-center rounded-full bg-orange text-paper transition-transform hover:scale-105 active:scale-95"
-              >
-                <PlayIcon size={20} />
-              </button>
-            </>
+        <>
+          {/* max-h tant que la vidéo n'est pas lancée : en pleine largeur desktop,
+              un 16:9 ferait ~650px de navy vide */}
+          <div
+            className={`relative aspect-video w-full overflow-hidden rounded-md border border-warm/25 bg-ink ${
+              videoOpen ? "" : "max-h-72"
+            }`}
+          >
+            {videoOpen ? (
+              <YouTubeEmbed url={session.youtube_url} title={session.name} />
+            ) : (
+              <>
+                <span className="ed-value absolute left-3 top-1 text-[54px] leading-tight text-paper">
+                  {num}
+                </span>
+                <div className="absolute bottom-3 left-3 flex flex-wrap gap-1.5">{tags}</div>
+                <button
+                  onClick={() => setVideoOpen(true)}
+                  aria-label="Lire la vidéo"
+                  className="absolute bottom-3 right-3 flex h-11 w-11 items-center justify-center rounded-full bg-orange text-paper transition-transform hover:scale-105 active:scale-95"
+                >
+                  <PlayIcon size={20} />
+                </button>
+              </>
+            )}
+          </div>
+          {/* Filet de sécurité : si YouTube refuse le lecteur intégré (PWA
+              installée, réseau filtré…), la vidéo reste accessible dans
+              l'appli YouTube ou le navigateur. */}
+          {videoOpen && (
+            <a
+              href={session.youtube_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="ed-meta mt-1.5 block px-1 text-right text-[9px] text-paper/80 underline underline-offset-2"
+            >
+              La vidéo ne se lance pas ? Ouvrir dans YouTube
+            </a>
           )}
-        </div>
+        </>
       ) : (
         <div className="flex items-center justify-between gap-3 rounded-md border border-warm/25 px-3 py-2">
           <span className="ed-value text-[34px] leading-none text-paper">{num}</span>
@@ -124,7 +156,7 @@ export function SessionCard({
         {!sheetFirst && sheetBlock}
       </div>
 
-      {/* Ligne séance : titre + sous-titre */}
+      {/* Ligne séance : titre + sous-titre + valider / passer */}
       <div className="mt-3 flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h3 className="ed-display text-[20px] text-ink">{session.name}</h3>
@@ -139,6 +171,25 @@ export function SessionCard({
               {programmeOpen ? "Masquer le détail" : "Voir le programme"}
             </button>
           )}
+        </div>
+        <div className="relative flex shrink-0 gap-1.5">
+          <XpBurst amount={XP_VALUES.sessionDone} burstKey={xpBurst} />
+          <SquareIconButton
+            onClick={() => mark("done")}
+            disabled={isPending}
+            aria-label="Séance faite"
+            filled={completion?.status === "done"}
+          >
+            <CheckIcon size={18} />
+          </SquareIconButton>
+          <SquareIconButton
+            onClick={() => mark("not_done")}
+            disabled={isPending}
+            aria-label="Séance pas faite"
+            className={completion?.status === "not_done" ? "bg-orange text-white" : ""}
+          >
+            <XIcon size={18} />
+          </SquareIconButton>
         </div>
       </div>
 

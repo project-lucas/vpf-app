@@ -16,17 +16,6 @@ async function requireAdmin(): Promise<{ ok: true; adminId: string } | { ok: fal
   return { ok: true, adminId: profile.id };
 }
 
-/** Vérifie que l'appelant est coach ou admin (staff) avant une opération service_role. */
-async function requireStaff(): Promise<
-  { ok: true; userId: string; role: "coach" | "admin" } | { ok: false; error: string }
-> {
-  const { profile } = await getAuthProfile();
-  if (!profile || (profile.role !== "admin" && profile.role !== "coach")) {
-    return { ok: false, error: "Accès réservé au staff." };
-  }
-  return { ok: true, userId: profile.id, role: profile.role };
-}
-
 // ---------------------------------------------------------------------------
 // Coachs
 // ---------------------------------------------------------------------------
@@ -78,6 +67,8 @@ export async function createCoach(data: {
   }
 
   revalidatePath("/coach/club", "layout");
+
+  revalidatePath("/coach/admin");
   return { ok: true };
 }
 
@@ -110,6 +101,8 @@ export async function updateCoach(
   }
 
   revalidatePath("/coach/club", "layout");
+
+  revalidatePath("/coach/admin");
   return { ok: true };
 }
 
@@ -148,6 +141,8 @@ export async function deleteCoach(coachId: string): Promise<ActionResult> {
   if (deleteError) return { ok: false, error: "Suppression du compte impossible." };
 
   revalidatePath("/coach/club", "layout");
+
+  revalidatePath("/coach/admin");
   revalidatePath("/coach");
   return { ok: true };
 }
@@ -208,6 +203,8 @@ export async function reassignPlayer(playerId: string, newCoachId: string): Prom
   if (error) return { ok: false, error: "Réaffectation impossible." };
 
   revalidatePath("/coach/club", "layout");
+
+  revalidatePath("/coach/admin");
   revalidatePath("/coach/joueurs");
   revalidatePath(`/coach/joueurs/${playerId}`);
   revalidatePath("/coach");
@@ -224,19 +221,18 @@ export async function createInvitation(
   /** offre appliquée à la fiche du joueur qui utilisera le lien */
   offer: PlayerOffer = DEFAULT_OFFER
 ): Promise<ActionResult & { token?: string }> {
-  const guard = await requireStaff();
+  // Inviter est réservé aux admins : un coach classique ne crée pas de compte
+  // joueur, c'est un admin qui lui affecte ses joueurs (coachId = le coach
+  // référent visé, lui-même ou un collègue).
+  const guard = await requireAdmin();
   if (!guard.ok) return guard;
-  // Un coach ne peut inviter que pour lui-même ; l'admin peut cibler n'importe quel coach.
-  if (guard.role === "coach" && coachId !== guard.userId) {
-    return { ok: false, error: "Accès refusé." };
-  }
 
   const admin = createAdminClient();
   const { data, error } = await admin
     .from("invitations")
     .insert({
       coach_id: coachId,
-      created_by: guard.userId,
+      created_by: guard.adminId,
       player_label: playerLabel.trim(),
       offer: toOffer(offer),
     })
@@ -245,21 +241,26 @@ export async function createInvitation(
   if (error || !data) return { ok: false, error: "Création impossible." };
 
   revalidatePath("/coach/club", "layout");
+
+  revalidatePath("/coach/admin");
   revalidatePath("/coach/joueurs"); // l'admin invite aussi depuis sa page Joueurs
   return { ok: true, token: data.id };
 }
 
 export async function deleteInvitation(invitationId: string): Promise<ActionResult> {
-  const guard = await requireStaff();
+  // Même règle qu'à la création : les invitations sont l'affaire des admins.
+  const guard = await requireAdmin();
   if (!guard.ok) return guard;
 
   const admin = createAdminClient();
-  let query = admin.from("invitations").delete().eq("id", invitationId).is("used_at", null);
-  // Un coach ne peut supprimer que ses propres invitations ; l'admin toutes.
-  if (guard.role === "coach") query = query.eq("coach_id", guard.userId);
-  const { error } = await query;
+  const { error } = await admin
+    .from("invitations")
+    .delete()
+    .eq("id", invitationId)
+    .is("used_at", null);
   if (error) return { ok: false, error: "Suppression impossible." };
   revalidatePath("/coach/club", "layout");
+  revalidatePath("/coach/admin");
   revalidatePath("/coach/joueurs");
   return { ok: true };
 }
@@ -291,6 +292,8 @@ export async function archivePlayer(playerId: string): Promise<ActionResult> {
   await admin.from("push_subscriptions").delete().eq("user_id", playerId);
 
   revalidatePath("/coach/club", "layout");
+
+  revalidatePath("/coach/admin");
   revalidatePath("/coach");
   return { ok: true };
 }
@@ -309,6 +312,8 @@ export async function reactivatePlayer(playerId: string): Promise<ActionResult> 
   await admin.auth.admin.updateUserById(playerId, { ban_duration: "none" });
 
   revalidatePath("/coach/club", "layout");
+
+  revalidatePath("/coach/admin");
   revalidatePath("/coach");
   return { ok: true };
 }
@@ -474,4 +479,24 @@ export async function deleteLibrarySession(sessionId: string): Promise<ActionRes
   if (error) return { ok: false, error: "Suppression impossible." };
   revalidatePath("/coach/bibliotheque");
   return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// Le passage de Claude du matin (0042) — relance à la main depuis Admin
+// ---------------------------------------------------------------------------
+
+export async function runMorningBrief(groupId: string): Promise<ActionResult & { detail?: string }> {
+  const guard = await requireAdmin();
+  if (!guard.ok) return guard;
+
+  const { generateMorningBriefs } = await import("@/lib/morning-brief");
+  const result = await generateMorningBriefs({ groupId, force: true });
+  if (!result.ok) {
+    const failed = result.results.find((r) => r.status === "error");
+    return { ok: false, error: result.error ?? failed?.detail ?? "Le brief n'a pas pu être écrit." };
+  }
+  revalidatePath("/coach");
+  revalidatePath("/coach/admin");
+  const written = result.results.find((r) => r.status === "written");
+  return { ok: true, detail: written?.detail ?? result.results[0]?.detail };
 }

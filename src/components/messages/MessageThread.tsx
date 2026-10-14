@@ -104,6 +104,10 @@ export function MessageThread({
   const [error, setError] = useState<string | null>(null);
   const [hasNewBelow, setHasNewBelow] = useState(false);
   const [isBusy, setIsBusy] = useState(false);
+  // Le fil est-il réellement sous les yeux ? (cf. le bloc « lecture » plus bas)
+  const [onScreen, setOnScreen] = useState(false);
+  const [docVisible, setDocVisible] = useState(true);
+  const isVisible = onScreen && docVisible;
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -134,21 +138,65 @@ export function MessageThread({
     setHasNewBelow(false);
   }, []);
 
+  // `isVisible` sans le mettre en dépendance de `refresh` : le sondage et
+  // l'abonnement temps réel ne doivent pas se relancer à chaque aller-retour
+  // d'onglet, seul le marquage « lu » dépend de la visibilité.
+  const visibleRef = useRef(false);
+  useEffect(() => {
+    visibleRef.current = isVisible;
+  }, [isVisible]);
+
   const refresh = useCallback(async () => {
     const fresh = await getConversationMessages(playerId, channelAdminId);
     setMessages(keepSignedUrls(fresh, signedUrlsRef.current));
-    // de nouveaux messages sont arrivés pendant que le fil était ouvert :
-    // ils sont lus à l'écran, on avance le marqueur
+    // de nouveaux messages sont arrivés pendant que le fil était ouvert : ils
+    // ne sont lus que si le fil est VRAIMENT à l'écran (onglet de la fiche
+    // ouvert, onglet du navigateur au premier plan)
     if (fresh.length > lastCountRef.current) {
       lastCountRef.current = fresh.length;
-      await markConversationRead(playerId, channelAdminId);
+      if (visibleRef.current) await markConversationRead(playerId, channelAdminId);
     }
   }, [playerId, channelAdminId]);
 
-  // ouverture du canal = lecture de tout son historique
+  /**
+   * Le fil est-il réellement sous les yeux ?
+   *
+   * `Tabs` monte TOUS ses contenus et masque les inactifs en `display: none`
+   * (c'est aussi ce qui oblige le ResizeObserver plus bas). Marquer lu au
+   * montage éteignait donc la pastille d'un message jamais ouvert : il suffisait
+   * d'arriver sur la fiche par l'onglet Semaine — ce que fait précisément le
+   * lien d'une alerte « planning vide ».
+   *
+   * L'IntersectionObserver règle les deux cas d'un coup : un ancêtre en
+   * `display: none` n'intersecte rien, et l'entrée repasse à `true` au moment
+   * où l'onglet devient actif. `visibilitychange` couvre l'onglet de navigateur
+   * laissé en arrière-plan, que le sondage 30 s consommait silencieusement.
+   */
   useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => setOnScreen(entries.some((e) => e.isIntersecting)),
+      { threshold: 0 }
+    );
+    observer.observe(el);
+
+    const onVisibility = () => setDocVisible(document.visibilityState === "visible");
+    onVisibility();
+    document.addEventListener("visibilitychange", onVisibility);
+
+    return () => {
+      observer.disconnect();
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, []);
+
+  // ouvrir un canal (et le regarder) = lecture de tout son historique
+  useEffect(() => {
+    if (!isVisible) return;
     void markConversationRead(playerId, channelAdminId);
-  }, [playerId, channelAdminId]);
+  }, [playerId, channelAdminId, isVisible]);
 
   useEffect(() => {
     const id = setInterval(() => void refresh(), REFRESH_INTERVAL_MS);

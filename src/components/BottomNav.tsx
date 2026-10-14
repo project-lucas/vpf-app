@@ -37,7 +37,7 @@ export function BottomNav({
   items: NavItem[];
   variant?: "default" | "editorial";
   /**
-   * Onglet qui porte la messagerie (Profil côté joueur, Joueurs côté staff).
+   * Onglet qui porte la messagerie (Messages côté joueur, Joueurs côté staff).
    * Sa pastille se rafraîchit toute seule : un message qui arrive doit se voir
    * sans navigation, sinon la pastille ne prévient de rien.
    */

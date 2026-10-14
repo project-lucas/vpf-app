@@ -1,0 +1,201 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { createAdminClient } from "./supabase/admin";
+import { getHealthByPlayer, getWeekTracking, type PlayerDiscipline } from "./coach-data";
+import { getStaffInbox, getStaffUnreadPlayerIds } from "./conversations";
+import {
+  buildPlayerAlerts,
+  getSessionCoverage,
+  rankAlertRows,
+  type PlayerAlert,
+  type SessionCoverage,
+} from "./alerts";
+import { suggestForRow } from "./briefing";
+import { addDays, currentWeekStart } from "./dates";
+import type { PlayerAvailability, PlayerOffer, ReviewHealthStatus } from "./types";
+
+/**
+ * L'état d'un joueur tel que le staff le lit d'un coup d'œil : une ligne de
+ * la vue tableau de l'accueil, et la matière première du brief du matin.
+ * Tout est sérialisable (la ligne part vers un composant client).
+ */
+export type ReviewState = "replied" | "to-reply" | "missing" | "none";
+
+export interface HomeRow {
+  id: string;
+  firstName: string;
+  lastName: string;
+  groupId: string | null;
+  coachId: string;
+  /** prénom du référent, null si c'est le lecteur */
+  coachFirstName: string | null;
+  offer: PlayerOffer;
+  availability: PlayerAvailability;
+  discipline: number | null;
+  weekPlanned: number;
+  weekDone: number;
+  /** bilan : répondu, reçu sans réponse, manquant la semaine passée, rien d'attendu */
+  review: ReviewState;
+  reviewId: string | null;
+  reviewHealth: ReviewHealthStatus | null;
+  /** extrait du dernier bilan reçu (bien fait / à améliorer), pour le brief */
+  reviewExcerpt: string | null;
+  lastExchangeAt: string | null;
+  unread: boolean;
+  /** porteur du fil qui attend (null = Global) */
+  unreadChannel: string | null;
+  lastMessagePreview: string | null;
+  coverage: SessionCoverage | null;
+  pain: { score: number; at: string } | null;
+  energy: { score: number; at: string } | null;
+  alerts: PlayerAlert[];
+  critical: boolean;
+  /** message à trous de la couche 1, s'il y en a un */
+  suggestion: { label: string; text: string } | null;
+  createdAt: string;
+}
+
+interface ReviewRow {
+  id: string;
+  player_id: string;
+  week_start: string;
+  coach_reply: string | null;
+  health_status: ReviewHealthStatus | null;
+  went_well: string | null;
+  to_improve: string | null;
+}
+
+/**
+ * Les lignes de l'accueil pour ces joueurs, vues par `viewerId`. Les lignes
+ * qui demandent quelque chose d'abord (critiques, puis le plus d'alertes,
+ * puis A → Z), les joueurs à jour ensuite par prénom.
+ */
+export async function getHomeRows(
+  supabase: SupabaseClient,
+  input: { viewerId: string; isAdmin: boolean; players: PlayerDiscipline[] }
+): Promise<HomeRow[]> {
+  const { players, viewerId, isAdmin } = input;
+  if (players.length === 0) return [];
+  const ids = players.map((p) => p.id);
+  const weekStart = currentWeekStart();
+  const prevWeekStart = addDays(weekStart, -7);
+  const nowIso = new Date().toISOString();
+  const coachIds = [...new Set(players.map((p) => p.coach_id))].filter((id) => id !== viewerId);
+
+  const [tracking, health, coverage, threads, unreadIds, { data: reviews }, { data: coaches }] =
+    await Promise.all([
+      getWeekTracking(supabase, ids, weekStart),
+      getHealthByPlayer(supabase, ids),
+      getSessionCoverage(supabase, ids),
+      getStaffInbox(supabase, viewerId, isAdmin, ids),
+      getStaffUnreadPlayerIds(supabase, viewerId, ids),
+      supabase
+        .from("weekly_reviews")
+        .select("id, player_id, week_start, coach_reply, health_status, went_well, to_improve")
+        .in("week_start", [weekStart, prevWeekStart])
+        .in("player_id", ids)
+        .order("week_start", { ascending: false }),
+      // prénoms des référents : service_role, la RLS de `profiles` ne donne
+      // pas à un coach le profil de ses collègues (ids déjà obtenus sous RLS)
+      coachIds.length === 0
+        ? Promise.resolve({ data: [] })
+        : createAdminClient().from("profiles").select("id, first_name").in("id", coachIds),
+    ]);
+
+  const coachFirstName = new Map(
+    (coaches ?? []).map((c) => [c.id as string, c.first_name as string])
+  );
+
+  // fils : le plus récent par joueur, et celui qui attend
+  const lastByPlayer = new Map<string, { at: string; body: string | null }>();
+  const unreadThread = new Map<string, { channel: string | null; body: string | null; at: string | null }>();
+  for (const t of threads) {
+    if (t.lastAt) {
+      const cur = lastByPlayer.get(t.playerId);
+      if (!cur || t.lastAt > cur.at) lastByPlayer.set(t.playerId, { at: t.lastAt, body: t.lastBody });
+    }
+    if (t.hasUnread && !unreadThread.has(t.playerId)) {
+      unreadThread.set(t.playerId, { channel: t.channelAdminId, body: t.lastBody, at: t.lastAt });
+    }
+  }
+
+  // bilans : le plus récent des deux semaines (trié desc), et celui de la semaine passée
+  const latestReview = new Map<string, ReviewRow>();
+  const hasLastWeek = new Set<string>();
+  for (const r of (reviews ?? []) as ReviewRow[]) {
+    if (!latestReview.has(r.player_id)) latestReview.set(r.player_id, r);
+    if (r.week_start === prevWeekStart) hasLastWeek.add(r.player_id);
+  }
+
+  const rows = players.map((p): HomeRow => {
+    const t = tracking.get(p.id);
+    const h = health.get(p.id) ?? null;
+    const latest = latestReview.get(p.id) ?? null;
+    const pending = latest && !latest.coach_reply?.trim() ? latest : null;
+    const unread = unreadThread.get(p.id);
+    const last = lastByPlayer.get(p.id);
+
+    const alerts = buildPlayerAlerts({
+      player: p,
+      hasUnread: unreadIds.has(p.id),
+      unreadAt: unread?.at ?? null,
+      pendingReviewId: pending?.id ?? null,
+      health: h,
+      coverage: coverage.get(p.id) ?? null,
+      lastMessageAt: last?.at ?? null,
+      hasLastWeekReview: hasLastWeek.has(p.id),
+      weekStart,
+      nowIso,
+    });
+    const suggestion = suggestForRow(alerts, p);
+
+    let review: ReviewState = "none";
+    if (pending) review = "to-reply";
+    else if (latest) review = "replied";
+    else if (alerts.some((a) => a.key === "review-missing")) review = "missing";
+
+    const excerpt = latest
+      ? [latest.went_well?.trim(), latest.to_improve?.trim()].filter(Boolean).join(" / ")
+      : "";
+
+    return {
+      id: p.id,
+      firstName: p.first_name,
+      lastName: p.last_name,
+      groupId: p.group_id,
+      coachId: p.coach_id,
+      coachFirstName: p.coach_id === viewerId ? null : (coachFirstName.get(p.coach_id) ?? null),
+      offer: p.offer,
+      availability: p.availability,
+      discipline: p.discipline,
+      weekPlanned: t?.planned ?? 0,
+      weekDone: t?.done ?? 0,
+      review,
+      reviewId: latest?.id ?? null,
+      reviewHealth: latest?.health_status ?? null,
+      reviewExcerpt: excerpt ? excerpt.slice(0, 240) : null,
+      lastExchangeAt: last?.at ?? null,
+      unread: unreadIds.has(p.id),
+      unreadChannel: unread?.channel ?? null,
+      lastMessagePreview: (unread?.body ?? last?.body ?? null)?.slice(0, 160) ?? null,
+      coverage: coverage.get(p.id) ?? null,
+      pain: h?.pain ?? null,
+      energy: h?.energy ?? null,
+      alerts,
+      critical: alerts.some((a) => a.severity === "danger"),
+      suggestion: suggestion ? { label: suggestion.alert.label, text: suggestion.text } : null,
+      createdAt: p.created_at,
+    };
+  });
+
+  const byId = new Map(players.map((p) => [p.id, p]));
+  const ranked = rankAlertRows(
+    rows.map((r) => ({ player: byId.get(r.id)!, alerts: r.alerts, critical: r.critical }))
+  ).map((x) => x.player.id);
+  const rank = new Map(ranked.map((id, i) => [id, i]));
+  return [...rows].sort((a, b) => {
+    const ra = rank.get(a.id) ?? Number.POSITIVE_INFINITY;
+    const rb = rank.get(b.id) ?? Number.POSITIVE_INFINITY;
+    if (ra !== rb) return ra - rb;
+    return a.firstName.localeCompare(b.firstName, "fr");
+  });
+}

@@ -1,8 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createClient, getCachedUser } from "@/lib/supabase/server";
+import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { requireStaffProfile } from "@/lib/auth";
 import type { ActionResult } from "@/lib/types";
 
 /** 2 comptes parents max par joueur (liens actifs + invitations en attente). */
@@ -12,20 +13,20 @@ type CreateInvitationResult = { ok: true; invitationId: string } | { ok: false; 
 
 /**
  * Création d'un lien d'invitation parent depuis la fiche du joueur.
- * L'autorisation passe par une lecture RLS de la fiche (seuls le coach référent
- * et l'admin la voient) ; l'écriture par le service_role, comme les invitations
- * joueur. La borne « 2 parents max » compte liens actifs ET invitations en
- * attente pour ne pas sur-inviter.
+ * L'autorisation est en deux temps : le rôle staff (sans quoi un parent — que
+ * `players_select` laisse lire la fiche depuis 0031 — pourrait inviter un
+ * troisième compte), puis la lecture RLS qui prouve le lien avec CE joueur.
+ * L'écriture passe par le service_role, comme les invitations joueur. La borne
+ * « 2 parents max » compte liens actifs ET invitations en attente.
  */
 export async function createParentInvitation(
   playerId: string,
   label: string
 ): Promise<CreateInvitationResult> {
-  const supabase = await createClient();
-  const user = await getCachedUser();
-  if (!user) return { ok: false, error: "Session expirée." };
-  if (user.id === playerId) return { ok: false, error: "Réservé au coach." };
+  const guard = await requireStaffProfile();
+  if (!guard.ok) return guard;
 
+  const supabase = await createClient();
   const { data: row } = await supabase
     .from("players")
     .select("id")
@@ -55,7 +56,7 @@ export async function createParentInvitation(
 
   const { data: created, error } = await admin
     .from("parent_invitations")
-    .insert({ player_id: playerId, created_by: user.id, label: label.trim().slice(0, 60) })
+    .insert({ player_id: playerId, created_by: guard.userId, label: label.trim().slice(0, 60) })
     .select("id")
     .single();
   if (error || !created) return { ok: false, error: "Création impossible." };
@@ -69,11 +70,12 @@ export async function deleteParentInvitation(
   invitationId: string,
   playerId: string
 ): Promise<ActionResult> {
-  const supabase = await createClient();
-  const user = await getCachedUser();
-  if (!user) return { ok: false, error: "Session expirée." };
+  const guard = await requireStaffProfile();
+  if (!guard.ok) return guard;
 
-  // lecture RLS de la fiche = preuve d'autorisation (coach référent ou admin)
+  const supabase = await createClient();
+  // rôle staff (ci-dessus) PUIS lecture RLS de la fiche : la lecture seule ne
+  // prouve plus rien depuis 0031 (les parents la franchissent aussi)
   const { data: row } = await supabase
     .from("players")
     .select("id")
@@ -102,10 +104,12 @@ export async function removeParentLink(
   parentId: string,
   playerId: string
 ): Promise<ActionResult> {
-  const supabase = await createClient();
-  const user = await getCachedUser();
-  if (!user) return { ok: false, error: "Session expirée." };
+  const guard = await requireStaffProfile();
+  if (!guard.ok) return guard;
 
+  const supabase = await createClient();
+  // sans le garde staff, le JOUEUR lui-même (que `players_select` autorise sur
+  // sa propre fiche) pouvait couper la supervision de ses parents
   const { data: row } = await supabase
     .from("players")
     .select("id")

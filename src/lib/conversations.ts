@@ -232,12 +232,23 @@ export function hasNavUnread(input: NavUnreadInput, offer: PlayerOffer): boolean
 
 /**
  * Parmi ces joueurs, ceux dont un fil porte un message que le membre du staff
- * n'a pas lu — tous canaux confondus, la RLS ne renvoyant que ceux auxquels il
- * a droit (un coach ne voit que le fil coach & parents de SES joueurs).
+ * n'a pas lu.
  *
  * Sert à la pastille de l'onglet Joueurs et à celle de chaque carte de la
  * liste : un message raté ne doit jamais demander d'ouvrir les fiches une par
  * une pour être découvert.
+ *
+ * PÉRIMÈTRE — exactement celui de `getStaffInbox`, et c'est ce qui fait tenir
+ * la pastille : une pastille qu'on ne peut pas éteindre est pire que pas de
+ * pastille. La RLS est plus large que la boîte (0037 rend TOUS les fils privés
+ * à un admin, y compris ceux de ses collègues), donc sans filtre explicite un
+ * admin s'allumait sur le fil privé de l'autre admin — fil que sa boîte
+ * n'affiche pas et qu'il ne peut donc jamais marquer lu. On ne retient donc :
+ *
+ *  - que le fil global (`channel_admin_id is null`) et SES propres fils privés,
+ *  - et, pour les fils privés, que les joueurs en offre formation : un joueur
+ *    repassé en perf perd l'onglet côté joueur comme le fil côté boîte
+ *    (symétrique de `hasNavUnread`).
  *
  * Balayage borné à STAFF_UNREAD_SCAN_LIMIT messages récents. Les marqueurs de
  * lecture étant monotones par canal, le dernier message d'un fil tranche pour
@@ -252,13 +263,15 @@ export async function getStaffUnreadPlayerIds(
 ): Promise<Set<string>> {
   if (playerIds.length === 0) return new Set();
 
-  const [{ data: messages }, { data: reads }] = await Promise.all([
+  const [{ data: messages }, { data: reads }, { data: formationRows }] = await Promise.all([
     supabase
       .from("conversation_messages")
       .select("player_id, channel_admin_id, created_at")
       .in("player_id", playerIds)
       // les siens ne comptent pas ; un compte supprimé (sender null) non plus
       .neq("sender_id", viewerId)
+      // fil global + ses propres fils privés (cf. périmètre ci-dessus)
+      .or(`channel_admin_id.is.null,channel_admin_id.eq.${viewerId}`)
       .order("created_at", { ascending: false })
       .limit(STAFF_UNREAD_SCAN_LIMIT),
     supabase
@@ -266,18 +279,50 @@ export async function getStaffUnreadPlayerIds(
       .select("player_id, channel_admin_id, last_read_at")
       .in("player_id", playerIds)
       .eq("user_id", viewerId),
+    supabase
+      .from("players")
+      .select("id")
+      .in("id", playerIds)
+      .eq("offer", "formation")
+      .eq("status", "active"),
   ]);
 
   const lastReadByChannel = new Map(
     (reads ?? []).map((r) => [`${r.player_id}:${channelKey(r.channel_admin_id)}`, r.last_read_at])
   );
+  const hasPrivateChannels = new Set((formationRows ?? []).map((p) => p.id));
 
   const unread = new Set<string>();
   for (const m of messages ?? []) {
+    // fil privé d'un joueur repassé en perf : plus affiché nulle part
+    if (m.channel_admin_id && !hasPrivateChannels.has(m.player_id)) continue;
     const seenAt = lastReadByChannel.get(`${m.player_id}:${channelKey(m.channel_admin_id)}`);
     if (!seenAt || m.created_at > seenAt) unread.add(m.player_id);
   }
   return unread;
+}
+
+/**
+ * Les joueurs actifs « à moi » pour la pastille et le brief : ceux dont je
+ * suis le référent, plus ceux des groupes dont je fais partie du staff (0040).
+ * Filtre explicite : la RLS montre TOUS les joueurs à un admin, or la pastille
+ * ne parle que de ce qui m'attend — et depuis les groupes, ce qui attend le
+ * staff du groupe m'attend aussi.
+ */
+export async function getMyPlayerIds(supabase: SupabaseClient, staffId: string): Promise<string[]> {
+  const { data: memberships } = await supabase
+    .from("group_staff")
+    .select("group_id")
+    .eq("profile_id", staffId);
+  const groupIds = (memberships ?? []).map((m) => m.group_id as string);
+
+  let query = supabase.from("players").select("id").eq("status", "active");
+  query =
+    groupIds.length > 0
+      ? query.or(`coach_id.eq.${staffId},group_id.in.(${groupIds.join(",")})`)
+      : query.eq("coach_id", staffId);
+  const { data: players } = await query;
+  return (players ?? []).map((p) => p.id as string);
 }
 
 /** Le staff a-t-il du non-lu chez l'un de ses joueurs actifs ? */
@@ -285,18 +330,10 @@ export async function hasStaffUnread(
   supabase: SupabaseClient,
   staffId: string
 ): Promise<boolean> {
-  // coach_id explicite : la RLS montre TOUS les joueurs à un admin, or la
-  // pastille de l'onglet Joueurs ne parle que de SES joueurs (cf. CLAUDE.md)
-  const { data: players } = await supabase
-    .from("players")
-    .select("id")
-    .eq("coach_id", staffId)
-    .eq("status", "active");
-
   const unread = await getStaffUnreadPlayerIds(
     supabase,
     staffId,
-    (players ?? []).map((p) => p.id)
+    await getMyPlayerIds(supabase, staffId)
   );
   return unread.size > 0;
 }

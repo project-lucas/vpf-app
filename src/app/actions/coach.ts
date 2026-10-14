@@ -5,13 +5,16 @@ import { weekdaysLabel } from "@/lib/weekdays";
 import { revalidatePath } from "next/cache";
 import { createClient, getCachedUser } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { requireStaffProfile } from "@/lib/auth";
 import { sendPushToUser } from "@/lib/push";
 import { parisNow } from "@/lib/dates";
+import { logStaffAction } from "@/lib/journal";
 import {
+  AVAILABILITY_LABELS,
   REVIEW_REPLY_MAX_LENGTH,
   VISIBLE_NOTE_MAX_LENGTH,
 } from "@/lib/constants";
-import { toOffer } from "@/lib/offers";
+import { OFFER_LABELS, toOffer } from "@/lib/offers";
 import type { ActionResult, PlayerAvailability, PlayerOffer, SessionPole } from "@/lib/types";
 
 function revalidatePlayer(playerId: string) {
@@ -19,6 +22,16 @@ function revalidatePlayer(playerId: string) {
   revalidatePath("/coach/joueurs");
   revalidatePath("/coach");
   revalidatePath("/seances");
+}
+
+/** « Théo Martin » pour le journal du staff (service_role : la RLS a déjà tranché). */
+async function playerLabel(playerId: string): Promise<string> {
+  const { data } = await createAdminClient()
+    .from("profiles")
+    .select("first_name, last_name")
+    .eq("id", playerId)
+    .maybeSingle();
+  return `${data?.first_name ?? ""} ${data?.last_name ?? ""}`.trim() || "un joueur";
 }
 
 /** Modification du profil joueur par le coach référent ou l'admin (RLS). */
@@ -86,13 +99,15 @@ export async function setPlayerOffer(
   offer: PlayerOffer
 ): Promise<ActionResult> {
   const clean = toOffer(offer);
-  const supabase = await createClient();
-  const user = await getCachedUser();
-  if (!user) return { ok: false, error: "Session expirée." };
-  if (user.id === playerId) return { ok: false, error: "Réservé au coach." };
+  // staff d'abord : depuis 0031, la lecture RLS ci-dessous réussit aussi pour
+  // les parents du joueur (voir requireStaffProfile)
+  const guard = await requireStaffProfile();
+  if (!guard.ok) return guard;
 
-  // lecture sous RLS : ne renvoie une ligne que si l'utilisateur est le coach
-  // référent (joueur actif) ou l'admin
+  const supabase = await createClient();
+
+  // puis lecture sous RLS : ne renvoie une ligne que si l'utilisateur est le
+  // coach référent (joueur actif) ou l'admin
   const { data: row } = await supabase
     .from("players")
     .select("id, offer")
@@ -105,6 +120,12 @@ export async function setPlayerOffer(
   const { error } = await admin.from("players").update({ offer: clean }).eq("id", playerId);
   if (error) return { ok: false, error: "Changement d'offre impossible." };
 
+  await logStaffAction({
+    actorId: guard.userId,
+    playerId,
+    action: "player_offer",
+    summary: `a passé ${await playerLabel(playerId)} en offre ${OFFER_LABELS[clean]}`,
+  });
   revalidatePlayer(playerId);
   // les écrans du joueur changent de contenu (onglet Hygiène, carte Objectifs)
   revalidatePath("/hygiene");
@@ -228,6 +249,24 @@ export async function assignSession(
     revalidatePlayer(playerId);
   }
   revalidatePath("/coach/bibliotheque");
+
+  if (newlyAssigned.length > 0) {
+    const { data: assigned } = await supabase
+      .from("library_sessions")
+      .select("name")
+      .eq("id", sessionId)
+      .maybeSingle();
+    await Promise.all(
+      newlyAssigned.map(async (playerId) =>
+        logStaffAction({
+          actorId: user.id,
+          playerId,
+          action: "session_assign",
+          summary: `a affecté « ${assigned?.name ?? "une séance"} » à ${await playerLabel(playerId)} (${weekdaysLabel(days)})`,
+        })
+      )
+    );
+  }
 
   // Sans push, le joueur ne découvrait la séance qu'en ouvrant l'app de
   // lui-même. Envoyé après la boucle et en parallèle : l'affectation est déjà
@@ -372,13 +411,15 @@ export async function setPlayerAvailability(
   playerId: string,
   availability: PlayerAvailability
 ): Promise<ActionResult> {
-  const supabase = await createClient();
-  const user = await getCachedUser();
-  if (!user) return { ok: false, error: "Session expirée." };
-  if (user.id === playerId) return { ok: false, error: "Réservé au coach." };
+  // staff d'abord : depuis 0031, la lecture RLS ci-dessous réussit aussi pour
+  // les parents du joueur (voir requireStaffProfile)
+  const guard = await requireStaffProfile();
+  if (!guard.ok) return guard;
 
-  // lecture sous RLS : ne renvoie une ligne que si l'utilisateur est le coach
-  // référent (joueur actif) ou l'admin
+  const supabase = await createClient();
+
+  // puis lecture sous RLS : ne renvoie une ligne que si l'utilisateur est le
+  // coach référent (joueur actif) ou l'admin
   const { data: row } = await supabase
     .from("players")
     .select("id, availability")
@@ -401,6 +442,14 @@ export async function setPlayerAvailability(
     .eq("id", playerId);
   if (error) return { ok: false, error: "Enregistrement impossible." };
 
+  if (row.availability !== availability) {
+    await logStaffAction({
+      actorId: guard.userId,
+      playerId,
+      action: "player_availability",
+      summary: `a passé ${await playerLabel(playerId)} en « ${AVAILABILITY_LABELS[availability]} »`,
+    });
+  }
   revalidatePlayer(playerId);
   revalidatePath("/planning");
   return { ok: true };
@@ -436,12 +485,23 @@ export async function setReviewReply(reviewId: string, content: string): Promise
     .eq("id", reviewId);
   if (error) return { ok: false, error: "Enregistrement impossible." };
 
+  const { data: profile } = await admin
+    .from("profiles")
+    .select("first_name, last_name, notifications_enabled")
+    .eq("id", review.player_id)
+    .maybeSingle();
+  if (clean) {
+    await logStaffAction({
+      actorId: user.id,
+      playerId: review.player_id,
+      action: "review_reply",
+      summary: `${review.coach_reply ? "a corrigé sa réponse au" : "a répondu au"} bilan de ${
+        `${profile?.first_name ?? ""} ${profile?.last_name ?? ""}`.trim() || "un joueur"
+      }`,
+    });
+  }
+
   if (clean && !review.coach_reply) {
-    const { data: profile } = await admin
-      .from("profiles")
-      .select("notifications_enabled")
-      .eq("id", review.player_id)
-      .maybeSingle();
     if (profile?.notifications_enabled) {
       await sendPushToUser(review.player_id, {
         title: "Réponse de ton coach 💬",

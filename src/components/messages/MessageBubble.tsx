@@ -22,6 +22,12 @@ function roleLabel(role: UserRole | null): string {
  * La modification (0036) réécrit le texte sur place et laisse la mention
  * « modifié » : le fil reste honnête, personne ne réécrit l'histoire en
  * silence. La pièce jointe, elle, ne se remplace jamais — on supprime.
+ *
+ * Les actions vivent SOUS la bulle, sur la ligne de l'heure : posées à côté
+ * de la bulle, elles se faisaient couper sur un téléphone dès que le message
+ * était un peu long (la bulle prenait toute la largeur). Sous la bulle, elles
+ * ont toujours la place, et restent visibles sans survol — au doigt, il n'y a
+ * pas de survol.
  */
 export function MessageBubble({
   message,
@@ -95,56 +101,13 @@ export function MessageBubble({
     ? "border-2 border-ink/15 bg-card text-ink"
     : "bg-navy-50 text-navy-800";
 
-  return (
-    <div className={`flex items-center gap-1.5 ${own ? "justify-end" : "justify-start"}`}>
-      {/* Actions : uniquement sur ses propres messages (la RLS refuse le
-          reste), à gauche de la bulle. Toujours visibles — au doigt, il n'y a
-          pas de survol pour les faire apparaître. */}
-      {own && !isEditing && (
-        <span className="flex shrink-0 items-center gap-0.5">
-          {isConfirming ? (
-            <>
-              <button
-                type="button"
-                onClick={() => onDelete(message.id)}
-                disabled={disabled}
-                className={`rounded-md px-2 py-1 text-[10px] font-semibold uppercase tracking-wide ${dangerColor} disabled:opacity-40`}
-              >
-                Supprimer
-              </button>
-              <button
-                type="button"
-                onClick={() => setIsConfirming(false)}
-                aria-label="Annuler la suppression"
-                className={`rounded-md px-1.5 py-1 text-[10px] font-semibold uppercase tracking-wide ${metaColor}`}
-              >
-                Non
-              </button>
-            </>
-          ) : (
-            <>
-              <button
-                type="button"
-                onClick={startEdit}
-                aria-label="Modifier mon message"
-                className={`rounded-md p-1.5 opacity-50 transition-opacity hover:opacity-100 ${metaColor}`}
-              >
-                <Pencil size={14} />
-              </button>
-              <button
-                type="button"
-                onClick={() => setIsConfirming(true)}
-                aria-label="Supprimer mon message"
-                className={`rounded-md p-1.5 opacity-50 transition-opacity hover:opacity-100 ${metaColor}`}
-              >
-                <Trash2 size={14} />
-              </button>
-            </>
-          )}
-        </span>
-      )}
+  // zone de toucher confortable sans épaissir la ligne : le bouton déborde
+  // verticalement sur ses marges négatives
+  const iconButton = `-my-1.5 rounded-md p-2 transition-opacity hover:opacity-100 ${metaColor} opacity-70`;
 
-      <div className={`max-w-[85%] ${own ? "text-right" : "text-left"}`}>
+  return (
+    <div className={`flex ${own ? "justify-end" : "justify-start"}`}>
+      <div className={`min-w-0 max-w-[85%] ${own ? "text-right" : "text-left"}`}>
         {!own && (
           <p className={`mb-0.5 text-[11px] font-semibold ${metaColor}`}>
             {message.sender_name}
@@ -153,7 +116,7 @@ export function MessageBubble({
         )}
 
         <div
-          className={`inline-block rounded-lg px-3.5 py-2.5 text-left text-sm leading-relaxed ${
+          className={`inline-block max-w-full rounded-lg px-3.5 py-2.5 text-left text-sm leading-relaxed ${
             own ? bubbleOwn : bubbleOther
           }`}
         >
@@ -172,7 +135,7 @@ export function MessageBubble({
           )}
 
           {isEditing ? (
-            <div className="w-[min(60vw,320px)]">
+            <div className="w-[min(70vw,320px)] max-w-full">
               <textarea
                 ref={editRef}
                 value={draft}
@@ -190,7 +153,7 @@ export function MessageBubble({
                   type="button"
                   onClick={() => setIsEditing(false)}
                   aria-label="Annuler la modification"
-                  className="rounded-md p-1.5 opacity-70 transition-opacity hover:opacity-100"
+                  className="rounded-md p-2 opacity-70 transition-opacity hover:opacity-100"
                 >
                   <X size={15} />
                 </button>
@@ -199,7 +162,7 @@ export function MessageBubble({
                   onClick={() => void save()}
                   disabled={isSaving}
                   aria-label="Enregistrer la modification"
-                  className="rounded-md p-1.5 opacity-70 transition-opacity hover:opacity-100 disabled:opacity-30"
+                  className="rounded-md p-2 opacity-70 transition-opacity hover:opacity-100 disabled:opacity-30"
                 >
                   <Check size={16} />
                 </button>
@@ -212,9 +175,61 @@ export function MessageBubble({
 
         {error && <p className={`mt-0.5 text-[10px] ${dangerColor}`}>{error}</p>}
 
-        <p className={`mt-0.5 text-[10px] ${metaColor}`}>
-          {formatAgoFr(message.created_at)}
-          {message.edited_at && " · modifié"}
+        {/* Heure, mention « modifié », et — pour ses propres messages — les
+            actions. La RLS refuse de toute façon de toucher aux autres. */}
+        <p
+          className={`mt-0.5 flex items-center gap-0.5 text-[10px] ${metaColor} ${
+            own ? "justify-end" : ""
+          }`}
+        >
+          <span>
+            {formatAgoFr(message.created_at)}
+            {message.edited_at && " · modifié"}
+          </span>
+          {own &&
+            !isEditing &&
+            (isConfirming ? (
+              <>
+                <span aria-hidden className="mx-0.5">
+                  ·
+                </span>
+                <button
+                  type="button"
+                  onClick={() => onDelete(message.id)}
+                  disabled={disabled}
+                  className={`-my-1 rounded-md px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wide ${dangerColor} disabled:opacity-40`}
+                >
+                  Supprimer
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsConfirming(false)}
+                  aria-label="Annuler la suppression"
+                  className={`-my-1 rounded-md px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wide ${metaColor}`}
+                >
+                  Non
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={startEdit}
+                  aria-label="Modifier mon message"
+                  className={`ml-1 ${iconButton}`}
+                >
+                  <Pencil size={13} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsConfirming(true)}
+                  aria-label="Supprimer mon message"
+                  className={iconButton}
+                >
+                  <Trash2 size={13} />
+                </button>
+              </>
+            ))}
         </p>
       </div>
     </div>

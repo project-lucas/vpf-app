@@ -191,7 +191,10 @@ export async function updatePlannedEvent(
     }
   }
 
-  const { error } = await supabase.from("planned_events").update(fields).eq("id", eventId);
+  // `patch`, jamais `fields` : `planned_events` a un grant UPDATE de TABLE, donc
+  // un payload forgé écrirait aussi id / player_id / created_at (et un
+  // created_at antidaté déjoue la garde anti-rétroactivité du cron).
+  const { error } = await supabase.from("planned_events").update(patch).eq("id", eventId);
   if (error) return { ok: false, error: "Modification impossible." };
   revalidatePlanning(playerId);
   return { ok: true };

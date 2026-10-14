@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient, getCachedUser } from "@/lib/supabase/server";
 import { sendPushToUser } from "@/lib/push";
-import { currentWeekStart, parisNow } from "@/lib/dates";
+import { addDays, currentWeekStart, parisNow } from "@/lib/dates";
 import {
   PAIN_PUSH_THRESHOLD,
   PLAYER_CATEGORIES,
@@ -109,12 +109,25 @@ export async function updateMyPlayerInfo(data: {
   return { ok: true };
 }
 
-/** Bilan hebdomadaire (créé ou mis à jour pour la semaine courante). */
+/**
+ * Bilan hebdomadaire, créé ou mis à jour.
+ *
+ * `weekStart` permet le RATTRAPAGE de la semaine passée. Le rendez-vous est
+ * fixé au dimanche 18 h, mais un joueur le remplit souvent le lundi en pensant
+ * clore la semaine écoulée : en écrivant systématiquement la semaine courante,
+ * on éteignait le rappel du dimanche suivant (le cron le rangeait dans
+ * `alreadyDone`) tout en laissant allumée, côté coach, une alerte « bilan
+ * manquant » que plus rien ne pouvait résoudre.
+ *
+ * Deux semaines acceptées, jamais plus : la semaine en cours et la précédente
+ * — au-delà, un bilan ne se rattrape pas, il s'invente.
+ */
 export async function submitWeeklyReview(
   went_well: string,
   to_improve: string,
   health_status: ReviewHealthStatus,
-  health_note: string
+  health_note: string,
+  weekStart?: string
 ): Promise<ActionResult> {
   // la question santé est obligatoire : c'est l'info que le coach attend
   if (!(health_status in REVIEW_HEALTH_LABELS)) {
@@ -124,10 +137,16 @@ export async function submitWeeklyReview(
   const user = await getCachedUser();
   if (!user) return { ok: false, error: "Session expirée." };
 
+  const thisWeek = currentWeekStart();
+  const targetWeek = weekStart ?? thisWeek;
+  if (targetWeek !== thisWeek && targetWeek !== addDays(thisWeek, -7)) {
+    return { ok: false, error: "Semaine invalide." };
+  }
+
   const { error } = await supabase.from("weekly_reviews").upsert(
     {
       player_id: user.id,
-      week_start: currentWeekStart(),
+      week_start: targetWeek,
       went_well: went_well.trim().slice(0, 2000),
       to_improve: to_improve.trim().slice(0, 2000),
       health_status,

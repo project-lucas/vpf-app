@@ -19,6 +19,29 @@ export async function getAuthProfile() {
 }
 
 /**
+ * Garde « l'appelant est bien du staff », à poser en tête de toute action qui
+ * écrira ensuite en service_role sur la fiche d'un joueur.
+ *
+ * Le motif historique « une lecture RLS de `players` prouve l'autorisation » ne
+ * vaut plus depuis la migration 0031 : `players_select` accorde aussi la
+ * lecture aux PARENTS du joueur (`is_parent_of`). Une action qui se contentait
+ * de cette lecture était donc ouverte aux parents — et, sans le garde
+ * `user.id === playerId`, au joueur lui-même.
+ *
+ * La lecture RLS reste nécessaire APRÈS ce garde : elle prouve le lien avec CE
+ * joueur-là (coach référent, ou admin). Les deux vont ensemble.
+ */
+export async function requireStaffProfile(): Promise<
+  { ok: true; userId: string; role: "coach" | "admin" } | { ok: false; error: string }
+> {
+  const { profile } = await getAuthProfile();
+  if (!profile || (profile.role !== "admin" && profile.role !== "coach")) {
+    return { ok: false, error: "Réservé au coach." };
+  }
+  return { ok: true, userId: profile.id, role: profile.role };
+}
+
+/**
  * Rôle de l'utilisateur courant sans requête `profiles` dans le cas courant :
  * lit le cookie `vpf-nav` posé par le middleware (uid|role, TTL 15 min) et ne
  * retombe sur la base que s'il est absent ou périmé. Pour les layouts/pages

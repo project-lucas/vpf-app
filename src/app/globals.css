@@ -58,6 +58,13 @@
 
 html {
   -webkit-tap-highlight-color: transparent;
+  /* Coupe le pinch-to-zoom et le double-tap-zoom (Safari iOS ignore
+     `user-scalable=no` mais respecte touch-action) : le zoom natif faisait
+     blanchir la page. Le défilement reste libre. */
+  touch-action: pan-x pan-y;
+  /* Posé sur html ET body : Safari lit la valeur de la racine, Chrome celle
+     propagée par body. */
+  overscroll-behavior-y: none;
 }
 
 body {
@@ -65,6 +72,16 @@ body {
   color: var(--color-navy-900);
   font-family: var(--font-sans);
   overscroll-behavior-y: none;
+}
+
+/* Le rebond de défilement (iOS, PWA) peint la couleur de canevas, c'est-à-dire
+   celle de <html>. Côté joueur, le contenu vit sur le papier crème de `.ed`
+   mais le canevas restait au gris-blanc du thème staff : tirer au-delà du
+   haut ou du bas d'une page (dashboard, profil…) révélait un fond blanc, comme
+   si la page continuait. Aligner le canevas sur le papier fait disparaître la
+   bande ; `:has` est lu avant l'hydratation, donc sans flash. */
+html:has(.ed) {
+  background-color: var(--color-paper);
 }
 
 /* Zone sûre iOS (encoche / barre home) */

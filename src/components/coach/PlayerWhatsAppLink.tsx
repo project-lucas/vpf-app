@@ -6,7 +6,7 @@ import { waMeUrl } from "@/lib/whatsapp";
  * côté coach. Un clic ouvre directement la conversation avec lui.
  *
  * Rien n'est rendu tant que le coach n'a pas saisi le numéro dans la fiche du
- * joueur (onglet Profil) : mieux vaut pas de bouton qu'un lien mort.
+ * joueur (onglet Messages) : mieux vaut pas de bouton qu'un lien mort.
  *
  * À placer en FRÈRE de la carte cliquable, jamais à l'intérieur : un <a> dans
  * un <a> est du HTML invalide et le navigateur défait l'imbrication. D'où le

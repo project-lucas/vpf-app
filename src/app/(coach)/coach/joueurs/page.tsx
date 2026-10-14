@@ -33,8 +33,9 @@ function summarize(threads: InboxThread[]): PlayerInboxSummary | null {
  * La liste unique des joueurs — c'est aussi la boîte de réception : la vue
  * Messages s'ouvre en premier, avec le dernier message de chacun ; cliquer
  * une ligne ouvre la conversation dans la fiche (cf. PlayersList).
- * L'invitation d'un joueur, geste rare, est repliée derrière un bouton en bas
- * de page.
+ * L'invitation d'un joueur, geste rare et réservé aux admins, est repliée
+ * derrière un bouton en bas de page — un coach n'invite pas : c'est un admin
+ * qui lui affecte ses joueurs (depuis ici ou depuis sa fiche Staff).
  *
  * C'est le seul écran staff SANS filtre `coach_id` : un admin y voit tout le
  * club (perf et formation), ses propres joueurs regroupés en tête. Un coach,
@@ -45,19 +46,20 @@ export default async function CoachPlayersPage() {
   const user = await getCachedUser();
   const weekStart = currentWeekStart();
 
-  const [players, { data: invitations }, role] = await Promise.all([
-    getPlayersWithDiscipline(supabase),
-    user
-      ? supabase
+  const [players, role] = await Promise.all([getPlayersWithDiscipline(supabase), getNavRole()]);
+  const playerIds = players.map((p) => p.id);
+  // cookie de navigation : sert à adapter l'UI, jamais d'autorisation — les
+  // server actions d'invitation revérifient le rôle en base (requireAdmin)
+  const isAdmin = role === "admin";
+  // les invitations ne servent qu'au panneau admin : un coach n'en a pas
+  const { data: invitations } =
+    user && isAdmin
+      ? await supabase
           .from("invitations")
           .select("*")
           .eq("coach_id", user.id)
           .order("created_at", { ascending: false })
-      : Promise.resolve({ data: null }),
-    getNavRole(),
-  ]);
-  const playerIds = players.map((p) => p.id);
-  const isAdmin = role === "admin";
+      : { data: null };
   // « mes joueurs » : ceux dont je suis le coach référent. Eux seuls portent
   // la pastille rouge — la pastille dit « ça t'attend », et le fil d'un joueur
   // d'un collègue est à lui. Le reste du club se consulte, en gris.
@@ -152,8 +154,9 @@ export default async function CoachPlayersPage() {
 
       {players.length === 0 ? (
         <EmptyState>
-          Aucun joueur actif. Génère un lien d&apos;invitation ci-dessous et envoie-le à ton
-          joueur.
+          {isAdmin
+            ? "Aucun joueur actif. Génère un lien d'invitation ci-dessous et envoie-le à ton joueur."
+            : "Aucun joueur actif. Un admin t'affectera tes joueurs depuis l'onglet Staff."}
         </EmptyState>
       ) : (
         <PlayersList
@@ -185,7 +188,8 @@ export default async function CoachPlayersPage() {
         />
       )}
 
-      {user && (
+      {/* Inviter : admin uniquement (un coach classique n'invite pas) */}
+      {user && isAdmin && (
         <DisclosureBar
           className="mt-6"
           // liste vide : on ouvre d'entrée, inviter est la seule chose à faire

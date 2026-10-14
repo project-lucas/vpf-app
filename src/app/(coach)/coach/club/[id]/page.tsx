@@ -138,10 +138,10 @@ export default async function ClubCoachPage({ params }: { params: Promise<{ id: 
   return (
     <>
       <Link
-        href="/coach/club"
+        href="/coach/admin"
         className="mb-3 inline-flex items-center gap-1 text-sm font-semibold text-navy-500"
       >
-        <ChevronLeftIcon size={16} /> Staff
+        <ChevronLeftIcon size={16} /> Admin
       </Link>
 
       <div className="flex items-start justify-between gap-3">

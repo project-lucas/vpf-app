@@ -9,6 +9,7 @@ import {
 } from "next/font/google";
 import "./globals.css";
 import { PwaRegister } from "@/components/PwaRegister";
+import { NoPinchZoom } from "@/components/NoPinchZoom";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 // display "scoreboard" : condensée sportive (écrans admin/coach)
@@ -78,6 +79,11 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
+  // Le pinch-to-zoom natif faisait blanchir la page (WebKit) : on le coupe
+  // franchement — Android suit `user-scalable`, iOS suit `touch-action`
+  // (globals.css) et la garde `gesturestart` (NoPinchZoom). Le zoom d'une
+  // fiche de séance passe par SessionSheet (plein écran défilable).
+  userScalable: false,
   viewportFit: "cover",
 };
 
@@ -88,6 +94,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         className={`${inter.variable} ${barlow.variable} ${archivo.variable} ${dmSerif.variable} ${jetbrains.variable} ${jakarta.variable} antialiased`}
       >
         <PwaRegister />
+        <NoPinchZoom />
         {children}
       </body>
     </html>

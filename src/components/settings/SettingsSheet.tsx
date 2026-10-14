@@ -8,7 +8,7 @@ import { Settings, X } from "lucide-react";
  * panneau qui porte tout le réglage du compte : fiche basket, notifications,
  * mot de passe, règles, déconnexion.
  *
- * L'onglet Profil est d'abord une messagerie — ces réglages, consultés une fois
+ * L'onglet Messages est d'abord une messagerie — ces réglages, consultés une fois
  * par saison, encombraient la page sous la conversation. Ils sont rendus côté
  * serveur et passés en `children` : ce composant ne fait qu'ouvrir et fermer.
  */

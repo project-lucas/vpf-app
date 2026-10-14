@@ -48,6 +48,7 @@ import { PlayerHygieneVideosCard } from "@/components/coach/PlayerHygieneVideosC
 import { PlayerParentsCard } from "@/components/coach/PlayerParentsCard";
 import { getPlayerParents } from "@/lib/parents";
 import { PlayerNotificationsCard } from "@/components/coach/PlayerNotificationsCard";
+import { PlayerGroupSelect } from "@/components/coach/PlayerGroupSelect";
 import { countPushDevices } from "@/lib/push";
 import { OFFER_LABELS, canUseHygiene, toOffer } from "@/lib/offers";
 import type {
@@ -220,7 +221,7 @@ export default async function PlayerDetailPage({
   // c'est elle qui prouve que l'utilisateur a le droit de consulter ce joueur.
   // Le comptage et les noms des parents, eux, contournent la RLS
   // (voir countPushDevices / getPlayerParents).
-  const [pushDeviceCount, playerParents, channels] = await Promise.all([
+  const [pushDeviceCount, playerParents, channels, { data: groups }] = await Promise.all([
     countPushDevices(id),
     getPlayerParents(id),
     getConversationChannels(supabase, {
@@ -230,7 +231,12 @@ export default async function PlayerDetailPage({
       // admin : tous les fils privés ; coach référent : le sien (0037)
       includePrivate: isAdminViewer ? true : playerRaw.coach_id === user?.id ? "own" : false,
     }),
+    // les groupes du service (0040) : l'étiquette de la tête de fiche, et le
+    // sélecteur de l'onglet Fiche pour un admin
+    supabase.from("groups").select("id, name").order("position").order("created_at"),
   ]);
+  const groupName =
+    (groups ?? []).find((g) => g.id === (playerRaw.group_id as string | null))?.name ?? null;
 
   // « Global » = joueur + parents + tout le staff ; un prénom = le fil privé
   // entre le joueur et ce membre du staff
@@ -397,6 +403,7 @@ export default async function PlayerDetailPage({
               : ""}
           </Badge>
           <Badge tone={offer === "formation" ? "navy" : "neutral"}>{OFFER_LABELS[offer]}</Badge>
+          {groupName && <Badge>{groupName}</Badge>}
           {weekEvents.length > 0 && (
             <Badge>
               Semaine {Math.min(weekDone, weekEvents.length)}/{weekEvents.length}
@@ -967,6 +974,20 @@ export default async function PlayerDetailPage({
                       offer,
                     }}
                   />
+                  {isAdminViewer && (
+                    <Card>
+                      <CardTitle>Groupe</CardTitle>
+                      <PlayerGroupSelect
+                        playerId={id}
+                        groups={groups ?? []}
+                        currentGroupId={(playerRaw.group_id as string | null) ?? null}
+                      />
+                      <p className="mt-2 text-[11px] text-navy-400">
+                        Le staff du groupe voit et suit ce joueur. Changer de groupe ne touche
+                        aucune donnée.
+                      </p>
+                    </Card>
+                  )}
                   <PlayerNotificationsCard
                     enabled={profile?.notifications_enabled ?? true}
                     deviceCount={pushDeviceCount}

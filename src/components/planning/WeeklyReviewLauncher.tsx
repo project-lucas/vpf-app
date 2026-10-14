@@ -8,13 +8,19 @@ import { Overline } from "@/components/editorial/primitives";
 import { WeeklyReviewForm } from "./WeeklyReviewForm";
 import type { ReviewHealthStatus } from "@/lib/types";
 
-/** Contenu du bilan de la semaine en cours, partagé par la pastille et la carte fixe. */
+/** Contenu du bilan visé, partagé par la pastille et la carte fixe. */
 export interface WeeklyReviewState {
   hasReview: boolean;
   initialWentWell: string;
   initialToImprove: string;
   initialHealthStatus: ReviewHealthStatus;
   initialHealthNote: string;
+  /** lundi de la semaine visée ("YYYY-MM-DD") : la courante, ou la passée en rattrapage */
+  weekStart: string;
+  /** « du 31 août au 6 septembre » — la semaine visée, écrite en toutes lettres */
+  weekLabel: string;
+  /** on rattrape la semaine passée (lundi/mardi, bilan jamais rendu) */
+  isCatchUp: boolean;
 }
 
 /** Modale du bilan — même formulaire quelle que soit la porte d'entrée. */
@@ -29,15 +35,20 @@ function ReviewModal({
 }) {
   return (
     <Modal open={open} onClose={onClose} title="Bilan de la semaine" variant="retro">
+      {/* La semaine visée est écrite noir sur blanc : le rendez-vous est le
+          dimanche, mais on peut le rattraper le lundi — et un bilan rempli sur
+          la mauvaise semaine laisse le coach avec une alerte insoluble. */}
       <p className="ed-meta mb-3 text-[11px] leading-relaxed text-meta">
-        Prends deux minutes chaque dimanche : ce que tu as bien fait, ce que tu veux
-        améliorer, et comment va ton corps.
+        {review.isCatchUp
+          ? `Rattrapage de la semaine ${review.weekLabel} : ce que tu as bien fait, ce que tu veux améliorer, et comment va ton corps.`
+          : `Semaine ${review.weekLabel}. Prends deux minutes : ce que tu as bien fait, ce que tu veux améliorer, et comment va ton corps.`}
       </p>
       <WeeklyReviewForm
         initialWentWell={review.initialWentWell}
         initialToImprove={review.initialToImprove}
         initialHealthStatus={review.initialHealthStatus}
         initialHealthNote={review.initialHealthNote}
+        weekStart={review.weekStart}
         onDone={onClose}
       />
     </Modal>

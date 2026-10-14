@@ -16,6 +16,7 @@ import { getNavRole } from "@/lib/auth";
 import { toOffer } from "@/lib/offers";
 import { sendPushToUser, type PushPayload } from "@/lib/push";
 import { messagePreview } from "@/lib/attachments";
+import { logStaffMessage } from "@/lib/journal";
 import {
   ANNOUNCEMENT_BODY_MAX_LENGTH,
   ANNOUNCEMENT_TITLE_MAX_LENGTH,
@@ -293,6 +294,16 @@ export async function sendConversationMessage(
   }
   recipients.delete(user.id);
 
+  // le journal du staff : un message au joueur est un geste qui compte
+  if (senderProfile?.role === "coach" || senderProfile?.role === "admin") {
+    await logStaffMessage({
+      actorId: user.id,
+      playerId,
+      playerFirstName: playerName,
+      isPrivate: channelAdminId !== null,
+    });
+  }
+
   await Promise.all(
     [...recipients].map(([recipientId, url]) =>
       pushToUserIfEnabled(recipientId, {
@@ -313,6 +324,8 @@ export async function sendConversationMessage(
   revalidatePath("/parametres");
   revalidatePath(`/coach/joueurs/${playerId}`);
   revalidatePath("/coach/messages");
+  // l'accueil : l'alerte « silence » tombe, le journal gagne une ligne
+  revalidatePath("/coach");
   if (!channelAdminId) revalidatePath("/parent/messages");
   return { ok: true };
 }
@@ -545,7 +558,7 @@ export async function publishAnnouncement(data: {
     )
   );
 
-  revalidatePath("/coach/club");
+  revalidatePath("/coach/admin");
   return { ok: true };
 }
 
@@ -554,7 +567,7 @@ export async function deleteAnnouncement(announcementId: string): Promise<Action
   const supabase = await createClient();
   const { error } = await supabase.from("announcements").delete().eq("id", announcementId);
   if (error) return { ok: false, error: "Suppression impossible." };
-  revalidatePath("/coach/club");
+  revalidatePath("/coach/admin");
   return { ok: true };
 }
 

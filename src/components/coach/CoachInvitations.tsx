@@ -7,7 +7,7 @@ import { DEFAULT_OFFER, OFFER_HINTS, OFFER_LABELS, PLAYER_OFFERS, toOffer } from
 import { Button } from "@/components/ui/Button";
 import { Card, CardTitle } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
-import { Field, Input } from "@/components/ui/Field";
+import { Field, Input, Select } from "@/components/ui/Field";
 import { IconButton } from "@/components/ui/IconButton";
 import { Check } from "lucide-react";
 import { TrashIcon } from "@/components/icons";
@@ -15,18 +15,32 @@ import type { Invitation, PlayerOffer } from "@/lib/types";
 
 type InvitationRow = Invitation & { used_by_name: string | null };
 
+/** Un coach référent possible pour le futur joueur (page Admin). */
+export interface CoachChoice {
+  id: string;
+  name: string;
+}
+
 export function CoachInvitations({
   coachId,
   invitations,
   appUrl,
   title = "Invitations",
+  coaches,
 }: {
+  /** coach référent par défaut du futur joueur */
   coachId: string;
   invitations: InvitationRow[];
   appUrl: string;
   title?: string;
+  /**
+   * Avec cette liste (page Admin), l'admin choisit le coach référent du
+   * joueur qu'il invite — lui-même ou un collègue. Sans elle, c'est `coachId`.
+   */
+  coaches?: CoachChoice[];
 }) {
   const [label, setLabel] = useState("");
+  const [targetCoachId, setTargetCoachId] = useState(coachId);
   // offre du futur joueur : appliquée à sa fiche dès son inscription
   const [offer, setOffer] = useState<PlayerOffer>(DEFAULT_OFFER);
   const [error, setError] = useState("");
@@ -40,7 +54,7 @@ export function CoachInvitations({
     e.preventDefault();
     setError("");
     setLoading(true);
-    const result = await createInvitation(coachId, label, offer);
+    const result = await createInvitation(targetCoachId, label, offer);
     setLoading(false);
     if (!result.ok) {
       setError(result.error);
@@ -69,6 +83,17 @@ export function CoachInvitations({
       <CardTitle>{title}</CardTitle>
 
       <form onSubmit={handleCreate} className="space-y-3">
+        {coaches && coaches.length > 0 && (
+          <Field label="Coach référent">
+            <Select value={targetCoachId} onChange={(e) => setTargetCoachId(e.target.value)}>
+              {coaches.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        )}
         <Field label="Nom du joueur (repère interne, optionnel)">
           <Input
             value={label}

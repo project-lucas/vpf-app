@@ -90,6 +90,26 @@ export function formatDateFr(dateStr: string): string {
   }).format(new Date(Date.UTC(y, m - 1, d)));
 }
 
+/**
+ * « du 31 août au 6 septembre » — une semaine nommée en toutes lettres, à
+ * partir de son lundi. Sert à lever toute ambiguïté quand le joueur remplit un
+ * bilan (celui de la semaine en cours, ou le rattrapage de la précédente).
+ */
+export function formatWeekRangeFr(weekStart: string): string {
+  const fmt = (dateStr: string, withMonth: boolean) => {
+    const [y, m, d] = dateStr.split("-").map(Number);
+    return new Intl.DateTimeFormat("fr-FR", {
+      day: "numeric",
+      ...(withMonth ? { month: "long" as const } : {}),
+      timeZone: "UTC",
+    }).format(new Date(Date.UTC(y, m - 1, d)));
+  };
+  const end = addDays(weekStart, 6);
+  // même mois : « du 1er au 7 septembre » plutôt que de le répéter
+  const sameMonth = weekStart.slice(0, 7) === end.slice(0, 7);
+  return `du ${fmt(weekStart, !sameMonth)} au ${fmt(end, true)}`;
+}
+
 /** Numéro de semaine ISO-8601 (1-53) d'une date "YYYY-MM-DD". */
 export function isoWeekNumber(dateStr: string): number {
   const [y, m, d] = dateStr.split("-").map(Number);

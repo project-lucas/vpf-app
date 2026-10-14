@@ -1,6 +1,13 @@
 import Image from "next/image";
 import { createClient, getCachedUser } from "@/lib/supabase/server";
-import { addDays, currentWeekStart, formatDateFr, isoWeekNumber, parisNow } from "@/lib/dates";
+import {
+  addDays,
+  currentWeekStart,
+  formatDateFr,
+  formatWeekRangeFr,
+  isoWeekNumber,
+  parisNow,
+} from "@/lib/dates";
 import { activeDayStreak } from "@/lib/discipline";
 import { canUseHygiene, toOffer } from "@/lib/offers";
 import { HYGIENE_MISSION_START } from "@/lib/hygiene";
@@ -197,15 +204,31 @@ export default async function PlanningPage() {
   // une feuille de match de la semaine n'ont été remplis — il s'arrête dès que
   // l'un des deux l'est.
   const records = computeMatchRecords((matchStats ?? []) as MatchStat[]);
-  const hasReview = Boolean(thisWeekReview);
-  // état du bilan de la semaine : partagé par la pastille du bas et le
-  // rendez-vous fixe du dimanche 18 h dans le planning
+
+  // Quelle semaine le bilan vise-t-il ?
+  //
+  // Le rendez-vous est le dimanche 18 h, mais beaucoup le remplissent le lundi
+  // en pensant clore la semaine écoulée. En écrivant toujours la semaine
+  // courante, ce rattrapage éteignait le rappel du dimanche suivant et laissait
+  // le coach avec une alerte « bilan manquant » que rien ne pouvait résoudre.
+  // Lundi et mardi, tant que la semaine passée n'a pas de bilan, c'est donc
+  // ELLE qu'on vise ; la modale annonce la semaine visée dans tous les cas.
+  const isCatchUp = now.isoWeekday <= 2 && !lastReview;
+  const targetWeekStart = isCatchUp ? prevWeekStart : weekStart;
+  const targetReview = isCatchUp ? null : thisWeekReview;
+  const hasReview = Boolean(targetReview);
+
+  // état du bilan visé : partagé par la pastille du bas et le rendez-vous fixe
+  // du dimanche 18 h dans le planning
   const weeklyReview = {
     hasReview,
-    initialWentWell: thisWeekReview?.went_well ?? "",
-    initialToImprove: thisWeekReview?.to_improve ?? "",
-    initialHealthStatus: (thisWeekReview?.health_status ?? "") as ReviewHealthStatus,
-    initialHealthNote: thisWeekReview?.health_note ?? "",
+    initialWentWell: targetReview?.went_well ?? "",
+    initialToImprove: targetReview?.to_improve ?? "",
+    initialHealthStatus: (targetReview?.health_status ?? "") as ReviewHealthStatus,
+    initialHealthNote: targetReview?.health_note ?? "",
+    weekStart: targetWeekStart,
+    weekLabel: formatWeekRangeFr(targetWeekStart),
+    isCatchUp,
   };
   const hasMatchThisWeek = (matchStats ?? []).some((m) => m.match_date >= weekStart);
   const isWeekend = now.isoWeekday >= 6;

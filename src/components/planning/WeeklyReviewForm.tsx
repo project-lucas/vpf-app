@@ -17,12 +17,15 @@ export function WeeklyReviewForm({
   initialToImprove,
   initialHealthStatus,
   initialHealthNote,
+  weekStart,
   onDone,
 }: {
   initialWentWell: string;
   initialToImprove: string;
   initialHealthStatus: ReviewHealthStatus;
   initialHealthNote: string;
+  /** semaine visée (lundi, "YYYY-MM-DD") — la courante, ou la passée en rattrapage */
+  weekStart: string;
   /** appelé après un enregistrement réussi (ex. fermeture de la modale) */
   onDone?: () => void;
 }) {
@@ -41,7 +44,13 @@ export function WeeklyReviewForm({
       return;
     }
     setLoading(true);
-    const result = await submitWeeklyReview(wentWell, toImprove, healthStatus, healthNote);
+    const result = await submitWeeklyReview(
+      wentWell,
+      toImprove,
+      healthStatus,
+      healthNote,
+      weekStart
+    );
     setLoading(false);
     if (!result.ok) {
       setError(result.error);

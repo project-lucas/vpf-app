@@ -18,6 +18,8 @@ export interface PlayerDiscipline {
   whatsapp_number: string;
   season_goal: string;
   coach_id: string;
+  /** groupe de suivi (0040) */
+  group_id: string | null;
   offer: PlayerOffer;
   availability: PlayerAvailability;
   /** null si aucune donnée exploitable */
@@ -45,7 +47,7 @@ export async function getPlayersWithDiscipline(
   let query = supabase
     .from("players")
     .select(
-      "id, coach_id, season_goal, availability, offer, created_at, profile:profiles!players_id_fkey(first_name, last_name, whatsapp_number)"
+      "id, coach_id, group_id, season_goal, availability, offer, created_at, profile:profiles!players_id_fkey(first_name, last_name, whatsapp_number)"
     )
     .eq("status", "active");
   if (coachId) query = query.eq("coach_id", coachId);
@@ -88,6 +90,7 @@ export async function getPlayersWithDiscipline(
       return {
         id: p.id,
         coach_id: p.coach_id,
+        group_id: (p.group_id as string | null) ?? null,
         first_name: profile?.first_name ?? "",
         last_name: profile?.last_name ?? "",
         whatsapp_number: profile?.whatsapp_number ?? "",

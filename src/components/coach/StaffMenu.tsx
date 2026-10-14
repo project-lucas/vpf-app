@@ -3,12 +3,13 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { MessagesSquare, Settings, Trophy, X } from "lucide-react";
+import { MessagesSquare, Settings, X } from "lucide-react";
 
 /**
  * Menu du staff, en haut à droite : les entrées qu'on ouvre une fois par
- * semaine (Staff) ou par saison (Réglages), sorties de la barre du bas pour la
- * ramener à cinq onglets — ce qu'on fait tous les jours.
+ * semaine (Relais messages) ou par saison (Réglages), sorties de la barre du
+ * bas pour la garder à ce qu'on fait tous les jours. La supervision du club,
+ * elle, est un onglet à part entière (Admin).
  *
  * Un cercle aux initiales, un petit panneau. Il se ferme au clic dehors, à
  * Échap, et à chaque navigation.
@@ -37,7 +38,6 @@ export function StaffMenu({ initials, isAdmin }: { initials: string; isAdmin: bo
   const items = [
     ...(isAdmin
       ? [
-          { href: "/coach/club", label: "Staff", icon: <Trophy size={15} /> },
           // les fils privés des collègues admins : du relais, pas du quotidien
           { href: "/coach/messages", label: "Relais messages", icon: <MessagesSquare size={15} /> },
         ]
