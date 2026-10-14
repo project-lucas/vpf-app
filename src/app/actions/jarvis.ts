@@ -16,6 +16,8 @@ import { assignSession, addCoachNote, setPlayerAvailability, setWeekFocus } from
 import { addPlannedEvent } from "@/app/actions/planning";
 import { sendConversationMessage } from "@/app/actions/messages";
 import type { EventType } from "@/lib/types";
+import { painZonesFromNotes, suggestSessions } from "@/lib/session-suggestions";
+import { SESSION_PROFILES } from "@/lib/session-profiles";
 
 /**
  * Jarvis, l'assistant du staff : une conversation dans le volet de l'accueil.
@@ -51,7 +53,7 @@ Tu as l'état du groupe ci-dessous et des outils pour aller plus loin :
 
 Règles :
 - Tu n'agis que si le staff te le demande clairement. Une question n'est pas une demande d'action.
-- Pour affecter une séance, cherche-la d'abord avec search_sessions et choisis celle qui colle (pôle, poste du joueur). Si plusieurs conviennent et que la demande est vague, propose 2-3 choix au lieu d'en imposer une.
+- Pour choisir une séance, pars de seancesSuggerees (get_player_details) : elles sont choisies pour le poste du joueur et ses douleurs, à partir de l'analyse des vidéos. search_sessions donne le contenu de chaque vidéo et les zones à ménager ; ne propose jamais une séance dont aEviterSi contient une zone douloureuse du joueur. Si plusieurs conviennent et que la demande est vague, propose 2-3 choix au lieu d'en imposer une.
 - send_message écrit dans le fil Global, lu aussi par les parents : jamais de diagnostic médical ni de reproche humiliant. Tutoiement, prénom, 1 à 3 phrases.
 - Après une action, dis en une phrase ce que tu as fait. Si un outil échoue, dis-le tel quel.
 - Tu n'inventes rien : si une info n'est pas dans tes données ou tes outils, dis-le.
@@ -133,13 +135,28 @@ export async function askJarvis(
         ensure(playerId);
         const [ev, asg, rev, mat, foc, notes, pl] = await Promise.all([
           supabase.from("planned_events").select("event_type, weekday, event_time, duration_minutes, custom_name").eq("player_id", playerId).order("weekday"),
-          supabase.from("session_assignments").select("weekday, session:library_sessions(name, pole)").eq("player_id", playerId).is("removed_at", null),
+          supabase.from("session_assignments").select("weekday, session_id, session:library_sessions(name, pole)").eq("player_id", playerId).is("removed_at", null),
           supabase.from("weekly_reviews").select("week_start, went_well, to_improve, health_status, health_note, coach_reply").eq("player_id", playerId).order("week_start", { ascending: false }).limit(3),
           supabase.from("match_stats").select("match_date, points, minutes, threes_made, free_throws_made").eq("player_id", playerId).order("match_date", { ascending: false }).limit(5),
           supabase.from("coach_focus").select("content").eq("player_id", playerId).maybeSingle(),
           supabase.from("coach_notes").select("content, created_at").eq("player_id", playerId).order("created_at", { ascending: false }).limit(3),
           supabase.from("players").select("position, club, season_goal").eq("id", playerId).maybeSingle(),
         ]);
+        // les séances à lui donner : poste + douleurs des derniers bilans
+        const { data: lib } = await supabase
+          .from("library_sessions")
+          .select("id, name, pole, duration_minutes");
+        const painZones = painZonesFromNotes(
+          (rev.data ?? [])
+            .filter((r) => r.health_status === "gene" || r.health_status === "blessure")
+            .map((r) => r.health_note ?? ""),
+        );
+        const suggested = suggestSessions({
+          position: pl.data?.position ?? null,
+          painZones,
+          assignedSessionIds: new Set((asg.data ?? []).map((a) => a.session_id as string)),
+          library: lib ?? [],
+        });
         return JSON.stringify({
           profil: pl.data,
           semaineType: ev.data,
@@ -148,6 +165,8 @@ export async function askJarvis(
           matchs: mat.data,
           focus: foc.data?.content ?? null,
           notes: notes.data,
+          douleursReperees: painZones,
+          seancesSuggerees: suggested,
         });
       },
     }),
@@ -169,7 +188,15 @@ export async function askJarvis(
         if (query?.trim()) q = q.ilike("name", `%${query.trim()}%`);
         const { data, error } = await q;
         if (error) return `Erreur : ${error.message}`;
-        return JSON.stringify(data ?? []);
+        // le profil tiré de l'analyse de la vidéo : contenu, postes, zones
+        return JSON.stringify(
+          (data ?? []).map((row) => {
+            const prof = SESSION_PROFILES[row.id];
+            return prof
+              ? { ...row, contenu: prof.seen, postes: prof.positions, aEviterSi: prof.avoidIf, utileSi: prof.helpsIf }
+              : row;
+          }),
+        );
       },
     }),
     betaZodTool({

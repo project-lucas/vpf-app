@@ -30,6 +30,15 @@ import { formatPercent } from "@/lib/discipline";
 import { disciplineTrend } from "@/lib/staff-overview";
 import { ScoringChart } from "@/components/coach/ScoringChart";
 import { WeekDaysCard, type DayDetail, type DayItem } from "@/components/coach/WeekDaysCard";
+import { SessionSuggestionsCard } from "@/components/coach/SessionSuggestionsCard";
+import {
+  normalizePosition,
+  painZonesFromNotes,
+  positionFit,
+  sessionsToAvoid,
+  suggestSessions,
+  ZONE_LABELS,
+} from "@/lib/session-suggestions";
 import { EVENT_TYPE_LABELS, formatDuration } from "@/lib/constants";
 import { JarvisPlayerButton } from "@/components/coach/JarvisPlayerBox";
 import { getBriefsForDate, isMorningBriefConfigured, type BriefRecommendation } from "@/lib/briefs";
@@ -399,6 +408,43 @@ export default async function PlayerDetailPage({
       }));
     return { ...d, items: [...events, ...sessions] };
   });
+
+  // ---- séances suggérées : poste du joueur + douleurs des 3 derniers bilans
+  //      (zone lue dans la note santé). Les profils viennent de l'analyse des
+  //      vidéos du catalogue (src/lib/session-profiles.ts).
+  const painNotes = ((reviews ?? []) as WeeklyReview[])
+    .slice(0, 3)
+    .filter((r) => r.health_status === "gene" || r.health_status === "blessure")
+    .map((r) => r.health_note ?? "")
+    .filter(Boolean);
+  const painZones = painZonesFromNotes(painNotes);
+  const catalogue = (library ?? []) as LibrarySession[];
+  const activeSessionIds = new Set(
+    allAssignments.filter((a) => !a.removed_at).map((a) => a.session_id),
+  );
+  const suggestionsByPole = suggestSessions({
+    position: playerRaw.position ?? null,
+    painZones,
+    assignedSessionIds: activeSessionIds,
+    library: catalogue,
+  });
+  const suggestionList = [
+    ...suggestionsByPole.routine.filter((x) => x.forPain),
+    ...suggestionsByPole.physique.filter((x) => x.forPain),
+    ...suggestionsByPole.basket.slice(0, 2),
+    ...suggestionsByPole.physique.filter((x) => !x.forPain).slice(0, 2),
+    ...suggestionsByPole.routine.filter((x) => !x.forPain).slice(0, 1),
+  ];
+  const painNote =
+    painZones.length > 0
+      ? `Douleur signalée au ${painZones.map((z) => ZONE_LABELS[z]).join(", au ")} dans ses derniers bilans : les séances qui chargent cette zone sont écartées, celles qui la soignent passent en tête.`
+      : null;
+  const fitById = Object.fromEntries(
+    catalogue.map((sess) => [sess.id, positionFit(sess.id, playerRaw.position ?? null)]),
+  );
+  const avoidById = Object.fromEntries(
+    [...sessionsToAvoid(catalogue.map((sess) => sess.id), painZones)].map(([sid, z]) => [sid, ZONE_LABELS[z]]),
+  );
 
   // ---- les suggestions de Jarvis pour ce joueur dans le brief du matin
   const groupIdOfPlayer = (playerRaw.group_id as string | null) ?? null;
@@ -855,6 +901,14 @@ export default async function PlayerDetailPage({
             key: "programme",
             label: "Programme",
             content: (
+              <div className="space-y-5">
+              <SessionSuggestionsCard
+                playerId={id}
+                firstName={profile?.first_name ?? "ce joueur"}
+                position={normalizePosition(playerRaw.position ?? null)}
+                painNote={painNote}
+                suggestions={suggestionList}
+              />
               <Tabs
                 variant="sub"
                 items={[
@@ -865,6 +919,8 @@ export default async function PlayerDetailPage({
                       <AssignedSessionsManager
                         playerId={id}
                         pole="basket"
+                        fitById={fitById}
+                        avoidById={avoidById}
                         assignments={allAssignments.filter((a) => a.session.pole === "basket")}
                         library={((library ?? []) as LibrarySession[]).filter(
                           (s) => s.pole === "basket",
@@ -882,6 +938,8 @@ export default async function PlayerDetailPage({
                       <AssignedSessionsManager
                         playerId={id}
                         pole="physique"
+                        fitById={fitById}
+                        avoidById={avoidById}
                         assignments={allAssignments.filter((a) => a.session.pole === "physique")}
                         library={((library ?? []) as LibrarySession[]).filter(
                           (s) => s.pole === "physique",
@@ -899,6 +957,8 @@ export default async function PlayerDetailPage({
                       <AssignedSessionsManager
                         playerId={id}
                         pole="routine"
+                        fitById={fitById}
+                        avoidById={avoidById}
                         assignments={allAssignments.filter((a) => a.session.pole === "routine")}
                         library={((library ?? []) as LibrarySession[]).filter(
                           (s) => s.pole === "routine",
@@ -940,6 +1000,7 @@ export default async function PlayerDetailPage({
                     : []),
                 ]}
               />
+              </div>
             ),
           },
           {

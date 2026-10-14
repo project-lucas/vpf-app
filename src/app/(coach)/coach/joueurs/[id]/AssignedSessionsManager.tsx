@@ -32,6 +32,10 @@ interface Props {
   assignments: SessionAssignmentWithSession[];
   library: LibrarySession[];
   visibleNote: string;
+  /** note de chaque séance pour le poste du joueur (0 à 3) : trie le catalogue */
+  fitById?: Record<string, number>;
+  /** séances qui chargent une zone douloureuse : « dos », « genou »… */
+  avoidById?: Record<string, string>;
 }
 
 export function AssignedSessionsManager({
@@ -40,6 +44,8 @@ export function AssignedSessionsManager({
   assignments,
   library,
   visibleNote,
+  fitById = {},
+  avoidById = {},
 }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -323,6 +329,12 @@ export function AssignedSessionsManager({
                   <div className="space-y-1.5">
                     {library
                       .filter((s) => (s.categories ?? []).includes(category))
+                      // les plus adaptées au poste d'abord, les déconseillées en dernier
+                      .sort(
+                        (a, b) =>
+                          Number(Boolean(avoidById[a.id])) - Number(Boolean(avoidById[b.id])) ||
+                          (fitById[b.id] ?? 0) - (fitById[a.id] ?? 0),
+                      )
                       .map((s) => (
                         <div
                           key={s.id}
@@ -332,7 +344,14 @@ export function AssignedSessionsManager({
                             <p className="truncate text-sm font-semibold text-navy-800">
                               {s.name}
                             </p>
-                            <p className="text-xs text-navy-400">{s.duration_minutes} min</p>
+                            <p className="flex flex-wrap items-center gap-1.5 text-xs text-navy-400">
+                              {s.duration_minutes} min
+                              {avoidById[s.id] ? (
+                                <span className="font-bold text-danger">· Déconseillée : douleur {avoidById[s.id]}</span>
+                              ) : (fitById[s.id] ?? 0) >= 3 ? (
+                                <span className="font-bold text-success">· Conseillée pour son poste</span>
+                              ) : null}
+                            </p>
                           </div>
                           <Button size="sm" variant="secondary" onClick={() => add(s.id)} disabled={isPending}>
                             Ajouter
