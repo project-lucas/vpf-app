@@ -163,29 +163,6 @@ function DisciplineBar({ value, frozen }: { value: number | null; frozen: boolea
   );
 }
 
-function ProgramDots({ row }: { row: HomeRow }) {
-  const c = row.coverage;
-  if (!c) return <span className="text-xs text-navy-300">—</span>;
-  const poles: [string, number][] = [
-    ["Technique", c.byPole.basket],
-    ["Physique", c.byPole.physique],
-    ["Routine", c.byPole.routine],
-  ];
-  return (
-    <span className="inline-flex items-center gap-2">
-      <span
-        className="inline-flex gap-1"
-        aria-label={poles.map(([l, n]) => `${l} ${n > 0 ? "oui" : "non"}`).join(", ")}
-      >
-        {poles.map(([l, n]) => (
-          <span key={l} className={`h-2 w-2 rounded-full ${n > 0 ? "bg-navy-800" : "bg-navy-100"}`} />
-        ))}
-      </span>
-      {c.hidden > 0 && <Tag tone="amber">{c.hidden} sans jour</Tag>}
-    </span>
-  );
-}
-
 /** L'action principale d'une ligne : la première alerte dit où aller. */
 function primaryAction(row: HomeRow): { label: string; href: string; tone: "danger" | "primary" | "ghost" } | null {
   const a = row.alerts[0];
@@ -587,12 +564,10 @@ export function StaffHome({
                 ...(showKickoff ? ["Visio départ"] : []),
                 "Santé",
                 "Discipline",
-                "Tendance",
                 "Semaine",
                 "Bilan",
                 "Scoring",
                 "Échange",
-                "Programme",
                 "Action",
                 "Appeler",
               ].map((h, i) => (
@@ -620,7 +595,7 @@ export function StaffHome({
           <tbody>
             {visible.length === 0 && (
               <tr>
-                <td colSpan={13} className="px-4 py-8 text-center text-sm text-navy-400">
+                <td colSpan={11} className="px-4 py-8 text-center text-sm text-navy-400">
                   {scope === "todo"
                     ? "Rien à traiter : messages lus, bilans répondus, plannings en place."
                     : "Aucun joueur."}
@@ -658,10 +633,10 @@ export function StaffHome({
                     <HealthCell row={r} />
                   </td>
                   <td className="border-b border-navy-50 px-3 py-2 group-hover:bg-navy-50/50">
-                    <DisciplineBar value={r.discipline} frozen={frozen} />
-                  </td>
-                  <td className="border-b border-navy-50 px-3 py-2 group-hover:bg-navy-50/50">
-                    <Sparkline history={r.history} trend={r.trend} />
+                    <span className="inline-flex items-center gap-3">
+                      <DisciplineBar value={r.discipline} frozen={frozen} />
+                      {!frozen && <Sparkline history={r.history} trend={r.trend} />}
+                    </span>
                   </td>
                   <td className="border-b border-navy-50 px-3 py-2 tabular-nums group-hover:bg-navy-50/50">
                     {frozen ? (
@@ -690,9 +665,6 @@ export function StaffHome({
                     ) : (
                       <span className="text-xs text-navy-300">aucun</span>
                     )}
-                  </td>
-                  <td className="border-b border-navy-50 px-3 py-2 group-hover:bg-navy-50/50">
-                    <ProgramDots row={r} />
                   </td>
                   <td className="border-b border-navy-50 px-3 py-2 group-hover:bg-navy-50/50">
                     <ActionLink action={primaryAction(r)} />
