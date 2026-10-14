@@ -29,6 +29,8 @@ import { EventTypeIcon } from "@/components/planning/EventIcon";
 import { formatPercent } from "@/lib/discipline";
 import { disciplineTrend } from "@/lib/staff-overview";
 import { ScoringChart } from "@/components/coach/ScoringChart";
+import { WeekDaysCard, type DayDetail, type DayItem } from "@/components/coach/WeekDaysCard";
+import { EVENT_TYPE_LABELS } from "@/lib/constants";
 import { Tabs } from "@/components/ui/Tabs";
 import { Card, CardTitle } from "@/components/ui/Card";
 import { Section } from "@/components/ui/Section";
@@ -357,6 +359,37 @@ export default async function PlayerDetailPage({
     };
   });
 
+  // ---- « Sa semaine » : pour chaque jour, les créneaux du planning (pointés
+  //      ou non) et les séances du programme, cliquables sur la fiche
+  const weekDetail: DayDetail[] = dayBreakdown.map((d) => {
+    const events = weekEvents
+      .filter((e) => e.weekday === d.day)
+      .sort((a, b) => (a.event_time < b.event_time ? -1 : 1))
+      .map((e): DayItem => {
+        const c = weekCompletions.find((x) => x.planned_event_id === e.id);
+        return {
+          label: (e.event_type === "autre" && e.custom_name) || EVENT_TYPE_LABELS[e.event_type],
+          when: e.event_time.slice(0, 5),
+          status: c ? (c.status === "done" ? "done" : "not_done") : d.day < todayWeekday ? "not_done" : "todo",
+        };
+      });
+    const sessions = allAssignments
+      .filter((a) => a.weekday === d.day && !a.removed_at)
+      .map((a): DayItem => ({
+        label: a.session.name,
+        when: "Séance du programme",
+        status:
+          a.completion?.status === "done"
+            ? "done"
+            : a.completion?.status === "not_done"
+              ? "not_done"
+              : d.day < todayWeekday
+                ? "not_done"
+                : "todo",
+      }));
+    return { ...d, items: [...events, ...sessions] };
+  });
+
   // ---- chiffres de la tête de fiche : discipline de la dernière semaine
   //      close et sa tendance (mêmes règles que le tableau de l'accueil)
   const closedWeeks = [...allSummaries]
@@ -512,47 +545,7 @@ export default async function PlayerDetailPage({
                   />
                 </Card>
                 <div className="space-y-5">
-                  <Card>
-                    <CardTitle>Sa semaine</CardTitle>
-                    <div className="flex justify-between">
-                      {dayBreakdown.map((d) => {
-                        const past = d.day < todayWeekday;
-                        const isToday = d.day === todayWeekday;
-                        const state =
-                          d.planned === 0
-                            ? "rest"
-                            : d.done >= d.planned
-                              ? "done"
-                              : past
-                                ? d.done > 0
-                                  ? "partial"
-                                  : "missed"
-                                : "todo";
-                        const look = {
-                          rest: "bg-cream text-navy-300",
-                          done: "bg-navy-800 text-white",
-                          partial: "bg-warning-soft text-warning",
-                          missed: "bg-danger-soft text-danger",
-                          todo: "bg-white text-navy-400 ring-1 ring-inset ring-sand",
-                        }[state];
-                        return (
-                          <div key={d.day} className="flex flex-col items-center gap-1.5">
-                            <span
-                              className={`text-[11px] font-bold ${isToday ? "text-accent" : "text-navy-400"}`}
-                            >
-                              {["LUN", "MAR", "MER", "JEU", "VEN", "SAM", "DIM"][d.day - 1]}
-                            </span>
-                            <span
-                              className={`flex h-10 w-10 items-center justify-center rounded-xl text-[12px] font-extrabold ${look}`}
-                              title={d.planned ? `${d.done}/${d.planned}` : "Repos"}
-                            >
-                              {state === "done" ? "✓" : state === "missed" ? "✕" : d.planned ? `${d.done}/${d.planned}` : "·"}
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </Card>
+                  <WeekDaysCard days={weekDetail} today={todayWeekday} />
                   <Card>
                     <CardTitle>Scoring</CardTitle>
                     {matchStats.length === 0 ? (
