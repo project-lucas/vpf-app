@@ -6,8 +6,7 @@ import { CHECKIN_INTERVAL_DAYS } from "@/lib/constants";
 import { getPlayerGates, type DueMatch, type DueReview } from "@/lib/player-gates";
 import { BottomNav } from "@/components/BottomNav";
 import { CheckinModal } from "@/components/CheckinModal";
-import { ReviewGate } from "@/components/ReviewGate";
-import { MatchGate } from "@/components/MatchGate";
+import { PlayerGates } from "@/components/PlayerGates";
 import { PushPrompt } from "@/components/PushPrompt";
 import { InstallPrompt } from "@/components/InstallPrompt";
 import { AnnouncementsBell } from "@/components/messages/AnnouncementsBell";
@@ -94,24 +93,10 @@ export default async function PlayerLayout({ children }: { children: React.React
     // sans créer de conteneur de défilement vertical (contrairement à hidden).
     <div className="ed min-h-dvh w-full overflow-x-clip bg-paper">
       <main className="w-full px-[22px] pb-32 pt-8 sm:px-8 lg:px-16 xl:px-24">{children}</main>
-      {/* les portes bloquantes (0043), une à la fois : le bilan d'abord, puis
-          la feuille de match, puis seulement le check-in */}
-      {dueReview ? (
-        <ReviewGate
-          // une nouvelle porte = un composant neuf (son état « ouvert » est local)
-          key={dueReview.weekStart}
-          weekStart={dueReview.weekStart}
-          weekLabel={dueReview.weekLabel}
-          isCatchUp={dueReview.isCatchUp}
-        />
-      ) : dueMatch ? (
-        <MatchGate
-          key={`${dueMatch.eventId}:${dueMatch.date}`}
-          eventId={dueMatch.eventId}
-          weekStart={dueMatch.weekStart}
-          date={dueMatch.date}
-          dateLabel={dueMatch.dateLabel}
-        />
+      {/* les portes (0043/0044), une à la fois : le bilan d'abord, puis la
+          feuille de match ; le check-in seulement quand rien n'attend */}
+      {dueReview || dueMatch ? (
+        <PlayerGates review={dueReview} match={dueMatch} />
       ) : (
         checkinQuestion && <CheckinModal question={checkinQuestion} />
       )}

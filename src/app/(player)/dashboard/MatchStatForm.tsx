@@ -10,12 +10,15 @@ export function MatchStatForm({
   records,
   onSuccess,
   initialDate,
+  minDate,
 }: {
   /** records actuels : sert à détecter un record battu à la saisie */
   records?: MatchRecords;
   onSuccess?: (beaten: RecordKey[]) => void;
-  /** date pré-remplie (le match du planning qui attend sa feuille) */
+  /** date pré-remplie (le week-end qui attend sa feuille) */
   initialDate?: string;
+  /** date la plus ancienne acceptée (le samedi du week-end) */
+  minDate?: string;
 }) {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -89,15 +92,13 @@ export function MatchStatForm({
     <form onSubmit={handleSubmit} className="space-y-4" onChange={() => setConfirming(false)}>
       <EdField label="Date du match">
         {/* max = aujourd'hui : un match ne se joue pas dans le futur (validé aussi côté serveur) */}
-        {/* date verrouillée quand c'est LE match du planning qui attend sa
-            feuille : une autre date ne lèverait pas la porte */}
         <EdInput
           name="match_date"
           type="date"
           required
+          min={minDate}
           max={parisNow().date}
           defaultValue={initialDate}
-          readOnly={Boolean(initialDate)}
         />
       </EdField>
 

@@ -2,6 +2,14 @@ import type { EventType, HabitColor, PlayerAvailability, SessionPole } from "./t
 
 export const APP_NAME = "VPF — Centre de Performance";
 
+/**
+ * Première semaine (lundi) couverte par les rituels bloquants (0043/0044) :
+ * bilan du dimanche, feuille de match du week-end. Rien n'est réclamé pour
+ * les semaines d'avant — on ne bloque pas sur ce qui n'a pas été rempli
+ * avant la règle.
+ */
+export const GATES_FROM_WEEK = "2026-10-12";
+
 export const EVENT_TYPE_LABELS: Record<EventType, string> = {
   entrainement_club: "Entraînement club",
   match: "Match",

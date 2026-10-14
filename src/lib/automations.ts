@@ -76,22 +76,12 @@ export async function alreadySent(
   return new Set((data ?? []).map((r) => `${r.user_id}|${r.ref_key}`));
 }
 
-/** « samedi 18 octobre » — le jour d'un match, pour un message au joueur. */
-export function matchDayLabel(date: string): string {
-  return new Date(`${date}T12:00:00`).toLocaleDateString("fr-FR", {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-    timeZone: "Europe/Paris",
-  });
-}
-
 export function reviewReminderBody(firstName: string): string {
   const prenom = firstName.trim() || "toi";
   return `Salut ${prenom} ! C'est l'heure du bilan de la semaine 📝 Ouvre l'app : ce que tu as bien fait, ce que tu veux améliorer, et comment va ton corps. Deux minutes, et ton coach te répond.`;
 }
 
-export function matchSheetBody(firstName: string, date: string): string {
+export function matchWeekendBody(firstName: string): string {
   const prenom = firstName.trim() || "toi";
-  return `Salut ${prenom} ! Ton match de ${matchDayLabel(date)} est passé : remplis ta feuille de match dans l'app (minutes, tirs, lancers francs). Ça nourrit tes records et ton suivi 🏀`;
+  return `Salut ${prenom} ! C'est le week-end : si tu as joué, remplis ta feuille de match dans l'app (minutes, tirs, lancers francs), ça nourrit tes records et ton suivi 🏀 Match demain ou pas de match ? Dis-le-nous dans l'app, c'est un tap.`;
 }

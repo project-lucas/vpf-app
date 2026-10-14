@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { ClipboardList } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { WeeklyReviewForm } from "@/components/planning/WeeklyReviewForm";
@@ -15,16 +14,16 @@ export function ReviewGate({
   weekStart,
   weekLabel,
   isCatchUp,
+  onDone,
 }: {
   weekStart: string;
   weekLabel: string;
   isCatchUp: boolean;
+  onDone: () => void;
 }) {
-  const [open, setOpen] = useState(true);
-
   return (
     <Modal
-      open={open}
+      open
       title={
         <span className="inline-flex items-center gap-2">
           <ClipboardList size={22} className="text-orange" />
@@ -44,7 +43,7 @@ export function ReviewGate({
         initialHealthStatus=""
         initialHealthNote=""
         weekStart={weekStart}
-        onDone={() => setOpen(false)}
+        onDone={onDone}
       />
     </Modal>
   );

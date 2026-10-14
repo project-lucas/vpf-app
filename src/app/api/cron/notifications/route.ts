@@ -6,16 +6,15 @@ import { EVENT_TYPE_LABELS } from "@/lib/constants";
 import { canUseHygiene, toOffer } from "@/lib/offers";
 import {
   alreadySent,
-  matchSheetBody,
+  matchWeekendBody,
   postSystemMessage,
   reviewReminderBody,
 } from "@/lib/automations";
 import {
-  matchesAwaitingSheet,
-  matchOccurrencesDue,
+  MATCH_ASK_HOUR,
+  matchExpectedFor,
   REVIEW_DUE_HOUR,
   reviewExpectedFor,
-  type MatchEventRow,
 } from "@/lib/player-gates";
 import { logStaffAction } from "@/lib/journal";
 import type { EventType } from "@/lib/types";
@@ -43,9 +42,10 @@ export const maxDuration = 60;
  * 5. Lundi 12h-20h : récap push de la semaine écoulée.
  * 6. Tous les soirs à 20h : rappel de la mission d'hygiène aux joueurs de
  *    l'offre formation qui n'ont pas encore noté leur journée.
- * 7. Après un match du planning (type « match », 0043) : feuille de match à
- *    remplir — message « VPF » dans le fil + push, une fois par match, tant
- *    que ni la feuille ni « je n'ai pas joué » ne sont posés.
+ * 7. Samedi 18h : feuille de match du week-end (0044) — message « VPF » dans
+ *    le fil + push aux joueurs attendus qui n'ont ni feuille ni réponse ;
+ *    le pop-up côté joueur prend le relais (feuille, pas joué, match demain,
+ *    pas de match).
  *
  * La table notification_log (contrainte UNIQUE) garantit qu'aucun rappel
  * n'est envoyé deux fois, même si deux exécutions se chevauchent.
@@ -100,7 +100,6 @@ export async function GET(request: NextRequest) {
         notificationsEnabled: profile?.notifications_enabled ?? false,
       };
     });
-  const playerById = new Map(players.map((p) => [p.id, p]));
   const notifiablePlayerIds = new Set(
     players.filter((p) => p.notificationsEnabled).map((p) => p.id)
   );
@@ -391,59 +390,52 @@ export async function GET(request: NextRequest) {
   }
 
   // -------------------------------------------------------------------------
-  // 7. Feuille de match (0043) : après chaque match du planning (coup d'envoi
-  //    + durée + marge), un message « VPF » dans le fil + push, une seule fois
-  //    par occurrence — tant que ni la feuille ni « je n'ai pas joué » ne sont
-  //    posés. Mêmes règles que la porte bloquante côté joueur
-  //    (src/lib/player-gates.ts) : c'est elle qui tranche, pas la route.
+  // 7. Feuille de match du week-end (0044) : samedi dès 18h, un message « VPF »
+  //    dans le fil + push aux joueurs attendus qui n'ont ni feuille de match ce
+  //    week-end ni réponse (pas joué, match demain, pas de match). Mêmes
+  //    règles que le pop-up côté joueur (src/lib/player-gates.ts).
   // -------------------------------------------------------------------------
-  if (players.length > 0) {
-    const { data: matchEvents } = await admin
-      .from("planned_events")
-      .select("id, player_id, weekday, event_time, duration_minutes, created_at")
-      .eq("event_type", "match")
-      .in(
-        "player_id",
-        players.map((p) => p.id)
-      );
-    const occurrences = matchOccurrencesDue((matchEvents ?? []) as MatchEventRow[], now, [
-      prevWeekStart,
-      weekStart,
-    ]);
-    if (occurrences.length > 0) {
-      const ids = [...new Set(occurrences.map((o) => o.playerId))];
-      const eventIds = [...new Set(occurrences.map((o) => o.eventId))];
-      const [{ data: sheets }, { data: skips }] = await Promise.all([
+  if (
+    now.isoWeekday === 6 &&
+    now.minutesOfDay >= MATCH_ASK_HOUR * 60 &&
+    now.minutesOfDay < (MATCH_ASK_HOUR + 3) * 60 &&
+    players.length > 0
+  ) {
+    const saturday = addDays(weekStart, 5);
+    const sunday = addDays(weekStart, 6);
+    const expected = players.filter((p) => matchExpectedFor(p.createdDate, weekStart, now.date));
+    const ids = expected.map((p) => p.id);
+    if (ids.length > 0) {
+      const [{ data: sheets }, { data: answers }] = await Promise.all([
         admin
           .from("match_stats")
-          .select("player_id, match_date")
+          .select("player_id")
           .in("player_id", ids)
-          .gte("match_date", prevWeekStart),
-        admin
-          .from("event_completions")
-          .select("planned_event_id, week_start")
-          .in("planned_event_id", eventIds)
-          .in("week_start", [prevWeekStart, weekStart])
-          .eq("status", "not_done")
-          .eq("auto_filled", false),
+          .gte("match_date", saturday)
+          .lte("match_date", sunday),
+        admin.from("match_weekend_answers").select("player_id").eq("week_start", weekStart).in("player_id", ids),
       ]);
-      const waiting = matchesAwaitingSheet(occurrences, sheets ?? [], skips ?? []).map((o) => ({
-        ...o,
-        refKey: `match:${o.eventId}:${o.date}`,
-      }));
-      const sent = await alreadySent("match_sheet", waiting);
-      for (const o of waiting) {
-        const player = playerById.get(o.playerId);
-        if (!player || sent.has(`${o.playerId}|${o.refKey}`)) continue;
+      const settled = new Set([
+        ...(sheets ?? []).map((s) => s.player_id as string),
+        ...(answers ?? []).map((a) => a.player_id as string),
+      ]);
+      const refKey = `weekend:${weekStart}`;
+      const targets = expected.filter((p) => !settled.has(p.id));
+      const sent = await alreadySent(
+        "match_weekend",
+        targets.map((p) => ({ playerId: p.id, refKey }))
+      );
+      for (const player of targets) {
+        if (sent.has(`${player.id}|${refKey}`)) continue;
         const posted = await postSystemMessage({
-          playerId: o.playerId,
-          kind: "match_sheet",
-          refKey: o.refKey,
-          body: matchSheetBody(player.firstName, o.date),
+          playerId: player.id,
+          kind: "match_weekend",
+          refKey,
+          body: matchWeekendBody(player.firstName),
           push: player.notificationsEnabled
             ? {
                 title: "Ta feuille de match 🏀",
-                body: "Ton match est passé : remplis tes stats, une minute suffit.",
+                body: "Tu as joué ce week-end ? Remplis tes stats, une minute suffit.",
                 url: "/planning",
                 kind: "reminder",
               }
@@ -457,7 +449,7 @@ export async function GET(request: NextRequest) {
           actorKind: "system",
           playerId: null,
           action: "auto_match_reminder",
-          summary: `a demandé leur feuille de match à ${results.matchSheetReminders} joueur${
+          summary: `a demandé leur feuille de match du week-end à ${results.matchSheetReminders} joueur${
             results.matchSheetReminders > 1 ? "s" : ""
           }`,
         });

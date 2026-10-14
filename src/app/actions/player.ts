@@ -12,6 +12,7 @@ import {
   REVIEW_HEALTH_LABELS,
   REVIEW_HEALTH_NOTE_MAX_LENGTH,
 } from "@/lib/constants";
+import { MATCH_WEEKEND_ANSWERS, type MatchWeekendAnswer } from "@/lib/player-gates";
 import type { ActionResult, CheckinQuestion, ReviewHealthStatus } from "@/lib/types";
 
 /** Saisie d'une feuille de match — immuable ensuite (aucune modification/suppression). */
@@ -337,52 +338,27 @@ export async function saveChallengeScore(
 // (voir setSessionVisibility dans actions/coach.ts et la migration 0013).
 
 /**
- * « Je n'ai pas joué ce match » (0043) : la seule sortie du pop-up de feuille
- * de match sans saisie. Pointe le match comme non joué, de la main du joueur
- * (`auto_filled = false`, à la différence d'un oubli matérialisé par le cron)
- * — c'est ce qui éteint le rappel et la porte, et ce que le coach lit dans le
- * planning. Lecture RLS d'abord (le match est bien le sien), écriture en
- * service_role : le grant client ne couvre pas `auto_filled`.
+ * La réponse du joueur au pop-up de feuille de match du week-end (0044) :
+ * « je n'ai pas joué », « mon match est demain », « pas de match ce
+ * week-end ». Une ligne par semaine, la réponse du dimanche remplace celle du
+ * samedi. Seule la semaine en cours se répond : c'est le week-end qu'on
+ * demande, pas après.
  */
-export async function skipMatch(eventId: string, weekStart: string): Promise<ActionResult> {
+export async function answerMatchWeekend(
+  weekStart: string,
+  answer: MatchWeekendAnswer
+): Promise<ActionResult> {
+  if (!MATCH_WEEKEND_ANSWERS.includes(answer)) return { ok: false, error: "Réponse invalide." };
   const supabase = await createClient();
   const user = await getCachedUser();
   if (!user) return { ok: false, error: "Session expirée." };
-
-  const thisWeek = currentWeekStart();
-  if (weekStart !== thisWeek && weekStart !== addDays(thisWeek, -7)) {
-    return { ok: false, error: "Cette semaine n'est plus modifiable." };
-  }
-  const { data: event } = await supabase
-    .from("planned_events")
-    .select("*")
-    .eq("id", eventId)
-    .eq("player_id", user.id)
-    .eq("event_type", "match")
-    .maybeSingle();
-  if (!event) return { ok: false, error: "Match introuvable." };
-  if (addDays(weekStart, event.weekday - 1) > parisNow().date) {
-    return { ok: false, error: "Ce match n'a pas encore eu lieu." };
+  if (weekStart !== currentWeekStart()) {
+    return { ok: false, error: "Ce week-end n'est plus à renseigner." };
   }
 
-  const admin = createAdminClient();
-  const { error } = await admin.from("event_completions").upsert(
-    {
-      player_id: user.id,
-      planned_event_id: eventId,
-      week_start: weekStart,
-      event_type: event.event_type,
-      weekday: event.weekday,
-      event_time: event.event_time,
-      duration_minutes: event.duration_minutes ?? null,
-      custom_name: event.custom_name ?? "",
-      custom_icon: event.custom_icon ?? "",
-      custom_color: event.custom_color ?? "",
-      status: "not_done",
-      auto_filled: false,
-    },
-    { onConflict: "planned_event_id,week_start" }
-  );
+  const { error } = await supabase
+    .from("match_weekend_answers")
+    .upsert({ player_id: user.id, week_start: weekStart, answer }, { onConflict: "player_id,week_start" });
   if (error) return { ok: false, error: "Enregistrement impossible." };
 
   revalidatePath("/planning");
