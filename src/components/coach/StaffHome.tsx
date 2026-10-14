@@ -467,15 +467,25 @@ export function StaffHome({
         <button
           type="button"
           onClick={() => setPanelOpen(true)}
-          className="inline-flex min-h-11 items-center gap-2.5 rounded-full bg-navy-800 py-1.5 pl-1.5 pr-4 text-[13px] font-bold text-white shadow-sm transition-colors hover:bg-navy-700"
+          className="group inline-flex min-h-11 items-center gap-3 rounded-2xl border border-sand bg-white py-2 pl-2 pr-3.5 text-left text-navy-900 shadow-[0_8px_20px_-14px_rgba(15,42,74,0.4)] transition-shadow hover:shadow-[0_12px_26px_-14px_rgba(15,42,74,0.55)]"
         >
-          <JarvisAvatar size={34} pose="happy" />
-          Jarvis
-          {recos.length > 0 && (
-            <span className="rounded-full bg-accent px-2 py-0.5 text-[10.5px] font-extrabold text-white">
-              {recos.length} reco{recos.length > 1 ? "s" : ""}
+          <JarvisAvatar bare pose="happy" size={40} />
+          <span className="flex flex-col leading-tight">
+            <span className="text-[10px] font-extrabold uppercase tracking-[0.1em] text-accent">
+              Jarvis · ce matin
             </span>
-          )}
+            <span className="text-[13px] font-extrabold">
+              {recos.length > 0
+                ? `${recos.length} recommandation${recos.length > 1 ? "s" : ""}`
+                : "Parler à Jarvis"}
+            </span>
+          </span>
+          <ChevronRight
+            size={16}
+            strokeWidth={2.4}
+            aria-hidden
+            className="transition-transform group-hover:translate-x-0.5"
+          />
         </button>
       </header>
 

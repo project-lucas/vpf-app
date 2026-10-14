@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { X } from "lucide-react";
-import { JarvisAvatar, JarvisLoop } from "@/components/coach/JarvisAvatar";
+import { JarvisAvatar } from "@/components/coach/JarvisAvatar";
 import { JarvisChat } from "@/components/coach/JarvisChat";
 
 /** La fiche d'un joueur ouverte : Jarvis parle alors de lui. */
@@ -43,14 +43,15 @@ export function JarvisLauncher({ configured }: { configured: boolean }) {
         </button>
       )}
 
-      {/* flottant en bas à droite, sur tous les onglets */}
+      {/* flottant en bas à droite, sur tous les onglets : Jarvis souriant,
+          tourné vers la gauche, donc vers l'intérieur de l'écran */}
       <button
         type="button"
         onClick={() => setOpen(true)}
         aria-label="Parler à Jarvis"
-        className="jarvis-float bottom-above-nav fixed right-4 z-40 flex h-[68px] w-[68px] items-center justify-center rounded-full bg-navy-900 ring-2 ring-accent/70 shadow-[0_10px_30px_-6px_rgba(10,29,51,0.55)] lg:bottom-8 lg:right-8 lg:h-[104px] lg:w-[104px] lg:ring-[3px]"
+        className="jarvis-float bottom-above-nav fixed right-4 z-40 flex h-16 w-16 items-center justify-center rounded-full border border-sand bg-white shadow-[0_12px_30px_-10px_rgba(10,29,51,0.45)] transition-shadow hover:shadow-[0_16px_36px_-10px_rgba(10,29,51,0.55)] lg:bottom-8 lg:right-8 lg:h-24 lg:w-24"
       >
-        <JarvisLoop className="h-[60px] w-[60px] lg:h-[92px] lg:w-[92px]" />
+        <JarvisAvatar bare pose="happy-left" size={0} className="h-[52px] w-[52px] lg:h-[80px] lg:w-[80px]" />
       </button>
 
       {open && (

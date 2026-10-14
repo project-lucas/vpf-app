@@ -1,97 +1,70 @@
-"use client";
-
-import { useEffect, useRef } from "react";
-
 /**
  * Les visuels de Jarvis : la mascotte VPF (casque bleu marine, lignes orange
- * de ballon, visière noire, yeux bleu glacier), images dans `public/jarvis/`.
+ * de ballon, visière noire, yeux bleu glacier), images détourées dans
+ * `public/jarvis/`. Pas de vidéo : une boucle animée grésillait à l'écran.
  *
- * - `JarvisAvatar` : la tête fixe, partout où Jarvis parle (barre latérale,
- *   volets, discussion). `pose="happy"` = l'illustration souriante de trois
- *   quarts, qui habille le bouton des recommandations. `thinking` la fait
- *   pulser pendant qu'il travaille.
- * - `JarvisLoop` : la tête animée en boucle (vidéo muette de 5 s), pour le
- *   bouton flottant. L'image fixe sert d'affiche et de secours ; elle reste
- *   seule si l'utilisateur demande moins de mouvement.
+ * - `pose="default"` : la tête de face, partout où Jarvis parle (barre
+ *   latérale, volets, discussion).
+ * - `pose="happy"` : la tête souriante de trois quarts (bouton de l'accueil).
+ * - `pose="happy-left"` : la même, tournée vers la gauche ; le bouton
+ *   flottant est en bas à droite, Jarvis regarde donc vers l'intérieur.
+ *
+ * Par défaut la tête est posée dans un rond crème (lisible sur fond navy) ;
+ * `bare` la laisse flotter, pour un fond blanc ou crème. `thinking` la fait
+ * pulser pendant qu'il travaille.
  */
 const SRC = {
-  default: "/jarvis/jarvis.webp",
-  happy: "/jarvis/jarvis-reco.webp",
+  default: "/jarvis/jarvis-head.webp",
+  happy: "/jarvis/jarvis-smile.webp",
+  "happy-left": "/jarvis/jarvis-smile-left.webp",
 } as const;
 
 export function JarvisAvatar({
   size = 32,
   thinking = false,
   pose = "default",
+  bare = false,
   className = "",
 }: {
   size?: number;
   thinking?: boolean;
   pose?: keyof typeof SRC;
+  bare?: boolean;
   className?: string;
 }) {
-  return (
+  const img = (
     // eslint-disable-next-line @next/next/no-img-element -- petite image statique, pas besoin de l'optimiseur
     <img
       src={SRC[pose]}
-      width={size}
-      height={size}
-      alt="Jarvis"
+      alt=""
       draggable={false}
-      className={`shrink-0 select-none rounded-full bg-[#f5efe2] object-cover ${
-        thinking ? "jarvis-thinking" : ""
-      } ${className}`}
-      style={{ width: size, height: size }}
+      className="pointer-events-none h-full w-full select-none object-contain"
     />
   );
-}
+  const motion = thinking ? "jarvis-thinking" : "";
+  const sizeStyle = size ? { width: size, height: size } : undefined;
 
-export function JarvisLoop({ size, className = "" }: { size?: number; className?: string }) {
-  const ref = useRef<HTMLVideoElement>(null);
-
-  useEffect(() => {
-    const video = ref.current;
-    if (!video) return;
-    // React ne rend pas l'attribut `muted` côté serveur : sans ces deux
-    // lignes, le navigateur voit une vidéo sonore et refuse l'autoplay
-    video.defaultMuted = true;
-    video.muted = true;
-    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const apply = () => {
-      if (reduce.matches) {
-        video.pause();
-        video.currentTime = 0;
-      } else {
-        // un refus d'autoplay (économie d'énergie) laisse simplement l'affiche
-        video.play().catch(() => {});
-      }
-    };
-    apply();
-    reduce.addEventListener("change", apply);
-    return () => reduce.removeEventListener("change", apply);
-  }, []);
+  if (bare) {
+    return (
+      <span
+        role="img"
+        aria-label="Jarvis"
+        className={`inline-block shrink-0 ${motion} ${className}`}
+        style={sizeStyle}
+      >
+        {img}
+      </span>
+    );
+  }
 
   return (
-    <video
-      ref={ref}
-      poster={SRC.default}
-      muted
-      autoPlay
-      loop
-      playsInline
-      preload="auto"
-      // pas de bouton « image dans l'image » ni de diffusion au survol : la
-      // vidéo est un décor, le clic appartient au bouton qui la porte
-      disablePictureInPicture
-      disableRemotePlayback
-      controls={false}
-      tabIndex={-1}
-      aria-hidden
-      className={`pointer-events-none shrink-0 select-none rounded-full bg-[#f5efe2] object-cover ${className}`}
-      style={size ? { width: size, height: size } : undefined}
+    <span
+      role="img"
+      aria-label="Jarvis"
+      className={`inline-flex shrink-0 items-center justify-center rounded-full bg-[#f5efe2] ${motion} ${className}`}
+      style={{ ...sizeStyle, padding: Math.max(1, Math.round(size * 0.06)) }}
     >
-      <source src="/jarvis/jarvis-loop.webm" type="video/webm" />
-      <source src="/jarvis/jarvis-loop.mp4" type="video/mp4" />
-    </video>
+      {img}
+    </span>
   );
 }
