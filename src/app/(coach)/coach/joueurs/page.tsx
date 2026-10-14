@@ -9,8 +9,9 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { DisclosureBar } from "@/components/ui/DisclosureBar";
 import { CoachInvitations } from "@/components/coach/CoachInvitations";
-import { PlayersList, type PlayerInboxSummary, type PoleProgress } from "./PlayersList";
-import type { Invitation, SessionPole } from "@/lib/types";
+import { getGroupsWithStaff } from "@/lib/groups";
+import { PlayersList, type PlayerInboxSummary } from "./PlayersList";
+import type { Invitation } from "@/lib/types";
 
 export const metadata = { title: "Joueurs — VPF" };
 export const dynamic = "force-dynamic";
@@ -34,9 +35,10 @@ function summarize(threads: InboxThread[]): PlayerInboxSummary | null {
  * La liste unique des joueurs — c'est aussi la boîte de réception : la vue
  * Messages s'ouvre en premier, avec le dernier message de chacun ; cliquer
  * une ligne ouvre la conversation dans la fiche (cf. PlayersList).
- * L'invitation d'un joueur, geste rare et réservé aux admins, est repliée
- * derrière un bouton en bas de page — un coach n'invite pas : c'est un admin
- * qui lui affecte ses joueurs (depuis ici ou depuis sa fiche Staff).
+ * L'invitation d'un joueur, réservée aux admins, est repliée derrière un
+ * bouton en tête, au-dessus de la liste — un coach n'invite pas : c'est un
+ * admin qui lui affecte ses joueurs. Le panneau ne garde que les liens en
+ * attente (les invitations utilisées ne servent plus à rien ici).
  *
  * C'est le seul écran staff SANS filtre `coach_id` : un admin y voit tout le
  * club (perf et formation), ses propres joueurs regroupés en tête. Un coach,
@@ -78,33 +80,9 @@ export default async function CoachPlayersPage() {
     }
   }
 
-  const usedByIds = ((invitations ?? []) as Invitation[])
-    .map((i) => i.used_by)
-    .filter((v): v is string => Boolean(v));
-
   // Tout ce que les vues affichent, en une salve : indépendant les uns des
   // autres, il n'y a aucune raison d'attendre.
-  const [
-    { data: usedByProfiles },
-    { data: assignments },
-    unreadPlayerIds,
-    health,
-    week,
-    threads,
-  ] = await Promise.all([
-    usedByIds.length === 0
-      ? Promise.resolve({ data: [] })
-      : supabase.from("profiles").select("id, first_name, last_name").in("id", usedByIds),
-    // séances visibles (cochées) et faites, pour chaque joueur
-    playerIds.length === 0
-      ? Promise.resolve({ data: [] })
-      : supabase
-          .from("session_assignments")
-          .select(
-            "player_id, session:library_sessions!inner(pole), completion:session_completions(status)"
-          )
-          .in("player_id", playerIds)
-          .is("removed_at", null),
+  const [unreadPlayerIds, health, week, threads, groups] = await Promise.all([
     user
       ? getStaffUnreadPlayerIds(supabase, user.id, myPlayerIds)
       : Promise.resolve(new Set<string>()),
@@ -115,35 +93,17 @@ export default async function CoachPlayersPage() {
     user
       ? getStaffInbox(supabase, user.id, isAdmin, playerIds)
       : Promise.resolve([] as InboxThread[]),
+    getGroupsWithStaff(supabase),
   ]);
 
-  const usedByNames = new Map(
-    (usedByProfiles ?? []).map((p) => [p.id, `${p.first_name} ${p.last_name}`.trim()])
-  );
   const invitationRows: (Invitation & { used_by_name: string | null })[] = (
     (invitations ?? []) as Invitation[]
-  ).map((inv) => ({
-    ...inv,
-    used_by_name: inv.used_by ? (usedByNames.get(inv.used_by) ?? "Joueur") : null,
-  }));
+  ).map((inv) => ({ ...inv, used_by_name: null }));
 
-  const progressByPlayer = new Map<string, PoleProgress>();
-  for (const a of assignments ?? []) {
-    const session = Array.isArray(a.session) ? a.session[0] : a.session;
-    const completion = Array.isArray(a.completion) ? (a.completion[0] ?? null) : a.completion;
-    const pole = session?.pole as SessionPole | undefined;
-    if (!pole) continue;
-    const progress =
-      progressByPlayer.get(a.player_id) ??
-      ({
-        basket: { done: 0, total: 0 },
-        physique: { done: 0, total: 0 },
-        routine: { done: 0, total: 0 },
-      } satisfies PoleProgress);
-    progress[pole].total += 1;
-    if (completion?.status === "done") progress[pole].done += 1;
-    progressByPlayer.set(a.player_id, progress);
-  }
+  // les filtres de groupe : seulement ceux qui ont des joueurs dans la liste
+  const groupChips = groups
+    .filter((g) => players.some((p) => p.group_id === g.id))
+    .map((g) => ({ id: g.id, name: g.name }));
 
   // la boîte de réception, joueur par joueur
   const threadsByPlayer = new Map<string, InboxThread[]>();
@@ -161,48 +121,10 @@ export default async function CoachPlayersPage() {
         subtitle={`${players.length} joueur${players.length > 1 ? "s" : ""} actif${players.length > 1 ? "s" : ""}${unreadCount > 0 ? ` · ${unreadCount} message${unreadCount > 1 ? "s" : ""} en attente` : ""} · triés par urgence`}
       />
 
-      {players.length === 0 ? (
-        <EmptyState>
-          {isAdmin
-            ? "Aucun joueur actif. Génère un lien d'invitation ci-dessous et envoie-le à ton joueur."
-            : "Aucun joueur actif. Un admin t'affectera tes joueurs depuis l'onglet Staff."}
-        </EmptyState>
-      ) : (
-        <PlayersList
-          recosByPlayer={recosByPlayer}
-          briefConfigured={isMorningBriefConfigured()}
-          players={players.map((p) => {
-            const h = health.get(p.id);
-            const inbox = summarize(threadsByPlayer.get(p.id) ?? []);
-            const isMine = myIds.has(p.id);
-            return {
-              id: p.id,
-              first_name: p.first_name,
-              last_name: p.last_name,
-              season_goal: p.season_goal,
-              offer: p.offer,
-              availability: p.availability,
-              discipline: p.discipline,
-              progress: progressByPlayer.get(p.id) ?? null,
-              whatsapp_number: p.whatsapp_number,
-              group_id: p.group_id,
-              // un fil non lu que la boîte ne couvre pas (relais d'un collègue)
-              // compte quand même : la pastille sait, la vue Messages montre
-              has_unread_messages:
-                isMine && (unreadPlayerIds.has(p.id) || Boolean(inbox?.hasUnread)),
-              energy: h?.energy ?? null,
-              pain: h?.pain ?? null,
-              week: week.get(p.id) ?? null,
-              inbox,
-            };
-          })}
-        />
-      )}
-
       {/* Inviter : admin uniquement (un coach classique n'invite pas) */}
       {user && isAdmin && (
         <DisclosureBar
-          className="mt-6"
+          className="mb-4"
           // liste vide : on ouvre d'entrée, inviter est la seule chose à faire
           initialKey={players.length === 0 ? "inviter" : null}
           items={[
@@ -222,6 +144,44 @@ export default async function CoachPlayersPage() {
           ]}
         />
       )}
+      {players.length === 0 ? (
+        <EmptyState>
+          {isAdmin
+            ? "Aucun joueur actif. Génère un lien d'invitation ci-dessus et envoie-le à ton joueur."
+            : "Aucun joueur actif. Un admin t'affectera tes joueurs depuis l'onglet Staff."}
+        </EmptyState>
+      ) : (
+        <PlayersList
+          groups={groupChips}
+          recosByPlayer={recosByPlayer}
+          briefConfigured={isMorningBriefConfigured()}
+          players={players.map((p) => {
+            const h = health.get(p.id);
+            const inbox = summarize(threadsByPlayer.get(p.id) ?? []);
+            const isMine = myIds.has(p.id);
+            return {
+              id: p.id,
+              first_name: p.first_name,
+              last_name: p.last_name,
+              season_goal: p.season_goal,
+              offer: p.offer,
+              availability: p.availability,
+              discipline: p.discipline,
+              whatsapp_number: p.whatsapp_number,
+              group_id: p.group_id,
+              // un fil non lu que la boîte ne couvre pas (relais d'un collègue)
+              // compte quand même : la pastille sait, la vue Messages montre
+              has_unread_messages:
+                isMine && (unreadPlayerIds.has(p.id) || Boolean(inbox?.hasUnread)),
+              energy: h?.energy ?? null,
+              pain: h?.pain ?? null,
+              week: week.get(p.id) ?? null,
+              inbox,
+            };
+          })}
+        />
+      )}
+
     </>
   );
 }

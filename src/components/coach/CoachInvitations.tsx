@@ -6,7 +6,6 @@ import { formatDateFr } from "@/lib/dates";
 import { DEFAULT_OFFER, OFFER_HINTS, OFFER_LABELS, PLAYER_OFFERS, toOffer } from "@/lib/offers";
 import { Button } from "@/components/ui/Button";
 import { Card, CardTitle } from "@/components/ui/Card";
-import { Badge } from "@/components/ui/Badge";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { IconButton } from "@/components/ui/IconButton";
 import { Check } from "lucide-react";
@@ -76,7 +75,6 @@ export function CoachInvitations({
   }
 
   const pending = invitations.filter((i) => !i.used_at);
-  const used = invitations.filter((i) => i.used_at);
 
   return (
     <Card>
@@ -171,33 +169,6 @@ export function CoachInvitations({
         </div>
       )}
 
-      {used.length > 0 && (
-        <div className="mt-4">
-          <p className="mb-1.5 text-xs font-bold uppercase tracking-wide text-navy-400">
-            Utilisées ({used.length})
-          </p>
-          <div className="space-y-2">
-            {used.map((inv) => (
-              <div
-                key={inv.id}
-                className="flex items-center justify-between gap-2 rounded-xl bg-navy-50 px-3 py-2.5"
-              >
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-bold text-navy-900">
-                    {inv.used_by_name ?? inv.player_label ?? "Joueur"}
-                  </p>
-                  {inv.used_at && (
-                    <p className="text-xs text-navy-400">
-                      Inscrite le {formatDateFr(inv.used_at.slice(0, 10))}
-                    </p>
-                  )}
-                </div>
-                <Badge tone="success">Utilisée</Badge>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
     </Card>
   );
 }
