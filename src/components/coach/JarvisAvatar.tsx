@@ -52,6 +52,10 @@ export function JarvisLoop({ size = 58, className = "" }: { size?: number; class
   useEffect(() => {
     const video = ref.current;
     if (!video) return;
+    // React ne rend pas l'attribut `muted` côté serveur : sans ces deux
+    // lignes, le navigateur voit une vidéo sonore et refuse l'autoplay
+    video.defaultMuted = true;
+    video.muted = true;
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)");
     const apply = () => {
       if (reduce.matches) {
@@ -74,6 +78,7 @@ export function JarvisLoop({ size = 58, className = "" }: { size?: number; class
       height={size}
       poster={SRC.default}
       muted
+      autoPlay
       loop
       playsInline
       preload="auto"
