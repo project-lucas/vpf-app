@@ -30,7 +30,7 @@ import { formatPercent } from "@/lib/discipline";
 import { disciplineTrend } from "@/lib/staff-overview";
 import { ScoringChart } from "@/components/coach/ScoringChart";
 import { WeekDaysCard, type DayDetail, type DayItem } from "@/components/coach/WeekDaysCard";
-import { EVENT_TYPE_LABELS } from "@/lib/constants";
+import { EVENT_TYPE_LABELS, formatDuration } from "@/lib/constants";
 import { JarvisPlayerButton } from "@/components/coach/JarvisPlayerBox";
 import { getBriefsForDate, isMorningBriefConfigured, type BriefRecommendation } from "@/lib/briefs";
 import { Tabs } from "@/components/ui/Tabs";
@@ -371,8 +371,16 @@ export default async function PlayerDetailPage({
         const c = weekCompletions.find((x) => x.planned_event_id === e.id);
         return {
           label: (e.event_type === "autre" && e.custom_name) || EVENT_TYPE_LABELS[e.event_type],
-          when: e.event_time.slice(0, 5),
+          when: `${e.event_time.slice(0, 5)} · ${formatDuration(e.duration_minutes)}`,
           status: c ? (c.status === "done" ? "done" : "not_done") : d.day < todayWeekday ? "not_done" : "todo",
+          event: {
+            id: e.id,
+            type: e.event_type,
+            weekday: e.weekday,
+            time: e.event_time.slice(0, 5),
+            duration: e.duration_minutes,
+            customName: e.custom_name ?? null,
+          },
         };
       });
     const sessions = allAssignments
@@ -557,7 +565,7 @@ export default async function PlayerDetailPage({
                   />
                 </Card>
                 <div className="space-y-5">
-                  <WeekDaysCard days={weekDetail} today={todayWeekday} />
+                  <WeekDaysCard days={weekDetail} today={todayWeekday} playerId={id} />
                   <Card>
                     <CardTitle>Scoring</CardTitle>
                     {matchStats.length === 0 ? (
