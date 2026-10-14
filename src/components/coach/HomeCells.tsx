@@ -1,10 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
-import { ArrowDownRight, ArrowRight, ArrowUpRight, Phone, PhoneCall } from "lucide-react";
+import { ArrowDownRight, ArrowRight, ArrowUpRight, Check, Phone, PhoneCall } from "lucide-react";
+import { ReviewReplyBox } from "@/components/coach/ReviewReplyBox";
+import { REVIEW_HEALTH_LABELS } from "@/lib/constants";
 import { setKickoffDone } from "@/app/actions/home";
 import { formatDateFr } from "@/lib/dates";
-import type { MatchPoint, Trend, WeekCell } from "@/lib/staff-overview";
+import type { HomeRow, MatchPoint, Trend, WeekCell } from "@/lib/staff-overview";
+
+type ReviewDetail = NonNullable<HomeRow["reviewDetail"]>;
 import type { PlayerOffer } from "@/lib/types";
 
 /** P en noir (perf), F en bleu (formation). */
@@ -205,6 +209,71 @@ export function WeekHistoryCell({ cell }: { cell: WeekCell }) {
         title={cell.review ? "Bilan rendu" : "Pas de bilan"}
         className={`h-1.5 w-1.5 rounded-full ${cell.review ? "bg-navy-800" : "bg-navy-100"}`}
       />
+    </span>
+  );
+}
+
+/**
+ * Le bilan dans le tableau : un tiret s'il n'y en a pas, « Fait » en vert
+ * sinon (avec un point orange tant qu'il n'a pas de réponse). Un clic ouvre
+ * le bilan dans une petite bulle, où l'on peut répondre sans changer de page.
+ */
+export function ReviewCell({ review }: { review: ReviewDetail | null }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLSpanElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    window.addEventListener("mousedown", onDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("mousedown", onDown);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  if (!review) return <span className="text-xs text-navy-300">—</span>;
+  const replied = Boolean(review.coachReply.trim());
+  const health = review.healthStatus ? REVIEW_HEALTH_LABELS[review.healthStatus] : null;
+  return (
+    <span ref={ref} className="relative inline-block">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        title={replied ? "Bilan rendu et répondu" : "Bilan rendu, pas encore répondu"}
+        className="inline-flex items-center gap-1.5 rounded-md bg-success-soft px-2 py-0.5 text-[11.5px] font-bold text-success hover:brightness-95"
+      >
+        <Check size={12} />
+        Fait
+        {!replied && <span aria-label="à répondre" className="h-1.5 w-1.5 rounded-full bg-accent" />}
+      </button>
+      {open && (
+        <span className="absolute left-0 top-full z-30 mt-1 block w-80 whitespace-normal rounded-xl border border-navy-100 bg-white p-3 text-left shadow-lg">
+          <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.1em] text-navy-400">
+            Bilan · semaine du {formatDateFr(review.weekStart)}
+          </span>
+          <span className="block text-[12.5px] text-navy-700">
+            <b className="text-success">Bien fait : </b>
+            {review.wentWell || "—"}
+          </span>
+          <span className="mt-1 block text-[12.5px] text-navy-700">
+            <b className="text-warning">À améliorer : </b>
+            {review.toImprove || "—"}
+          </span>
+          {health && (
+            <span className="mt-1 block text-[12.5px] text-navy-700">
+              <b className={review.healthStatus === "ok" ? "text-success" : "text-danger"}>Santé : {health}</b>
+              {review.healthNote ? ` — ${review.healthNote}` : ""}
+            </span>
+          )}
+          <ReviewReplyBox reviewId={review.id} initialReply={review.coachReply} />
+        </span>
+      )}
     </span>
   );
 }

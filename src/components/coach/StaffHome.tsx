@@ -13,6 +13,7 @@ import {
   CallLinks,
   KickoffBox,
   OfferMark,
+  ReviewCell,
   ScoreCell,
   Sparkline,
   WeekHistoryCell,
@@ -650,15 +651,7 @@ export function StaffHome({
                     )}
                   </td>
                   <td className="border-b border-navy-50 px-3 py-2 group-hover:bg-navy-50/50">
-                    {r.review === "to-reply" ? (
-                      <Tag tone="red">À répondre{r.reviewHealth && r.reviewHealth !== "ok" ? " · santé" : ""}</Tag>
-                    ) : r.review === "missing" ? (
-                      <Tag tone="amber">Manquant</Tag>
-                    ) : r.review === "replied" ? (
-                      <span className="text-xs text-navy-400">Répondu</span>
-                    ) : (
-                      <span className="text-navy-300">—</span>
-                    )}
+                    <ReviewCell review={r.reviewDetail} />
                   </td>
                   <td className="border-b border-navy-50 px-3 py-2 group-hover:bg-navy-50/50">
                     <ScoreCell matches={r.matches} trend={r.scoreTrend} />

@@ -59,6 +59,16 @@ export interface HomeRow {
   reviewHealth: ReviewHealthStatus | null;
   /** extrait du dernier bilan reçu (bien fait / à améliorer), pour le brief */
   reviewExcerpt: string | null;
+  /** le dernier bilan reçu en entier (bulle de l'accueil), null si aucun */
+  reviewDetail: {
+    id: string;
+    weekStart: string;
+    wentWell: string;
+    toImprove: string;
+    healthStatus: ReviewHealthStatus | null;
+    healthNote: string;
+    coachReply: string;
+  } | null;
   lastExchangeAt: string | null;
   unread: boolean;
   /** porteur du fil qui attend (null = Global) */
@@ -129,6 +139,7 @@ interface ReviewRow {
   health_status: ReviewHealthStatus | null;
   went_well: string | null;
   to_improve: string | null;
+  health_note: string | null;
 }
 
 /**
@@ -204,7 +215,7 @@ export async function getHomeRows(
       getStaffUnreadPlayerIds(supabase, viewerId, ids),
       supabase
         .from("weekly_reviews")
-        .select("id, player_id, week_start, coach_reply, health_status, went_well, to_improve")
+        .select("id, player_id, week_start, coach_reply, health_status, health_note, went_well, to_improve")
         .in("week_start", [weekStart, prevWeekStart])
         .in("player_id", ids)
         .order("week_start", { ascending: false }),
@@ -306,6 +317,17 @@ export async function getHomeRows(
       reviewId: latest?.id ?? null,
       reviewHealth: latest?.health_status ?? null,
       reviewExcerpt: excerpt ? excerpt.slice(0, 240) : null,
+      reviewDetail: latest
+        ? {
+            id: latest.id,
+            weekStart: latest.week_start,
+            wentWell: latest.went_well ?? "",
+            toImprove: latest.to_improve ?? "",
+            healthStatus: latest.health_status ?? null,
+            healthNote: latest.health_note ?? "",
+            coachReply: latest.coach_reply ?? "",
+          }
+        : null,
       lastExchangeAt: last?.at ?? null,
       unread: unreadIds.has(p.id),
       unreadChannel: unread?.channel ?? null,
