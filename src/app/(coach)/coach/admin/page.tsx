@@ -6,21 +6,15 @@ import {
   averageDiscipline,
   getHealthByPlayer,
   getPlayersWithDiscipline,
-  type PlayerDiscipline,
 } from "@/lib/coach-data";
 import { getSessionCoverage, PAIN_ALERT_DAYS, PAIN_ALERT_SCORE } from "@/lib/alerts";
-import { getStaffUnreadPlayerIds } from "@/lib/conversations";
 import { formatPercent } from "@/lib/discipline";
-import { AVAILABILITY_LABELS, INBOX_SCAN_LIMIT, LOW_DISCIPLINE_THRESHOLD } from "@/lib/constants";
-import { OFFER_LABELS } from "@/lib/offers";
+import { INBOX_SCAN_LIMIT, LOW_DISCIPLINE_THRESHOLD } from "@/lib/constants";
 import { addDays, currentWeekStart, formatAgoFr } from "@/lib/dates";
-import type { PlayerOffer } from "@/lib/types";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { StatStrip } from "@/components/ui/StatStrip";
 import { Section } from "@/components/ui/Section";
 import { Row } from "@/components/ui/Row";
 import { Badge } from "@/components/ui/Badge";
-import { Tabs } from "@/components/ui/Tabs";
 import { DisclosureBar } from "@/components/ui/DisclosureBar";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { CreateCoachButton } from "./CreateCoachButton";
@@ -124,14 +118,12 @@ export default async function AdminPage() {
   const [
     health,
     coverage,
-    unreadPlayerIds,
     { data: reviews },
     { data: messages },
     { data: invitations },
   ] = await Promise.all([
       getHealthByPlayer(supabase, playerIds),
       getSessionCoverage(supabase, playerIds),
-      getStaffUnreadPlayerIds(supabase, profile.id, playerIds),
       playerIds.length === 0
         ? { data: [] }
         : supabase
@@ -262,151 +254,11 @@ export default async function AdminPage() {
   // les coachs qui demandent l'attention remontent en premier
   rows.sort((a, b) => b.alertCount - a.alertCount || a.name.localeCompare(b.name, "fr"));
 
-  // ---- le club en chiffres
-  const availablePlayers = players.filter((p) => p.availability === "available");
-  const perfPlayers = players.filter((p) => p.offer === "perf");
-  const formationPlayers = players.filter((p) => p.offer === "formation");
-  const clubDiscipline = averageDiscipline(players);
-  const reviewsReceived = availablePlayers.filter((p) => withReviewThisWeek.has(p.id)).length;
-  const unreadCount = players.filter((p) => unreadPlayerIds.has(p.id)).length;
-  const coachFirstName = new Map((staff ?? []).map((s) => [s.id, s.first_name as string]));
-
-  /** Les joueurs d'une offre, les plus en difficulté en tête. */
-  function playersOfOffer(offer: PlayerOffer) {
-    const list = players.filter((p) => p.offer === offer);
-    const sorted = [...list].sort((a, b) => {
-      const ad = a.discipline ?? Number.POSITIVE_INFINITY;
-      const bd = b.discipline ?? Number.POSITIVE_INFINITY;
-      if (ad !== bd) return ad - bd;
-      return a.first_name.localeCompare(b.first_name, "fr");
-    });
-    const available = list.filter((p) => p.availability === "available");
-    const received = available.filter((p) => withReviewThisWeek.has(p.id)).length;
-    return { sorted, discipline: averageDiscipline(list), received, expected: available.length };
-  }
-
-  function PlayerRow({ p }: { p: PlayerDiscipline }) {
-    const pain = health.get(p.id)?.pain;
-    const details = [
-      `Coach ${coachFirstName.get(p.coach_id) ?? "?"}`,
-      p.availability === "available"
-        ? withReviewThisWeek.has(p.id)
-          ? "Bilan reçu"
-          : "Bilan manquant"
-        : null,
-    ].filter(Boolean);
-    const alerts = [
-      unreadPlayerIds.has(p.id) ? "Message en attente" : null,
-      isAwaitingReply(p.id) ? "Sans réponse du coach" : null,
-      hasPainAlert(p.id) && pain ? `Douleur ${pain.score}/10` : null,
-      p.availability === "available" && p.planningEmpty ? "Planning vide" : null,
-      p.availability === "available" && hasNoProgram(p.id) ? "Programme incomplet" : null,
-    ].filter(Boolean);
-    const low = p.discipline !== null && p.discipline < LOW_DISCIPLINE_THRESHOLD;
-    return (
-      <Row
-        href={`/coach/joueurs/${p.id}`}
-        dot={alerts.length > 0}
-        emphasis={alerts.length > 0}
-        wrap
-        title={
-          <span className="flex items-center gap-1.5">
-            <span className="truncate">
-              {p.first_name} {p.last_name}
-            </span>
-            {p.availability !== "available" && (
-              <Badge tone={p.availability === "injured" ? "danger" : "neutral"}>
-                {AVAILABILITY_LABELS[p.availability]}
-              </Badge>
-            )}
-          </span>
-        }
-        subtitle={
-          <>
-            {details.join(" · ")}
-            {alerts.length > 0 && (
-              <span className="font-semibold text-danger"> · {alerts.join(" · ")}</span>
-            )}
-          </>
-        }
-        right={
-          <span
-            className={`text-sm font-extrabold tabular-nums ${
-              p.discipline === null ? "text-navy-300" : low ? "text-danger" : "text-navy-900"
-            }`}
-          >
-            {formatPercent(p.discipline)}
-          </span>
-        }
-      />
-    );
-  }
-
-  function OfferPanel({ offer }: { offer: PlayerOffer }) {
-    const { sorted, discipline, received, expected } = playersOfOffer(offer);
-    if (sorted.length === 0) {
-      return <EmptyState>Aucun joueur en offre {OFFER_LABELS[offer]} pour le moment.</EmptyState>;
-    }
-    return (
-      <Section
-        title={`${sorted.length} joueur${sorted.length > 1 ? "s" : ""}`}
-        action={
-          <span className="text-[11px] text-navy-400">
-            Discipline {formatPercent(discipline)} · Bilans {received}/{expected}
-          </span>
-        }
-      >
-        <div>
-          {sorted.map((p) => (
-            <PlayerRow key={p.id} p={p} />
-          ))}
-        </div>
-      </Section>
-    );
-  }
-
   return (
     <>
       <PageHeader
         title="Admin"
-        subtitle={
-          rows.some((r) => r.alertCount > 0)
-            ? `${rows.reduce((s, r) => s + r.alertCount, 0)} point${
-                rows.reduce((s, r) => s + r.alertCount, 0) > 1 ? "s" : ""
-              } d'attention dans le club.`
-            : "Le service en un coup d'œil."
-        }
-      />
-
-      <StatStrip
-        items={[
-          {
-            label: "Messages",
-            value: `${unreadCount}`,
-            hint: unreadCount > 0 ? "à lire" : "tout est lu",
-            tone: unreadCount > 0 ? "danger" : "default",
-          },
-          {
-            label: "Joueurs",
-            value: `${players.length}`,
-            hint: `${perfPlayers.length} perf · ${formationPlayers.length} form.`,
-          },
-          { label: "Coachs", value: `${rows.length}` },
-          {
-            label: "Discipline",
-            value: formatPercent(clubDiscipline),
-            hint: "moyenne club",
-            tone:
-              clubDiscipline !== null && clubDiscipline < LOW_DISCIPLINE_THRESHOLD
-                ? "warning"
-                : "default",
-          },
-          {
-            label: "Bilans",
-            value: `${reviewsReceived}/${availablePlayers.length}`,
-            hint: "cette semaine",
-          },
-        ]}
+        subtitle="Organiser le service : groupes, Jarvis, annonces, inscriptions, et le travail des coachs."
       />
 
       <DisclosureBar
@@ -479,7 +331,7 @@ export default async function AdminPage() {
           <EmptyState>Aucun coach pour le moment.</EmptyState>
         ) : (
           <div>
-            {rows.map((r) => {
+            {rows.filter((r) => r.playersCount > 0).map((r) => {
               const details = [
                 `${r.playersCount} joueur${r.playersCount > 1 ? "s" : ""}${
                   r.playersCount > 0 ? ` (${r.perfCount} perf · ${r.formationCount} form.)` : ""
@@ -534,26 +386,22 @@ export default async function AdminPage() {
             })}
           </div>
         )}
+        {rows.some((r) => r.playersCount === 0) && (
+          <details className="mt-2">
+            <summary className="cursor-pointer text-xs font-semibold text-navy-400">
+              Comptes sans joueur ({rows.filter((r) => r.playersCount === 0).length})
+            </summary>
+            <div className="mt-2">
+              {rows
+                .filter((r) => r.playersCount === 0)
+                .map((r) => (
+                  <Row key={r.id} href={`/coach/club/${r.id}`} title={r.name} subtitle="Aucun joueur affecté" />
+                ))}
+            </div>
+          </details>
+        )}
       </Section>
 
-      {/* ---- Les joueurs par offre : le regard sur VPF Perf et VPF
-          Formation, les plus en difficulté en tête. ---- */}
-      <div className="mt-6">
-        <Tabs
-          items={[
-            {
-              key: "perf",
-              label: `Perf (${perfPlayers.length})`,
-              content: <OfferPanel offer="perf" />,
-            },
-            {
-              key: "formation",
-              label: `Formation (${formationPlayers.length})`,
-              content: <OfferPanel offer="formation" />,
-            },
-          ]}
-        />
-      </div>
     </>
   );
 }
