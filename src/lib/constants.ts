@@ -424,3 +424,13 @@ export const HABIT_ICON_NAMES = [
 // Profondeur de chargement des pointages pour la heatmap (couvre toute
 // l'année civile en cours, quel que soit le mois actuel)
 export const HABIT_HEATMAP_WEEKS = 53;
+
+/**
+ * Code couleur des pôles côté staff : physique rouge, technique orange,
+ * routine bleu. Liseré à gauche et étiquette d'une séance.
+ */
+export const POLE_COLORS: Record<"basket" | "physique" | "routine", { hex: string; soft: string; label: string }> = {
+  physique: { hex: "#d93636", soft: "#fdeceb", label: "Physique" },
+  basket: { hex: "#e8622c", soft: "#fdefe7", label: "Technique" },
+  routine: { hex: "#2f6fdb", soft: "#eaf1fd", label: "Routine" },
+};

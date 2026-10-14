@@ -6,14 +6,8 @@ import { assignSession } from "@/app/actions/coach";
 import { parisNow } from "@/lib/dates";
 import { WeekdayPicker, weekdaysLabel } from "@/components/coach/WeekdayPicker";
 import { Card, CardTitle } from "@/components/ui/Card";
-import type { SessionSuggestion } from "@/lib/session-suggestions";
-import type { SessionPole } from "@/lib/types";
-
-const POLE_LABEL: Record<SessionPole, string> = {
-  basket: "Technique",
-  physique: "Physique",
-  routine: "Routine",
-};
+import { ZONE_LABELS, type SessionSuggestion } from "@/lib/session-suggestions";
+import { POLE_COLORS } from "@/lib/constants";
 
 /**
  * En tête de l'onglet Programme : les séances à donner à ce joueur, choisies
@@ -82,18 +76,26 @@ export function SessionSuggestionsCard({
           return (
             <li
               key={s.sessionId}
-              className={`flex items-start gap-3 rounded-xl px-3 py-2.5 ${
-                s.forPain ? "bg-danger-soft/50 ring-1 ring-inset ring-danger/20" : "bg-white ring-1 ring-inset ring-sand"
-              }`}
+              className="flex items-start gap-3 rounded-xl bg-white px-3 py-2.5 ring-1 ring-inset ring-sand"
+              style={{ boxShadow: `inset 4px 0 0 0 ${POLE_COLORS[s.pole].hex}` }}
             >
               <div className="min-w-0 flex-1">
-                <p className="text-[13.5px] font-bold text-navy-900">
+                <p className="flex flex-wrap items-center gap-x-2 gap-y-1 pl-1 text-[13.5px] font-bold text-navy-900">
                   {s.name}
-                  <span className="ml-2 text-[11px] font-semibold uppercase tracking-wide text-navy-400">
-                    {POLE_LABEL[s.pole]} · {s.durationMinutes} min
+                  <span
+                    className="rounded-full px-2 py-0.5 text-[10.5px] font-extrabold uppercase tracking-wide"
+                    style={{ color: POLE_COLORS[s.pole].hex, backgroundColor: POLE_COLORS[s.pole].soft }}
+                  >
+                    {POLE_COLORS[s.pole].label}
                   </span>
+                  <span className="text-[11px] font-semibold text-navy-400">{s.durationMinutes} min</span>
+                  {s.forPain && (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-bold text-danger">
+                      <HeartPulse size={12} aria-hidden /> Douleur {ZONE_LABELS[s.forPain]}
+                    </span>
+                  )}
                 </p>
-                <p className="mt-0.5 text-[12.5px] leading-snug text-navy-500">{s.reason}</p>
+                <p className="mt-0.5 pl-1 text-[12.5px] leading-snug text-navy-500">{s.reason}</p>
               </div>
               <button
                 type="button"
