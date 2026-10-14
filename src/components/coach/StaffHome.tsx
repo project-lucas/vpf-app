@@ -68,28 +68,35 @@ interface RecoView {
 // Petites briques
 // ---------------------------------------------------------------------------
 
-function Pill({
-  on,
-  onClick,
-  children,
-}: {
-  on: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
+function FilterGroup({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="text-[10.5px] font-bold uppercase tracking-[0.1em] text-navy-400">{label}</span>
+      <div className="inline-flex rounded-xl bg-cream p-1">{children}</div>
+    </div>
+  );
+}
+
+function Segment({ on, onClick, children }: { on: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
     <button
       type="button"
       onClick={onClick}
       aria-pressed={on}
-      className={`inline-flex min-h-8 items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1 text-[12.5px] font-semibold transition-colors ${
-        on
-          ? "border border-navy-800 bg-navy-800 text-white"
-          : "border border-navy-100 bg-white text-navy-500 hover:border-navy-300"
+      className={`inline-flex min-h-8 items-center gap-1.5 whitespace-nowrap rounded-lg px-3 text-[12.5px] font-semibold transition-colors ${
+        on ? "bg-white text-navy-900 shadow-sm" : "text-navy-500 hover:text-navy-900"
       }`}
     >
       {children}
     </button>
+  );
+}
+
+function Count({ n, on }: { n: number; on: boolean }) {
+  return (
+    <span className={`rounded-full px-1.5 text-[11px] font-bold tabular-nums ${on ? "bg-accent text-white" : "bg-sand text-navy-500"}`}>
+      {n}
+    </span>
   );
 }
 
@@ -478,65 +485,60 @@ export function StaffHome({
         ]}
       />
 
-      {/* ---- filtres ---- */}
-      <div className="mb-3 flex flex-wrap items-center gap-1.5">
-        {groups.length > 1 &&
-          groups.map((g) => (
-            <Pill key={g.id} on={g.id === group?.id} onClick={() => setGroupId(g.id)}>
-              {g.name}
-            </Pill>
-          ))}
-        {groups.length > 1 && <span aria-hidden className="mx-1 h-5 w-px bg-navy-100" />}
-        <Pill on={scope === "todo"} onClick={() => setScope("todo")}>
-          À traiter · {todoRows.length}
-        </Pill>
-        <Pill on={scope === "all"} onClick={() => setScope("all")}>
-          Tous · {groupRows.length}
-        </Pill>
-        <span aria-hidden className="mx-1 h-5 w-px bg-navy-100" />
-        <Pill on={offer === "all"} onClick={() => setOffer("all")}>
-          Les deux offres
-        </Pill>
-        <Pill on={offer === "perf"} onClick={() => setOffer("perf")}>
-          Perf · {perfCount}
-        </Pill>
-        <Pill on={offer === "formation"} onClick={() => setOffer("formation")}>
-          Formation · {formationCount}
-        </Pill>
-      </div>
-
-      {/* ---- le tableau (ordinateur) : défile à l'horizontale vers le passé ---- */}
-      <div className="mb-2 hidden items-center justify-between gap-2 md:flex">
-        <span className="text-[11.5px] text-navy-400">
-          Historique :
-          {HISTORY_WEEK_CHOICES.map((n) => (
+      {/* ---- filtres : une barre, trois groupes étiquetés, défilement à droite ---- */}
+      <div className="shadow-soft mb-4 flex flex-wrap items-end gap-x-6 gap-y-3 rounded-[18px] bg-white px-4 py-3">
+        {groups.length > 1 && (
+          <FilterGroup label="Groupe">
+            {groups.map((g) => (
+              <Segment key={g.id} on={g.id === group?.id} onClick={() => setGroupId(g.id)}>
+                {g.name}
+              </Segment>
+            ))}
+          </FilterGroup>
+        )}
+        <FilterGroup label="Afficher">
+          <Segment on={scope === "todo"} onClick={() => setScope("todo")}>
+            À traiter <Count n={todoRows.length} on={scope === "todo"} />
+          </Segment>
+          <Segment on={scope === "all"} onClick={() => setScope("all")}>
+            Tous <Count n={groupRows.length} on={scope === "all"} />
+          </Segment>
+        </FilterGroup>
+        <FilterGroup label="Offre">
+          <Segment on={offer === "all"} onClick={() => setOffer("all")}>
+            Toutes
+          </Segment>
+          <Segment on={offer === "perf"} onClick={() => setOffer("perf")}>
+            Perf <Count n={perfCount} on={offer === "perf"} />
+          </Segment>
+          <Segment on={offer === "formation"} onClick={() => setOffer("formation")}>
+            Formation <Count n={formationCount} on={offer === "formation"} />
+          </Segment>
+        </FilterGroup>
+        <span className="hidden md:contents">
+          <FilterGroup label="Historique">
+            {HISTORY_WEEK_CHOICES.map((n) => (
+              <Segment key={n} on={n === weeks} onClick={() => router.push(`/coach?semaines=${n}`)}>
+                {n === 8 ? "8 semaines" : n === 13 ? "3 mois" : "6 mois"}
+              </Segment>
+            ))}
+          </FilterGroup>
+          <span className="ml-auto inline-flex items-center gap-1.5">
             <button
-              key={n}
               type="button"
-              onClick={() => router.push(`/coach?semaines=${n}`)}
-              className={`ml-1.5 rounded-full px-2 py-0.5 text-[11.5px] font-semibold ${
-                n === weeks ? "bg-navy-800 text-white" : "text-navy-500 hover:bg-navy-50"
-              }`}
+              onClick={() => scrollTable(-480)}
+              className="inline-flex h-9 items-center gap-1 rounded-xl bg-cream px-3 text-[12px] font-semibold text-navy-600 hover:bg-sand"
             >
-              {n === 8 ? "8 sem." : n === 13 ? "3 mois" : "6 mois"}
+              <ChevronLeft size={14} /> Aujourd&apos;hui
             </button>
-          ))}
-        </span>
-        <span className="inline-flex items-center gap-1">
-          <button
-            type="button"
-            onClick={() => scrollTable(-480)}
-            className="inline-flex h-8 items-center gap-1 rounded-full border border-navy-100 bg-white px-2.5 text-[11.5px] font-semibold text-navy-600 hover:bg-navy-50"
-          >
-            <ChevronLeft size={14} /> Aujourd&apos;hui
-          </button>
-          <button
-            type="button"
-            onClick={() => scrollTable(480)}
-            className="inline-flex h-8 items-center gap-1 rounded-full border border-navy-100 bg-white px-2.5 text-[11.5px] font-semibold text-navy-600 hover:bg-navy-50"
-          >
-            Semaines passées <ChevronRight size={14} />
-          </button>
+            <button
+              type="button"
+              onClick={() => scrollTable(480)}
+              className="inline-flex h-9 items-center gap-1 rounded-xl bg-cream px-3 text-[12px] font-semibold text-navy-600 hover:bg-sand"
+            >
+              Semaines passées <ChevronRight size={14} />
+            </button>
+          </span>
         </span>
       </div>
       <div
