@@ -353,6 +353,8 @@ export function StaffHome({
     [rows, group]
   );
   const todoRows = groupRows.filter((r) => r.alerts.length > 0);
+  // la visio de départ ne concerne que les joueurs arrivés après la règle
+  const showKickoff = groupRows.some((r) => r.kickoffExpected);
   const visible = (scope === "todo" ? todoRows : groupRows).filter(
     (r) => offer === "all" || r.offer === offer
   );
@@ -539,7 +541,7 @@ export function StaffHome({
               {[
                 "Joueur",
                 "Offre",
-                "Visio départ",
+                ...(showKickoff ? ["Visio départ"] : []),
                 "Dispo",
                 "Discipline",
                 "Tendance",
@@ -602,9 +604,13 @@ export function StaffHome({
                   <td className="border-b border-navy-50 px-3 py-2 group-hover:bg-navy-50/50">
                     <OfferMark offer={r.offer} />
                   </td>
-                  <td className="border-b border-navy-50 px-3 py-2 group-hover:bg-navy-50/50">
-                    <KickoffBox playerId={r.id} doneAt={r.kickoffDoneAt} canEdit={isAdmin} />
-                  </td>
+                  {showKickoff && (
+                    <td className="border-b border-navy-50 px-3 py-2 group-hover:bg-navy-50/50">
+                      {r.kickoffExpected && (
+                        <KickoffBox playerId={r.id} doneAt={r.kickoffDoneAt} canEdit={isAdmin} />
+                      )}
+                    </td>
+                  )}
                   <td className="border-b border-navy-50 px-3 py-2 group-hover:bg-navy-50/50">
                     {r.alerts.some((a) => a.key === "pain") && r.pain ? (
                       <Tag tone="red">Douleur {r.pain.score}/10</Tag>

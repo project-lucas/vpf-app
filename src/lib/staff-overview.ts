@@ -10,7 +10,7 @@ import {
   type SessionCoverage,
 } from "./alerts";
 import { suggestForRow } from "./briefing";
-import { addDays, currentWeekStart } from "./dates";
+import { addDays, currentWeekStart, parisNow } from "./dates";
 import { waMeUrl } from "./whatsapp";
 import type { PlayerAvailability, PlayerOffer, ReviewHealthStatus } from "./types";
 
@@ -86,7 +86,15 @@ export interface HomeRow {
   parentWhatsapp: { url: string; name: string } | null;
   /** visio de départ validée par un admin (0045) */
   kickoffDoneAt: string | null;
+  /** la visio de départ concerne ce joueur (arrivé à partir de KICKOFF_FROM) */
+  kickoffExpected: boolean;
 }
+
+/**
+ * La visio de départ ne se suit que pour les joueurs arrivés à partir de
+ * cette date (les nouveaux, du groupe B) : les joueurs déjà là ne l'ont pas.
+ */
+export const KICKOFF_FROM = "2026-10-15";
 
 /** Taux d'une semaine, null si rien n'était prévu. */
 function rate(c: WeekCell): number | null {
@@ -316,6 +324,7 @@ export async function getHomeRows(
       playerWhatsapp: waMeUrl(p.whatsapp_number),
       parentWhatsapp: parent ? { url: parent.url!, name: parent.name } : null,
       kickoffDoneAt: kickoffById.get(p.id) ?? null,
+      kickoffExpected: parisNow(new Date(p.created_at)).date >= KICKOFF_FROM,
     };
   });
 
