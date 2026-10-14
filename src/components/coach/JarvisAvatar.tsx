@@ -46,7 +46,7 @@ export function JarvisAvatar({
   );
 }
 
-export function JarvisLoop({ size = 58, className = "" }: { size?: number; className?: string }) {
+export function JarvisLoop({ size, className = "" }: { size?: number; className?: string }) {
   const ref = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
@@ -74,17 +74,21 @@ export function JarvisLoop({ size = 58, className = "" }: { size?: number; class
   return (
     <video
       ref={ref}
-      width={size}
-      height={size}
       poster={SRC.default}
       muted
       autoPlay
       loop
       playsInline
       preload="auto"
-      aria-label="Jarvis"
-      className={`shrink-0 rounded-full bg-[#f5efe2] object-cover ${className}`}
-      style={{ width: size, height: size }}
+      // pas de bouton « image dans l'image » ni de diffusion au survol : la
+      // vidéo est un décor, le clic appartient au bouton qui la porte
+      disablePictureInPicture
+      disableRemotePlayback
+      controls={false}
+      tabIndex={-1}
+      aria-hidden
+      className={`pointer-events-none shrink-0 select-none rounded-full bg-[#f5efe2] object-cover ${className}`}
+      style={size ? { width: size, height: size } : undefined}
     >
       <source src="/jarvis/jarvis-loop.webm" type="video/webm" />
       <source src="/jarvis/jarvis-loop.mp4" type="video/mp4" />

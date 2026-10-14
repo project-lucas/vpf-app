@@ -36,7 +36,6 @@ export function JarvisLauncher({ configured }: { configured: boolean }) {
           type="button"
           onClick={() => setOpen(true)}
           aria-label="Ouvrir Jarvis"
-          title="Jarvis"
           className="absolute right-[60px] top-2.5 z-30 flex items-center gap-2 rounded-full bg-navy-800 p-0.5 text-[13px] font-extrabold text-white shadow-md transition-transform hover:scale-[1.03] lg:right-6 lg:top-4 lg:py-1 lg:pl-1 lg:pr-3.5"
         >
           <JarvisAvatar size={38} />
@@ -49,10 +48,9 @@ export function JarvisLauncher({ configured }: { configured: boolean }) {
         type="button"
         onClick={() => setOpen(true)}
         aria-label="Parler à Jarvis"
-        title="Parler à Jarvis"
-        className="jarvis-float bottom-above-nav fixed right-4 z-40 flex h-[68px] w-[68px] items-center justify-center rounded-full bg-navy-900 ring-2 ring-accent/70 shadow-[0_10px_30px_-6px_rgba(10,29,51,0.55)] transition-transform hover:scale-105 lg:bottom-6 lg:right-6 lg:h-[76px] lg:w-[76px]"
+        className="jarvis-float bottom-above-nav fixed right-4 z-40 flex h-[68px] w-[68px] items-center justify-center rounded-full bg-navy-900 ring-2 ring-accent/70 shadow-[0_10px_30px_-6px_rgba(10,29,51,0.55)] lg:bottom-8 lg:right-8 lg:h-[104px] lg:w-[104px] lg:ring-[3px]"
       >
-        <JarvisLoop size={60} />
+        <JarvisLoop className="h-[60px] w-[60px] lg:h-[92px] lg:w-[92px]" />
       </button>
 
       {open && (
