@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { Check, Send } from "lucide-react";
 import { askJarvis, type JarvisTurn } from "@/app/actions/jarvis";
+import { JarvisAvatar } from "@/components/coach/JarvisAvatar";
 
 interface ChatLine extends JarvisTurn {
   actions?: string[];
@@ -105,7 +106,12 @@ export function JarvisChat({ groupId, configured }: { groupId: string | null; co
             </div>
           </div>
         ))}
-        {isPending && <p className="text-[12px] italic text-navy-400">Jarvis réfléchit…</p>}
+        {isPending && (
+          <p className="flex items-center gap-2 text-[12px] italic text-navy-400">
+            <JarvisAvatar size={24} thinking />
+            Jarvis réfléchit…
+          </p>
+        )}
         <div ref={endRef} />
       </div>
       <form

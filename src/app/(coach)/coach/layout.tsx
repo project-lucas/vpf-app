@@ -51,7 +51,7 @@ export default async function CoachLayout({ children }: { children: React.ReactN
   ];
 
   return (
-    <div className="min-h-dvh lg:flex">
+    <div className="staff min-h-dvh bg-cream lg:flex">
       <div className="hidden lg:block">
         <StaffSidebar
           items={items}

@@ -5,7 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Check, ChevronLeft, ChevronRight, Pencil, Send, Sparkles, X } from "lucide-react";
 import { sendConversationMessage } from "@/app/actions/messages";
-import { PageHeader } from "@/components/ui/PageHeader";
+import { StatStrip } from "@/components/ui/StatStrip";
+import { JarvisAvatar } from "@/components/coach/JarvisAvatar";
 import { PlayerAvatar } from "@/components/coach/PlayerAvatar";
 import { JarvisChat } from "@/components/coach/JarvisChat";
 import {
@@ -171,7 +172,7 @@ function primaryAction(row: HomeRow): { label: string; href: string; tone: "dang
 function ActionLink({ action }: { action: ReturnType<typeof primaryAction> }) {
   if (!action) return <span className="text-xs text-navy-300">à jour</span>;
   const look = {
-    danger: "bg-danger text-white hover:opacity-90",
+    danger: "bg-accent text-white hover:opacity-90",
     primary: "bg-navy-800 text-white hover:bg-navy-700",
     ghost: "bg-navy-50 text-navy-700 hover:bg-navy-100",
   }[action.tone];
@@ -320,6 +321,8 @@ export function StaffHome({
   todayLabel,
   initialGroupId,
   weeks,
+  viewerFirstName,
+  initialPanelOpen = false,
 }: {
   groups: HomeGroup[];
   rows: HomeRow[];
@@ -331,13 +334,17 @@ export function StaffHome({
   initialGroupId: string;
   /** semaines d'historique chargées */
   weeks: number;
+  /** prénom du lecteur, pour « Bonjour Lucas » */
+  viewerFirstName: string;
+  /** volet Jarvis ouvert à l'arrivée (lien de la barre latérale) */
+  initialPanelOpen?: boolean;
 }) {
   const router = useRouter();
   const scroller = useRef<HTMLDivElement>(null);
   const [groupId, setGroupId] = useState(initialGroupId);
   const [scope, setScope] = useState<Scope>("todo");
   const [offer, setOffer] = useState<OfferFilter>("all");
-  const [panelOpen, setPanelOpen] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(initialPanelOpen);
   const scrollTable = (dx: number) => scroller.current?.scrollBy({ left: dx, behavior: "smooth" });
 
   useEffect(() => {
@@ -427,48 +434,49 @@ export function StaffHome({
 
   return (
     <>
-      <PageHeader
-        title={group?.name ?? "Accueil"}
-        subtitle={`${todayLabel}${group?.staffNames ? ` · ${group.staffNames}` : ""} · ${groupRows.length} joueur${
-          groupRows.length > 1 ? "s" : ""
-        }${groupRows.length > 0 ? `, ${perfCount} perf et ${formationCount} formation` : ""}`}
-        action={
-          <button
-            type="button"
-            onClick={() => setPanelOpen(true)}
-            className="inline-flex min-h-10 items-center gap-2 rounded-full bg-navy-800 px-4 py-2 text-[13px] font-bold text-white shadow-sm transition-colors hover:bg-navy-700"
-          >
-            <Sparkles size={15} />
-            Recommandations
-            {recos.length > 0 && (
-              <span className="rounded-full bg-gold px-1.5 py-0.5 text-[10.5px] font-extrabold text-navy-900">
-                {recos.length}
-              </span>
-            )}
-          </button>
-        }
-      />
-
-      {/* ---- les chiffres du groupe : une ligne blanche, pas le tableau d'affichage ---- */}
-      <div className="mb-4 grid grid-cols-2 overflow-hidden rounded-2xl border border-navy-100 bg-white sm:grid-cols-3 lg:flex">
-        {[
-          { v: `${unreadCount}`, l: "messages en attente", hot: unreadCount > 0 },
-          { v: `${toReply}`, l: "bilans à répondre", hot: false },
-          { v: `${received}/${expected.length}`, l: "bilans reçus", hot: false },
-          { v: formatPercent(avg), l: "discipline moyenne", hot: false },
-          { v: `${upToDate}`, l: "joueurs à jour", hot: false },
-        ].map((k) => (
-          <div
-            key={k.l}
-            className="flex items-baseline gap-2 border-b border-r border-navy-100 px-4 py-3 last:border-r-0 lg:flex-1 lg:border-b-0"
-          >
-            <span className={`font-display text-[26px] font-bold leading-none ${k.hot ? "text-danger" : "text-navy-900"}`}>
-              {k.v}
+      <header className="mb-5 flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <p className="text-[12px] font-bold uppercase tracking-[0.08em] text-accent">{todayLabel}</p>
+          <h1 className="font-display mt-1 text-[32px] font-extrabold uppercase leading-none tracking-wide text-navy-900 lg:text-[44px]">
+            {viewerFirstName ? `Bonjour ${viewerFirstName}` : (group?.name ?? "Accueil")}
+          </h1>
+          <p className="mt-1.5 text-sm text-navy-400">
+            {group?.name ?? "Accueil"}
+            {group?.staffNames ? ` · ${group.staffNames}` : ""} · {groupRows.length} joueur
+            {groupRows.length > 1 ? "s" : ""}
+            {groupRows.length > 0 ? `, ${perfCount} perf et ${formationCount} formation` : ""}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setPanelOpen(true)}
+          className="inline-flex min-h-11 items-center gap-2.5 rounded-full bg-navy-800 py-1.5 pl-1.5 pr-4 text-[13px] font-bold text-white shadow-sm transition-colors hover:bg-navy-700"
+        >
+          <JarvisAvatar size={32} />
+          Jarvis
+          {recos.length > 0 && (
+            <span className="rounded-full bg-accent px-2 py-0.5 text-[10.5px] font-extrabold text-white">
+              {recos.length} reco{recos.length > 1 ? "s" : ""}
             </span>
-            <span className="text-[11.5px] leading-tight text-navy-400">{k.l}</span>
-          </div>
-        ))}
-      </div>
+          )}
+        </button>
+      </header>
+
+      {/* ---- les chiffres du groupe ---- */}
+      <StatStrip
+        className="mb-5"
+        items={[
+          {
+            label: "Messages en attente",
+            value: `${unreadCount}`,
+            tone: unreadCount > 0 ? "danger" : "default",
+          },
+          { label: "Bilans à répondre", value: `${toReply}` },
+          { label: "Bilans reçus", value: `${received}/${expected.length}` },
+          { label: "Discipline moyenne", value: formatPercent(avg) },
+          { label: "Joueurs à jour", value: `${upToDate}`, hint: `sur ${groupRows.length}` },
+        ]}
+      />
 
       {/* ---- filtres ---- */}
       <div className="mb-3 flex flex-wrap items-center gap-1.5">
@@ -533,7 +541,7 @@ export function StaffHome({
       </div>
       <div
         ref={scroller}
-        className="hidden overflow-x-auto rounded-2xl border border-navy-100 bg-white md:block"
+        className="shadow-soft hidden overflow-x-auto rounded-[20px] bg-white md:block"
       >
         <table className="w-max min-w-full border-separate border-spacing-0 text-[12.5px]">
           <thead>
@@ -755,7 +763,7 @@ export function StaffHome({
           >
             <div className="flex items-center justify-between gap-3 border-b border-navy-100 bg-white px-5 py-4">
               <h2 id="claude-panel-title" className="font-display flex items-center gap-2 text-[19px] font-bold uppercase tracking-wide text-navy-900">
-                <Sparkles size={17} className="text-gold" />
+                <JarvisAvatar size={30} />
                 Jarvis · {group?.name ?? "Accueil"}
               </h2>
               <button

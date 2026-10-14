@@ -26,9 +26,9 @@ export const maxDuration = 60;
 export default async function CoachDashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ semaines?: string }>;
+  searchParams: Promise<{ semaines?: string; jarvis?: string }>;
 }) {
-  const { semaines } = await searchParams;
+  const { semaines, jarvis } = await searchParams;
   const asked = Number(semaines);
   const weeks = (HISTORY_WEEK_CHOICES as readonly number[]).includes(asked) ? asked : DEFAULT_HISTORY_WEEKS;
   const supabase = await createClient();
@@ -51,7 +51,7 @@ export default async function CoachDashboardPage({
     ),
     getRecentJournal(supabase, 40),
     user
-      ? supabase.from("profiles").select("notifications_enabled").eq("id", user.id).maybeSingle()
+      ? supabase.from("profiles").select("notifications_enabled, first_name").eq("id", user.id).maybeSingle()
       : Promise.resolve({ data: null }),
   ]);
 
@@ -114,6 +114,8 @@ export default async function CoachDashboardPage({
         todayLabel={todayLabel.charAt(0).toUpperCase() + todayLabel.slice(1)}
         initialGroupId={initialGroupId}
         weeks={weeks}
+        viewerFirstName={(profile?.first_name as string | undefined) ?? ""}
+        initialPanelOpen={jarvis === "1"}
       />
       <PushPrompt
         notificationsEnabled={profile?.notifications_enabled ?? true}

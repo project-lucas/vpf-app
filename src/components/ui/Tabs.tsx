@@ -58,7 +58,7 @@ export function Tabs({
   return (
     <div>
       {segmented ? (
-        <div role="tablist" className="mb-4 flex gap-0.5 rounded-xl bg-navy-100 p-0.5">
+        <div role="tablist" className="mb-4 flex gap-0.5 rounded-xl bg-sand p-0.5">
           {items.map((item, i) => {
             const isActive = i === active;
             return (
@@ -69,7 +69,7 @@ export function Tabs({
                 aria-selected={isActive}
                 onClick={() => setActive(i)}
                 className={`relative min-w-0 flex-1 truncate rounded-[10px] px-1 py-2 text-xs font-bold transition-colors ${
-                  isActive ? "bg-navy-800 text-white shadow-sm" : "text-navy-500 hover:text-navy-800"
+                  isActive ? "bg-white text-navy-900 shadow-sm" : "text-navy-500 hover:text-navy-800"
                 }`}
               >
                 {item.label}

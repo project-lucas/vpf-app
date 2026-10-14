@@ -5,6 +5,7 @@ import {
   DM_Serif_Display,
   Inter,
   JetBrains_Mono,
+  Manrope,
   Plus_Jakarta_Sans,
 } from "next/font/google";
 import "./globals.css";
@@ -12,6 +13,8 @@ import { PwaRegister } from "@/components/PwaRegister";
 import { NoPinchZoom } from "@/components/NoPinchZoom";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
+// staff (direction « Parquet ») : sans arrondie, lisible en tableau
+const manrope = Manrope({ subsets: ["latin"], variable: "--font-manrope" });
 // display "scoreboard" : condensée sportive (écrans admin/coach)
 const barlow = Barlow_Condensed({
   subsets: ["latin"],
@@ -91,7 +94,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="fr">
       <body
-        className={`${inter.variable} ${barlow.variable} ${archivo.variable} ${dmSerif.variable} ${jetbrains.variable} ${jakarta.variable} antialiased`}
+        className={`${inter.variable} ${barlow.variable} ${archivo.variable} ${dmSerif.variable} ${jetbrains.variable} ${jakarta.variable} ${manrope.variable} antialiased`}
       >
         <PwaRegister />
         <NoPinchZoom />

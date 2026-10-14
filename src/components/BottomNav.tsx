@@ -127,7 +127,7 @@ export function BottomNav({
               {active && (
                 <span
                   aria-hidden
-                  className="absolute top-0 h-[3px] w-7 -skew-x-12 rounded-b-sm bg-gold"
+                  className="absolute top-0 h-[3px] w-7 -skew-x-12 rounded-b-sm bg-accent"
                 />
               )}
               {showDot(item) && <Dot variant="default" />}

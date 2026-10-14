@@ -13,8 +13,13 @@
   --color-navy-800: #0f2a4a;
   --color-navy-900: #0a1d33;
 
-  /* Fond de page blanc / gris très clair */
-  --color-cream: #fafafa;
+  /* Fond de page staff : crème très léger (direction « Parquet ») */
+  --color-cream: #f7f5f0;
+  /* Accent staff : orange basket — l'action, l'actif, Jarvis */
+  --color-accent: #e8622c;
+  --color-accent-soft: #fff4ee;
+  /* filet chaud des surfaces staff */
+  --color-sand: #efeae1;
 
   --color-success: #15803d;
   --color-success-soft: #dcf2e4;
@@ -792,6 +797,91 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 @media (prefers-reduced-motion: reduce) {
   .task-breathe,
   .task-icon-pulse {
+    animation: none;
+  }
+}
+
+/* ── Espace staff, direction « Parquet » ────────────────────────────────────
+   Manrope pour le texte, Barlow pour les titres et les chiffres (font-display),
+   cartes blanches aux ombres douces sur fond crème, un seul accent orange. */
+.staff {
+  font-family: var(--font-manrope), var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+}
+.shadow-soft {
+  box-shadow:
+    0 1px 2px rgb(15 42 74 / 0.05),
+    0 12px 32px -16px rgb(15 42 74 / 0.18);
+}
+
+/* ── Jarvis : l'avatar respire, regarde autour de lui et cligne des yeux ── */
+@keyframes jarvis-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.55;
+  }
+  50% {
+    transform: scale(1.22);
+    opacity: 0;
+  }
+}
+@keyframes jarvis-blink {
+  0%,
+  91%,
+  100% {
+    transform: scaleY(1);
+  }
+  94% {
+    transform: scaleY(0.12);
+  }
+}
+@keyframes jarvis-look {
+  0%,
+  35% {
+    transform: translate(0, 0);
+  }
+  45%,
+  60% {
+    transform: translate(1.6px, -0.4px);
+  }
+  70%,
+  82% {
+    transform: translate(-1.6px, 0.2px);
+  }
+  92%,
+  100% {
+    transform: translate(0, 0);
+  }
+}
+@keyframes jarvis-think {
+  0%,
+  100% {
+    transform: translate(-1.6px, -0.6px);
+  }
+  50% {
+    transform: translate(1.6px, -0.6px);
+  }
+}
+.jarvis-ring {
+  transform-origin: center;
+  transform-box: fill-box;
+  animation: jarvis-breathe 2.8s ease-in-out infinite;
+}
+.jarvis-eyes {
+  animation: jarvis-look 7s ease-in-out infinite;
+}
+.jarvis-eyes.thinking {
+  animation: jarvis-think 0.9s ease-in-out infinite;
+}
+.jarvis-eye {
+  transform-origin: center;
+  transform-box: fill-box;
+  animation: jarvis-blink 4.6s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .jarvis-ring,
+  .jarvis-eyes,
+  .jarvis-eye {
     animation: none;
   }
 }
