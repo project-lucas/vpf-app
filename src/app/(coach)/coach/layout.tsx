@@ -2,6 +2,7 @@ import { MessagesSquare, Settings } from "lucide-react";
 import { BottomNav, type NavItem } from "@/components/BottomNav";
 import { StaffMenu } from "@/components/coach/StaffMenu";
 import { StaffSidebar } from "@/components/coach/StaffSidebar";
+import { StaffMain } from "@/components/coach/StaffMain";
 import { getNavRole } from "@/lib/auth";
 import { createClient, getCachedUser } from "@/lib/supabase/server";
 import { hasStaffUnread } from "@/lib/conversations";
@@ -68,9 +69,9 @@ export default async function CoachLayout({ children }: { children: React.ReactN
         <div className="flex justify-end px-4 pt-3 lg:hidden">
           <StaffMenu initials={initialsOf(me?.first_name, me?.last_name)} isAdmin={isAdmin} />
         </div>
-        <main className="mx-auto w-full max-w-[1280px] px-4 pb-32 pt-1 lg:px-8 lg:pb-12 lg:pt-7">
+        <StaffMain>
           {children}
-        </main>
+        </StaffMain>
       </div>
 
       <div className="lg:hidden">
