@@ -102,17 +102,77 @@ export function suggestSessions(input: SuggestionInput): Record<SessionPole, Ses
     .filter((x): x is NonNullable<typeof x> => x !== null)
     .sort((a, b) => b.score - a.score || a.s.name.localeCompare(b.s.name, "fr"));
 
-  for (const { s, reason, painMatch } of scored) {
-    const list = out[s.pole];
-    if (list.length >= MAX_PER_POLE) continue;
-    list.push({
-      sessionId: s.id,
-      name: s.name,
-      pole: s.pole,
-      durationMinutes: s.duration_minutes,
-      reason,
-      forPain: painMatch,
-    });
+  // Choix glouton, pôle par pôle : à note égale, on varie les familles (un
+  // dribble, un tir, une finition… plutôt que trois dribbles) ; une famille
+  // déjà travaillée par le joueur pèse un peu moins qu'une famille nouvelle.
+  const assignedFamilies = new Set(
+    input.library
+      .filter((s) => input.assignedSessionIds.has(s.id))
+      .map((s) => familyOf(s.name, s.pole, SESSION_PROFILES[s.id])),
+  );
+  for (const pole of ["basket", "physique", "routine"] as SessionPole[]) {
+    const pool = scored.filter((x) => x.s.pole === pole);
+    const chosenFamilies = new Map<string, number>();
+    while (out[pole].length < MAX_PER_POLE && pool.length > 0) {
+      let best = 0;
+      let bestScore = -Infinity;
+      pool.forEach((x, i) => {
+        const fam = familyOf(x.s.name, pole, SESSION_PROFILES[x.s.id]);
+        // une douleur prime sur la variété : deux routines « dos » restent en tête
+        const variety = x.painMatch ? 0 : 15 * (chosenFamilies.get(fam) ?? 0) + (assignedFamilies.has(fam) ? 4 : 0);
+        const adjusted = x.score - variety;
+        if (adjusted > bestScore) {
+          bestScore = adjusted;
+          best = i;
+        }
+      });
+      const { s, reason, painMatch } = pool.splice(best, 1)[0];
+      const fam = familyOf(s.name, pole, SESSION_PROFILES[s.id]);
+      chosenFamilies.set(fam, (chosenFamilies.get(fam) ?? 0) + 1);
+      out[pole].push({
+        sessionId: s.id,
+        name: s.name,
+        pole: s.pole,
+        durationMinutes: s.duration_minutes,
+        reason,
+        forPain: painMatch,
+      });
+    }
+  }
+  return out;
+}
+
+/**
+ * La famille d'une séance, pour varier les suggestions : « Dribble 1.1 » →
+ * « dribble », « Tir après dribble 1.0 » → « tir après dribble », « Tir -
+ * Proprioception » → « tir ». En physique (« Séance 13 »), la qualité
+ * dominante vue dans la vidéo (explosivité, endurance…).
+ */
+function familyOf(name: string, pole: SessionPole, profile: SessionProfile | undefined): string {
+  if (pole === "physique") return profile?.tags[0] ?? name;
+  return name
+    .toLowerCase()
+    .replace(/\s+-\s+.*$/, "")
+    .replace(/\s*\d+(\.\d+)*\s*$/, "")
+    .trim();
+}
+
+/**
+ * Les séances DÉJÀ affectées qui chargent une zone douloureuse : à retirer ou
+ * à mettre en pause tant que la douleur dure.
+ */
+export function assignedConflicts(
+  assigned: { id: string; name: string }[],
+  painZones: BodyZone[],
+): { name: string; zone: BodyZone }[] {
+  const seen = new Set<string>();
+  const out: { name: string; zone: BodyZone }[] = [];
+  for (const a of assigned) {
+    const zone = painZones.find((z) => SESSION_PROFILES[a.id]?.avoidIf.includes(z));
+    if (zone && !seen.has(a.id)) {
+      seen.add(a.id);
+      out.push({ name: a.name, zone });
+    }
   }
   return out;
 }

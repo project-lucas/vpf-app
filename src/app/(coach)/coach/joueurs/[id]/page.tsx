@@ -32,6 +32,7 @@ import { ScoringChart } from "@/components/coach/ScoringChart";
 import { WeekDaysCard, type DayDetail, type DayItem } from "@/components/coach/WeekDaysCard";
 import { SessionSuggestionsCard } from "@/components/coach/SessionSuggestionsCard";
 import {
+  assignedConflicts,
   normalizePosition,
   painZonesFromNotes,
   positionFit,
@@ -435,9 +436,17 @@ export default async function PlayerDetailPage({
     ...suggestionsByPole.physique.filter((x) => !x.forPain).slice(0, 2),
     ...suggestionsByPole.routine.filter((x) => !x.forPain).slice(0, 1),
   ];
+  const conflicts = assignedConflicts(
+    allAssignments.filter((a) => !a.removed_at).map((a) => ({ id: a.session_id, name: a.session.name })),
+    painZones,
+  );
   const painNote =
     painZones.length > 0
-      ? `Douleur signalée au ${painZones.map((z) => ZONE_LABELS[z]).join(", au ")} dans ses derniers bilans : les séances qui chargent cette zone sont écartées, celles qui la soignent passent en tête.`
+      ? `Douleur signalée au ${painZones.map((z) => ZONE_LABELS[z]).join(", au ")} dans ses derniers bilans : les séances qui chargent cette zone sont écartées, celles qui la soignent passent en tête.${
+          conflicts.length > 0
+            ? ` Déjà dans son programme et à mettre en pause : ${conflicts.map((c) => `${c.name} (${ZONE_LABELS[c.zone]})`).join(", ")}.`
+            : ""
+        }`
       : null;
   const fitById = Object.fromEntries(
     catalogue.map((sess) => [sess.id, positionFit(sess.id, playerRaw.position ?? null)]),
