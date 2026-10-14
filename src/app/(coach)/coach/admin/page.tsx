@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { Megaphone, Sparkles, UserPlus, UserRoundPlus, Users } from "lucide-react";
+import { Megaphone, Sparkles, UserPlus, UserRoundPlus } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { getAuthProfile } from "@/lib/auth";
 import {
@@ -8,23 +8,18 @@ import {
   getPlayersWithDiscipline,
 } from "@/lib/coach-data";
 import { getSessionCoverage, PAIN_ALERT_DAYS, PAIN_ALERT_SCORE } from "@/lib/alerts";
-import { formatPercent } from "@/lib/discipline";
 import { INBOX_SCAN_LIMIT, LOW_DISCIPLINE_THRESHOLD } from "@/lib/constants";
 import { addDays, currentWeekStart, formatAgoFr } from "@/lib/dates";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { Section } from "@/components/ui/Section";
-import { Row } from "@/components/ui/Row";
-import { Badge } from "@/components/ui/Badge";
-import { DisclosureBar } from "@/components/ui/DisclosureBar";
-import { EmptyState } from "@/components/ui/EmptyState";
 import { CreateCoachButton } from "./CreateCoachButton";
 import { AnnouncementsManager } from "./AnnouncementsManager";
-import { GroupsManager } from "./GroupsManager";
+import { AdminTools } from "./AdminTools";
+import { GroupBoard, type BoardGroup, type BoardStaff } from "./GroupBoard";
 import { MorningBriefPanel } from "./MorningBriefPanel";
 import { CoachInvitations, type CoachChoice } from "@/components/coach/CoachInvitations";
 import { getGroupsWithStaff } from "@/lib/groups";
 import { getLastBriefDates, isMorningBriefConfigured } from "@/lib/briefs";
-import type { Announcement, Invitation, StaffProfile } from "@/lib/types";
+import type { Announcement, Invitation } from "@/lib/types";
 
 export const metadata = { title: "Admin — VPF" };
 export const dynamic = "force-dynamic";
@@ -70,18 +65,16 @@ function hoursSince(iso: string, now: Date): number {
 }
 
 /**
- * Onglet Admin : le regard des deux admins sur l'ensemble du service.
+ * Onglet Admin : l'organisation du service, sur un écran, sans défilement.
  *
- * Trois étages : le tableau d'affichage du club (messages en attente, joueurs
- * par offre, coachs, discipline, bilans), **les coachs et leur travail** (ce
- * qu'ils rendent : bilans reçus et répondus, fils sans réponse, joueurs sans
- * programme, dernière activité — ceux qui demandent l'attention en premier),
- * et **les joueurs par offre** (Perf / Formation), les plus en difficulté en
- * tête. Les gestes rares — annonces, nouveau coach, nouveau joueur (avec le
- * choix du coach référent) — sont derrière trois icônes.
+ * En tête, la barre d'outils (Annonces, Jarvis du matin, Nouveau coach,
+ * Nouveau joueur), chaque outil ouvert dans un volet. Dessous, le tableau des
+ * groupes (`GroupBoard`) : une colonne par groupe avec son staff — et le
+ * travail de chacun (bilans, réponses, fils sans réponse, programmes
+ * incomplets…) — puis ses joueurs, retirables en trois clics ; la dernière
+ * colonne crée le groupe suivant.
  *
- * Tout ici couvre le club entier : c'est le seul écran, avec « À savoir »,
- * qui ne filtre pas sur `coach_id`. Réservé aux admins (redirection sinon).
+ * Tout ici couvre le club entier. Réservé aux admins (redirection sinon).
  */
 export default async function AdminPage() {
   const { profile } = await getAuthProfile();
@@ -103,10 +96,6 @@ export default async function AdminPage() {
     supabase.from("announcements").select("*").order("created_at", { ascending: false }),
     getGroupsWithStaff(supabase),
   ]);
-  const playersPerGroup: Record<string, number> = {};
-  for (const p of players) {
-    if (p.group_id) playersPerGroup[p.group_id] = (playersPerGroup[p.group_id] ?? 0) + 1;
-  }
   const lastBriefDates = await getLastBriefDates(
     supabase,
     groups.map((g) => g.id)
@@ -251,157 +240,111 @@ export default async function AdminPage() {
       alertCount: awaitingReplies + painAlerts + emptyPlannings + noProgram + lowDiscipline,
     };
   });
-  // les coachs qui demandent l'attention remontent en premier
-  rows.sort((a, b) => b.alertCount - a.alertCount || a.name.localeCompare(b.name, "fr"));
+  // ---- le tableau des groupes
+  const boardStaff: BoardStaff[] = rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    isAdmin: r.isAdmin,
+    summary: [
+      `${r.playersCount} référé${r.playersCount > 1 ? "s" : ""}`,
+      r.playersCount > 0 ? `bilans ${r.reviewsReceived}/${r.reviewsExpected}` : null,
+      r.repliesExpected > 0 ? `réponses ${r.repliesDone}/${r.repliesExpected}` : null,
+      r.lastActiveAt ? `actif ${formatAgoFr(r.lastActiveAt)}` : "aucun message",
+    ]
+      .filter(Boolean)
+      .join(" · "),
+    alerts: [
+      r.awaitingReplies > 0 ? `${r.awaitingReplies} sans réponse` : null,
+      r.painAlerts > 0 ? `${r.painAlerts} douleur${r.painAlerts > 1 ? "s" : ""}` : null,
+      r.emptyPlannings > 0 ? `${r.emptyPlannings} planning${r.emptyPlannings > 1 ? "s" : ""} vide${r.emptyPlannings > 1 ? "s" : ""}` : null,
+      r.noProgram > 0 ? `${r.noProgram} programme${r.noProgram > 1 ? "s" : ""} incomplet${r.noProgram > 1 ? "s" : ""}` : null,
+      r.lowDiscipline > 0 ? `${r.lowDiscipline} discipline${r.lowDiscipline > 1 ? "s" : ""} faible${r.lowDiscipline > 1 ? "s" : ""}` : null,
+    ].filter((x): x is string => Boolean(x)),
+  }));
+  boardStaff.sort((a, b) => a.name.localeCompare(b.name, "fr"));
+
+  const boardGroups: BoardGroup[] = groups.map((g) => ({
+    id: g.id,
+    name: g.name,
+    staffIds: g.staff.map((m) => m.id),
+    referentIds: [
+      ...new Set(
+        players
+          .filter((p) => p.group_id === g.id && p.coach_id)
+          .map((p) => p.coach_id as string),
+      ),
+    ],
+    players: players
+      .filter((p) => p.group_id === g.id)
+      .map((p) => ({
+        id: p.id,
+        firstName: p.first_name,
+        lastName: p.last_name,
+        offer: p.offer,
+        availability: p.availability,
+        discipline: p.discipline,
+      }))
+      .sort((a, b) => a.firstName.localeCompare(b.firstName, "fr")),
+  }));
 
   return (
-    <>
+    <div className="flex flex-col lg:h-[calc(100dvh-4.75rem)]">
       <PageHeader
         title="Admin"
-        subtitle="Organiser le service : groupes, Jarvis, annonces, inscriptions, et le travail des coachs."
+        subtitle={`${groups.length} groupe${groups.length > 1 ? "s" : ""} · ${players.length} joueur${players.length > 1 ? "s" : ""} actif${players.length > 1 ? "s" : ""} · ${boardStaff.length} membres du staff`}
       />
 
-      <DisclosureBar
-        className="mt-4"
-        items={[
-          {
-            key: "groupes",
-            icon: <Users size={16} />,
-            label: "Groupes",
-            count: groups.length,
-            content: (
-              <GroupsManager
-                groups={groups}
-                staff={(staff ?? []) as StaffProfile[]}
-                playerCount={playersPerGroup}
-              />
-            ),
-          },
-          {
-            key: "claude",
-            icon: <Sparkles size={16} />,
-            label: "Jarvis du matin",
-            content: (
-              <MorningBriefPanel
-                configured={isMorningBriefConfigured()}
-                groups={groups.map((g) => ({
-                  id: g.id,
-                  name: g.name,
-                  lastDate: lastBriefDates.get(g.id) ?? null,
-                }))}
-              />
-            ),
-          },
-          {
-            key: "annonces",
-            icon: <Megaphone size={16} />,
-            label: "Annonces",
-            count: (announcements ?? []).length,
-            content: <AnnouncementsManager announcements={(announcements ?? []) as Announcement[]} />,
-          },
-          {
-            key: "coach",
-            icon: <UserPlus size={16} />,
-            label: "Nouveau coach",
-            content: <CreateCoachButton />,
-          },
-          {
-            key: "joueur",
-            icon: <UserRoundPlus size={16} />,
-            label: "Nouveau joueur",
-            count: invitationRows.filter((i) => !i.used_at).length,
-            content: (
-              <CoachInvitations
-                coachId={profile.id}
-                coaches={coachChoices}
-                invitations={invitationRows}
-                appUrl={process.env.NEXT_PUBLIC_APP_URL ?? ""}
-                title="Inviter un joueur"
-              />
-            ),
-          },
-        ]}
-      />
-
-      {/* ---- Les coachs et leur travail : ce que chacun rend, ceux qui
-          demandent l'attention en premier. La ligne ouvre la fiche coach
-          (joueurs, invitations, réaffectation, archivage). ---- */}
-      <Section className="mt-6" title="Coachs et leur travail">
-        {rows.length === 0 ? (
-          <EmptyState>Aucun coach pour le moment.</EmptyState>
-        ) : (
-          <div>
-            {rows.filter((r) => r.playersCount > 0).map((r) => {
-              const details = [
-                `${r.playersCount} joueur${r.playersCount > 1 ? "s" : ""}${
-                  r.playersCount > 0 ? ` (${r.perfCount} perf · ${r.formationCount} form.)` : ""
-                }`,
-                `Discipline ${formatPercent(r.discipline)}`,
-                `Bilans ${r.reviewsReceived}/${r.reviewsExpected}`,
-                r.repliesExpected > 0 ? `Réponses ${r.repliesDone}/${r.repliesExpected}` : null,
-                r.lastActiveAt ? `Actif ${formatAgoFr(r.lastActiveAt)}` : "Aucun message écrit",
-              ].filter(Boolean);
-              const alerts = [
-                r.awaitingReplies > 0
-                  ? `${r.awaitingReplies} fil${r.awaitingReplies > 1 ? "s" : ""} sans réponse`
-                  : null,
-                r.painAlerts > 0 ? `${r.painAlerts} douleur${r.painAlerts > 1 ? "s" : ""}` : null,
-                r.emptyPlannings > 0
-                  ? `${r.emptyPlannings} planning${r.emptyPlannings > 1 ? "s" : ""} vide${r.emptyPlannings > 1 ? "s" : ""}`
-                  : null,
-                r.noProgram > 0
-                  ? `${r.noProgram} programme${r.noProgram > 1 ? "s" : ""} incomplet${r.noProgram > 1 ? "s" : ""}`
-                  : null,
-                r.lowDiscipline > 0
-                  ? `${r.lowDiscipline} discipline${r.lowDiscipline > 1 ? "s" : ""} faible${r.lowDiscipline > 1 ? "s" : ""}`
-                  : null,
-              ].filter(Boolean);
-
-              return (
-                <Row
-                  key={r.id}
-                  href={`/coach/club/${r.id}`}
-                  dot={r.alertCount > 0}
-                  emphasis={r.alertCount > 0}
-                  wrap
-                  title={
-                    <span className="flex items-center gap-1.5">
-                      <span className="truncate">{r.name}</span>
-                      {r.isAdmin && <Badge tone="navy">Admin</Badge>}
-                    </span>
-                  }
-                  subtitle={
-                    <>
-                      {details.join(" · ")}
-                      {alerts.length > 0 && (
-                        <span className="block font-semibold text-danger">{alerts.join(" · ")}</span>
-                      )}
-                    </>
-                  }
-                  right={
-                    r.alertCount > 0 ? <Badge tone="danger">{r.alertCount}</Badge> : undefined
-                  }
+      <div className="mb-4">
+        <AdminTools
+          tools={[
+            {
+              key: "annonces",
+              icon: <Megaphone size={16} />,
+              label: "Annonces",
+              count: (announcements ?? []).length,
+              content: <AnnouncementsManager announcements={(announcements ?? []) as Announcement[]} />,
+            },
+            {
+              key: "jarvis",
+              icon: <Sparkles size={16} />,
+              label: "Jarvis du matin",
+              content: (
+                <MorningBriefPanel
+                  configured={isMorningBriefConfigured()}
+                  groups={groups.map((g) => ({
+                    id: g.id,
+                    name: g.name,
+                    lastDate: lastBriefDates.get(g.id) ?? null,
+                  }))}
                 />
-              );
-            })}
-          </div>
-        )}
-        {rows.some((r) => r.playersCount === 0) && (
-          <details className="mt-2">
-            <summary className="cursor-pointer text-xs font-semibold text-navy-400">
-              Comptes sans joueur ({rows.filter((r) => r.playersCount === 0).length})
-            </summary>
-            <div className="mt-2">
-              {rows
-                .filter((r) => r.playersCount === 0)
-                .map((r) => (
-                  <Row key={r.id} href={`/coach/club/${r.id}`} title={r.name} subtitle="Aucun joueur affecté" />
-                ))}
-            </div>
-          </details>
-        )}
-      </Section>
+              ),
+            },
+            {
+              key: "coach",
+              icon: <UserPlus size={16} />,
+              label: "Nouveau coach",
+              content: <CreateCoachButton />,
+            },
+            {
+              key: "joueur",
+              icon: <UserRoundPlus size={16} />,
+              label: "Nouveau joueur",
+              count: invitationRows.filter((i) => !i.used_at).length,
+              content: (
+                <CoachInvitations
+                  coachId={profile.id}
+                  coaches={coachChoices}
+                  invitations={invitationRows}
+                  appUrl={process.env.NEXT_PUBLIC_APP_URL ?? ""}
+                  title="Inviter un joueur"
+                />
+              ),
+            },
+          ]}
+        />
+      </div>
 
-    </>
+      <GroupBoard groups={boardGroups} staff={boardStaff} />
+    </div>
   );
 }
