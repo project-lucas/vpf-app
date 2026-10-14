@@ -885,3 +885,43 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     animation: none;
   }
 }
+
+/* Jarvis casque : les yeux pulsent comme un réacteur */
+@keyframes jarvis-eye-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+@keyframes jarvis-eye-flicker {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  25% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 0.9;
+  }
+  75% {
+    opacity: 0.45;
+  }
+}
+.jarvis-eye-glow {
+  animation:
+    jarvis-blink 4.6s ease-in-out infinite,
+    jarvis-eye-pulse 2.2s ease-in-out infinite;
+}
+.jarvis-eyes.thinking .jarvis-eye-glow {
+  animation: jarvis-eye-flicker 0.6s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .jarvis-eye-glow,
+  .jarvis-eyes.thinking .jarvis-eye-glow {
+    animation: none;
+  }
+}

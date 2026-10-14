@@ -22,7 +22,23 @@ const SUGGESTIONS = [
  * poser un créneau, écrire à un joueur… Chaque action faite s'affiche sous sa
  * réponse. L'historique vit dans la page (il repart à zéro au rechargement).
  */
-export function JarvisChat({ groupId, configured }: { groupId: string | null; configured: boolean }) {
+export function JarvisChat({
+  groupId,
+  configured,
+  focus = null,
+}: {
+  groupId: string | null;
+  configured: boolean;
+  /** joueur dont on parle (fiche, liste) : questions et actions sur lui */
+  focus?: { id: string; firstName: string } | null;
+}) {
+  const suggestions = focus
+    ? [
+        `Comment va ${focus.firstName} en ce moment ?`,
+        `Ajoute une séance physique à ${focus.firstName} mardi et jeudi`,
+        `Écris un message d'encouragement à ${focus.firstName}`,
+      ]
+    : SUGGESTIONS;
   const [lines, setLines] = useState<ChatLine[]>([]);
   const [draft, setDraft] = useState("");
   const [isPending, startTransition] = useTransition();
@@ -40,7 +56,7 @@ export function JarvisChat({ groupId, configured }: { groupId: string | null; co
     setDraft("");
     startTransition(async () => {
       const history = next.filter((l) => !l.error).map(({ role, content }) => ({ role, content }));
-      const result = await askJarvis(groupId, history);
+      const result = await askJarvis(groupId, history, focus?.id ?? null);
       setLines((cur) => [
         ...cur,
         result.ok
@@ -68,7 +84,7 @@ export function JarvisChat({ groupId, configured }: { groupId: string | null; co
               ajouter un créneau, écrire à un joueur…
             </p>
             <div className="mt-2 flex flex-wrap gap-1.5">
-              {SUGGESTIONS.map((s) => (
+              {suggestions.map((s) => (
                 <button
                   key={s}
                   type="button"
@@ -135,7 +151,11 @@ export function JarvisChat({ groupId, configured }: { groupId: string | null; co
             }
           }}
           rows={2}
-          placeholder="Ex. : ajoute une séance de tir à Liam lundi et jeudi"
+          placeholder={
+            focus
+              ? `Ex. : affecte une séance de tir à ${focus.firstName} lundi`
+              : "Ex. : ajoute une séance de tir à Liam lundi et jeudi"
+          }
           className="min-h-11 flex-1 resize-none rounded-xl border border-navy-200 px-3 py-2 text-[13px] focus:border-navy-600 focus:outline-none"
         />
         <button

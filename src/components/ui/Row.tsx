@@ -108,14 +108,18 @@ export function Row({
           {rightSlot}
         </div>
       ) : onClick ? (
-        <button
-          type="button"
-          onClick={onClick}
-          className={`flex w-full items-start gap-3 ${rowPad} text-left`}
-        >
-          <span className={bodyClass}>{body}</span>
+        // comme pour `href` : seul le corps est cliquable, la zone de droite
+        // (menu, bouton) reste à côté — jamais un bouton dans un bouton
+        <div className={`flex items-start gap-3 ${rowPad}`}>
+          <button
+            type="button"
+            onClick={onClick}
+            className={`${bodyClass} -mx-1 rounded-lg px-1 text-left transition-colors hover:bg-navy-50`}
+          >
+            {body}
+          </button>
           {rightSlot}
-        </button>
+        </div>
       ) : (
         <div className={`flex items-start gap-3 ${rowPad}`}>
           <span className={bodyClass}>{body}</span>

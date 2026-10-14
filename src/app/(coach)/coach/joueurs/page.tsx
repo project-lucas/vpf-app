@@ -2,8 +2,9 @@ import { UserPlus } from "lucide-react";
 import { createClient, getCachedUser } from "@/lib/supabase/server";
 import { getNavRole } from "@/lib/auth";
 import { getHealthByPlayer, getPlayersWithDiscipline, getWeekTracking } from "@/lib/coach-data";
-import { getStaffInbox, getStaffUnreadPlayerIds, type InboxThread } from "@/lib/conversations";
-import { currentWeekStart } from "@/lib/dates";
+import { getMyPlayerIds, getStaffInbox, getStaffUnreadPlayerIds, type InboxThread } from "@/lib/conversations";
+import { getBriefsForDate, isMorningBriefConfigured, type BriefRecommendation } from "@/lib/briefs";
+import { currentWeekStart, parisNow } from "@/lib/dates";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { DisclosureBar } from "@/components/ui/DisclosureBar";
@@ -63,7 +64,19 @@ export default async function CoachPlayersPage() {
   // « mes joueurs » : ceux dont je suis le coach référent. Eux seuls portent
   // la pastille rouge — la pastille dit « ça t'attend », et le fil d'un joueur
   // d'un collègue est à lui. Le reste du club se consulte, en gris.
-  const myPlayerIds = players.filter((p) => p.coach_id === user?.id).map((p) => p.id);
+  // depuis les groupes (0040), « mes joueurs » = mes référés + les joueurs des
+  // groupes dont je suis staff : à deux sur le groupe A, la même liste
+  const myPlayerIds = user ? await getMyPlayerIds(supabase, user.id) : [];
+  const myIds = new Set(myPlayerIds);
+  // les suggestions de Jarvis du matin, joueur par joueur
+  const groupIds = [...new Set(players.map((p) => p.group_id).filter((g): g is string => Boolean(g)))];
+  const briefs = await getBriefsForDate(supabase, groupIds, parisNow().date);
+  const recosByPlayer: Record<string, BriefRecommendation[]> = {};
+  for (const b of briefs.values()) {
+    for (const r of b.recommendations) {
+      if (r.playerId) (recosByPlayer[r.playerId] ??= []).push(r);
+    }
+  }
 
   const usedByIds = ((invitations ?? []) as Invitation[])
     .map((i) => i.used_by)
@@ -145,11 +158,7 @@ export default async function CoachPlayersPage() {
     <>
       <PageHeader
         title="Joueurs"
-        subtitle={
-          unreadCount > 0
-            ? `${myPlayerIds.length} à moi · ${players.length} au club · ${unreadCount} message${unreadCount > 1 ? "s" : ""} en attente`
-            : `${myPlayerIds.length} à moi · ${players.length} joueur${players.length > 1 ? "s" : ""} actif${players.length > 1 ? "s" : ""} au club`
-        }
+        subtitle={`${players.length} joueur${players.length > 1 ? "s" : ""} actif${players.length > 1 ? "s" : ""}${unreadCount > 0 ? ` · ${unreadCount} message${unreadCount > 1 ? "s" : ""} en attente` : ""} · triés par urgence`}
       />
 
       {players.length === 0 ? (
@@ -160,10 +169,12 @@ export default async function CoachPlayersPage() {
         </EmptyState>
       ) : (
         <PlayersList
+          recosByPlayer={recosByPlayer}
+          briefConfigured={isMorningBriefConfigured()}
           players={players.map((p) => {
             const h = health.get(p.id);
             const inbox = summarize(threadsByPlayer.get(p.id) ?? []);
-            const isMine = p.coach_id === user?.id;
+            const isMine = myIds.has(p.id);
             return {
               id: p.id,
               first_name: p.first_name,
@@ -174,7 +185,7 @@ export default async function CoachPlayersPage() {
               discipline: p.discipline,
               progress: progressByPlayer.get(p.id) ?? null,
               whatsapp_number: p.whatsapp_number,
-              is_mine: isMine,
+              group_id: p.group_id,
               // un fil non lu que la boîte ne couvre pas (relais d'un collègue)
               // compte quand même : la pastille sait, la vue Messages montre
               has_unread_messages:

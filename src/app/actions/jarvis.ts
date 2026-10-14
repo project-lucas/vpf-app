@@ -58,7 +58,12 @@ Règles :
 - Réponses courtes : quelques phrases ou une petite liste.
 - Texte brut, sans Markdown : pas d'astérisques, pas de #, des tirets simples pour les listes.`;
 
-export async function askJarvis(groupId: string | null, history: JarvisTurn[]): Promise<JarvisResult> {
+export async function askJarvis(
+  groupId: string | null,
+  history: JarvisTurn[],
+  /** conversation ouverte depuis la fiche ou la liste d'un joueur : c'est de lui qu'on parle */
+  focusPlayerId: string | null = null
+): Promise<JarvisResult> {
   const guard = await requireStaffProfile();
   if (!guard.ok) return guard;
   if (!isMorningBriefConfigured()) {
@@ -264,7 +269,11 @@ export async function askJarvis(groupId: string | null, history: JarvisTurn[]): 
       max_tokens: 4000,
       max_iterations: 8,
       output_config: { effort: "medium" },
-      system: `${SYSTEM}\n\nAujourd'hui : ${parisNow().date} (heure de Paris). Joueurs du groupe :\n${JSON.stringify(roster)}`,
+      system: `${SYSTEM}\n\nAujourd'hui : ${parisNow().date} (heure de Paris).${
+        focusPlayerId && knownIds.has(focusPlayerId)
+          ? `\nLa conversation porte sur ${who(focusPlayerId)} (id ${focusPlayerId}) : sauf mention contraire, « il », « elle » ou « le joueur » désigne ce joueur. Commence par get_player_details si la question demande du détail.`
+          : ""
+      } Joueurs du groupe :\n${JSON.stringify(roster)}`,
       tools,
       messages: turns,
     });

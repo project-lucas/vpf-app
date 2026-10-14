@@ -1,8 +1,10 @@
 /**
- * L'avatar de Jarvis : un petit visage rond qui respire (halo orange), regarde
- * autour de lui et cligne des yeux, en continu. `thinking` fait aller les yeux
- * de gauche à droite pendant qu'il travaille. Animations en CSS pur
- * (globals.css), coupées si l'utilisateur demande moins de mouvement.
+ * L'avatar de Jarvis : un casque d'armure (création originale, dans l'esprit
+ * des assistants de films de super-héros) — coque rouge, masque doré, deux
+ * fentes d'yeux qui s'illuminent. En continu : un halo cyan respire autour,
+ * les yeux pulsent, balaient de temps en temps et clignent. `thinking` fait
+ * vaciller les yeux pendant qu'il travaille. Animations en CSS (globals.css),
+ * coupées si l'utilisateur demande moins de mouvement.
  */
 export function JarvisAvatar({
   size = 32,
@@ -23,24 +25,46 @@ export function JarvisAvatar({
       className={`shrink-0 overflow-visible ${className}`}
     >
       <defs>
-        <linearGradient id="jarvis-face" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor="#1e4a7a" />
-          <stop offset="100%" stopColor="#0f2a4a" />
+        <linearGradient id="jarvis-shell" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#d4313b" />
+          <stop offset="100%" stopColor="#7d1219" />
         </linearGradient>
+        <linearGradient id="jarvis-plate" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#f6d27a" />
+          <stop offset="100%" stopColor="#c9952f" />
+        </linearGradient>
+        <filter id="jarvis-glow" x="-80%" y="-200%" width="260%" height="500%">
+          <feGaussianBlur stdDeviation="1.1" result="b" />
+          <feMerge>
+            <feMergeNode in="b" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
       </defs>
+
       {/* halo qui respire */}
-      <circle className="jarvis-ring" cx="20" cy="20" r="18" fill="none" stroke="#e8622c" strokeWidth="2" />
-      {/* visage */}
-      <circle cx="20" cy="20" r="16" fill="url(#jarvis-face)" />
-      {/* reflet */}
-      <ellipse cx="14" cy="11.5" rx="5" ry="2.6" fill="#ffffff" opacity="0.12" />
-      {/* yeux */}
-      <g className={`jarvis-eyes ${thinking ? "thinking" : ""}`}>
-        <rect className="jarvis-eye" x="12.6" y="15" width="4" height="6.4" rx="2" fill="#ffffff" />
-        <rect className="jarvis-eye" x="23.4" y="15" width="4" height="6.4" rx="2" fill="#ffffff" />
+      <circle className="jarvis-ring" cx="20" cy="20" r="19" fill="none" stroke="#5ee7ff" strokeWidth="1.6" />
+
+      {/* coque du casque */}
+      <path
+        d="M20 2.5c7.6 0 13 4.6 13 12.4v7.4c0 6.2-3.3 10.9-8.2 13.4L20 38l-4.8-2.3C10.3 33.2 7 28.5 7 22.3v-7.4C7 7.1 12.4 2.5 20 2.5z"
+        fill="url(#jarvis-shell)"
+      />
+      {/* masque doré */}
+      <path
+        d="M20 8.5c4.9 0 8.4 2.6 8.4 7.4v5.6c0 2.2-.6 3.4-1.7 4.6l-1.5 1.6v4.2L20 34l-5.2-2.1v-4.2l-1.5-1.6c-1.1-1.2-1.7-2.4-1.7-4.6v-5.6c0-4.8 3.5-7.4 8.4-7.4z"
+        fill="url(#jarvis-plate)"
+      />
+      {/* arête du front */}
+      <path d="M20 8.5v6.2" stroke="#b07f22" strokeWidth="0.8" />
+      {/* bouche */}
+      <path d="M16.6 28.6h6.8" stroke="#8a6214" strokeWidth="1.1" strokeLinecap="round" />
+
+      {/* yeux : fentes lumineuses */}
+      <g className={`jarvis-eyes ${thinking ? "thinking" : ""}`} filter="url(#jarvis-glow)">
+        <path className="jarvis-eye jarvis-eye-glow" d="M12.6 19.4l5.2 1.1-.4 1.6-4.6-.6z" fill="#d9fbff" />
+        <path className="jarvis-eye jarvis-eye-glow" d="M27.4 19.4l-5.2 1.1.4 1.6 4.6-.6z" fill="#d9fbff" />
       </g>
-      {/* sourire */}
-      <path d="M15.5 25.5c1.3 1.5 2.8 2.2 4.5 2.2s3.2-.7 4.5-2.2" fill="none" stroke="#e8622c" strokeWidth="2" strokeLinecap="round" />
     </svg>
   );
 }

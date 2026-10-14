@@ -31,6 +31,8 @@ import { disciplineTrend } from "@/lib/staff-overview";
 import { ScoringChart } from "@/components/coach/ScoringChart";
 import { WeekDaysCard, type DayDetail, type DayItem } from "@/components/coach/WeekDaysCard";
 import { EVENT_TYPE_LABELS } from "@/lib/constants";
+import { JarvisPlayerButton } from "@/components/coach/JarvisPlayerBox";
+import { getBriefsForDate, isMorningBriefConfigured, type BriefRecommendation } from "@/lib/briefs";
 import { Tabs } from "@/components/ui/Tabs";
 import { Card, CardTitle } from "@/components/ui/Card";
 import { Section } from "@/components/ui/Section";
@@ -390,6 +392,15 @@ export default async function PlayerDetailPage({
     return { ...d, items: [...events, ...sessions] };
   });
 
+  // ---- les suggestions de Jarvis pour ce joueur dans le brief du matin
+  const groupIdOfPlayer = (playerRaw.group_id as string | null) ?? null;
+  const todaysBriefs = groupIdOfPlayer
+    ? await getBriefsForDate(supabase, [groupIdOfPlayer], parisNow().date)
+    : new Map();
+  const playerRecos = (groupIdOfPlayer ? todaysBriefs.get(groupIdOfPlayer)?.recommendations ?? [] : []).filter(
+    (r: BriefRecommendation) => r.playerId === id
+  );
+
   // ---- chiffres de la tête de fiche : discipline de la dernière semaine
   //      close et sa tendance (mêmes règles que le tableau de l'accueil)
   const closedWeeks = [...allSummaries]
@@ -499,12 +510,13 @@ export default async function PlayerDetailPage({
             playerName={`${profile?.first_name ?? ""} ${profile?.last_name ?? ""}`.trim()}
             size="md"
           />
-          <Link
-            href="/coach?jarvis=1"
-            className="inline-flex min-h-10 items-center rounded-xl bg-accent px-4 text-[13px] font-extrabold text-white hover:opacity-90"
-          >
-            Demander à Jarvis
-          </Link>
+          <JarvisPlayerButton
+            playerId={id}
+            firstName={profile?.first_name ?? "ce joueur"}
+            groupId={(playerRaw.group_id as string | null) ?? null}
+            recos={playerRecos}
+            configured={isMorningBriefConfigured()}
+          />
           <RowMenu
             playerId={id}
             playerName={`${profile?.first_name ?? ""} ${profile?.last_name ?? ""}`.trim()}

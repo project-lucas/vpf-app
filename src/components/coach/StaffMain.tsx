@@ -8,7 +8,8 @@ import { usePathname } from "next/navigation";
  * pages restent à 1280 px, lisibles. Sur téléphone, rien ne change.
  */
 export function StaffMain({ children }: { children: React.ReactNode }) {
-  const wide = usePathname() === "/coach";
+  const path = usePathname();
+  const wide = path === "/coach" || path === "/coach/joueurs";
   return (
     <main
       className={`mx-auto w-full px-4 pb-32 pt-1 lg:px-8 lg:pb-12 lg:pt-7 ${
