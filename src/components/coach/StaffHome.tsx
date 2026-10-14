@@ -18,7 +18,7 @@ import {
   Sparkline,
   WeekHistoryCell,
 } from "@/components/coach/HomeCells";
-import { AVAILABILITY_LABELS, MESSAGE_MAX_LENGTH, channelKey } from "@/lib/constants";
+import { MESSAGE_MAX_LENGTH, channelKey } from "@/lib/constants";
 import { formatPercent } from "@/lib/discipline";
 import { formatAgoFr } from "@/lib/dates";
 import { HISTORY_WEEK_CHOICES, type HomeRow } from "@/lib/staff-overview";
@@ -97,6 +97,32 @@ function Count({ n, on }: { n: number; on: boolean }) {
   return (
     <span className={`rounded-full px-1.5 text-[11px] font-bold tabular-nums ${on ? "bg-accent text-white" : "bg-sand text-navy-500"}`}>
       {n}
+    </span>
+  );
+}
+
+/** Récent = dans les 7 derniers jours. */
+const HEALTH_RECENT_MS = 7 * 86_400_000;
+
+/**
+ * L'état de santé d'un joueur, en un mot : blessé, douleur, gêne, vacances,
+ * ou OK. Sources : la disponibilité posée par le staff, le dernier check-in
+ * douleur (7 jours) et la question santé du dernier bilan.
+ */
+function HealthCell({ row }: { row: HomeRow }) {
+  const recentPain =
+    row.pain && Date.now() - new Date(row.pain.at).getTime() <= HEALTH_RECENT_MS ? row.pain.score : null;
+  if (row.availability === "injured") return <Tag tone="red">Blessé</Tag>;
+  if (row.availability === "vacation") return <Tag tone="grey">Vacances</Tag>;
+  if (recentPain !== null && recentPain >= 5) return <Tag tone="red">Douleur {recentPain}/10</Tag>;
+  if (row.reviewHealth === "blessure") return <Tag tone="red">Blessure signalée</Tag>;
+  if ((recentPain !== null && recentPain >= 3) || row.reviewHealth === "gene") {
+    return <Tag tone="amber">Gêne{recentPain !== null && recentPain >= 3 ? ` ${recentPain}/10` : ""}</Tag>;
+  }
+  return (
+    <span className="inline-flex items-center gap-1 text-[11.5px] font-semibold text-success">
+      <span className="h-1.5 w-1.5 rounded-full bg-success" />
+      OK
     </span>
   );
 }
@@ -553,7 +579,7 @@ export function StaffHome({
                 "Joueur",
                 "Offre",
                 ...(showKickoff ? ["Visio départ"] : []),
-                "Dispo",
+                "Santé",
                 "Discipline",
                 "Tendance",
                 "Semaine",
@@ -623,15 +649,7 @@ export function StaffHome({
                     </td>
                   )}
                   <td className="border-b border-navy-50 px-3 py-2 group-hover:bg-navy-50/50">
-                    {r.alerts.some((a) => a.key === "pain") && r.pain ? (
-                      <Tag tone="red">Douleur {r.pain.score}/10</Tag>
-                    ) : frozen ? (
-                      <Tag tone={r.availability === "injured" ? "red" : "amber"}>
-                        {AVAILABILITY_LABELS[r.availability]}
-                      </Tag>
-                    ) : (
-                      <span className="text-xs text-navy-400">Dispo</span>
-                    )}
+                    <HealthCell row={r} />
                   </td>
                   <td className="border-b border-navy-50 px-3 py-2 group-hover:bg-navy-50/50">
                     <DisciplineBar value={r.discipline} frozen={frozen} />
