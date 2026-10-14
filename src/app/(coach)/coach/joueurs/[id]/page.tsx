@@ -27,6 +27,8 @@ import {
 } from "@/lib/constants";
 import { EventTypeIcon } from "@/components/planning/EventIcon";
 import { formatPercent } from "@/lib/discipline";
+import { disciplineTrend } from "@/lib/staff-overview";
+import { ScoringChart } from "@/components/coach/ScoringChart";
 import { Tabs } from "@/components/ui/Tabs";
 import { Card, CardTitle } from "@/components/ui/Card";
 import { Section } from "@/components/ui/Section";
@@ -355,73 +357,134 @@ export default async function PlayerDetailPage({
     };
   });
 
+  // ---- chiffres de la tête de fiche : discipline de la dernière semaine
+  //      close et sa tendance (mêmes règles que le tableau de l'accueil)
+  const closedWeeks = [...allSummaries]
+    .sort((a, b) => (a.week_start < b.week_start ? 1 : -1))
+    .map((s) => ({ weekStart: s.week_start, done: s.done_count, planned: s.planned_count, review: false }));
+  const lastClosed = closedWeeks.find((w) => w.planned > 0);
+  const heroDiscipline = lastClosed ? Math.min(1, lastClosed.done / lastClosed.planned) : null;
+  const heroTrend = disciplineTrend(closedWeeks);
+
   return (
     <>
       <Link
         href="/coach/joueurs"
-        className="mb-3 inline-flex items-center gap-1 text-sm font-semibold text-navy-400"
+        className="mb-3 inline-flex items-center gap-1 text-sm font-semibold text-navy-400 hover:text-navy-700"
       >
-        <ChevronLeftIcon size={16} /> Mes joueurs
+        <ChevronLeftIcon size={16} /> Joueurs
       </Link>
 
-      <div className="mb-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h1 className="font-display text-2xl font-bold uppercase leading-none tracking-wide text-navy-900">
-              {profile?.first_name} {profile?.last_name}
-            </h1>
-            <span aria-hidden className="mt-1.5 block h-1 w-9 -skew-x-12 rounded-sm bg-gold" />
-            <p className="mt-1.5 text-sm text-navy-400">
-              {[playerRaw.position, playerRaw.club, age !== null ? `${age} ans` : null]
-                .filter(Boolean)
-                .join(" · ")}
-            </p>
-          </div>
-          {/* les gestes courants : WhatsApp, et le menu ⋯ (écrire, disponibilité) */}
-          <div className="flex shrink-0 items-center gap-1.5">
-            <PlayerWhatsAppLink
-              whatsappNumber={profile?.whatsapp_number}
-              playerName={`${profile?.first_name ?? ""} ${profile?.last_name ?? ""}`.trim()}
-              size="md"
-            />
-            <RowMenu
-              playerId={id}
-              playerName={`${profile?.first_name ?? ""} ${profile?.last_name ?? ""}`.trim()}
-              availability={availability}
-              hideFicheLink
-            />
+      {/* La tête de fiche (direction « Parquet ») : qui, son état, ses trois
+          chiffres, et les gestes — appeler, demander à Jarvis, le menu ⋯. */}
+      <section className="shadow-soft mb-5 flex flex-wrap items-center gap-x-6 gap-y-4 rounded-[20px] bg-white p-5 lg:px-7">
+        <span className="font-display flex h-16 w-16 shrink-0 items-center justify-center rounded-[20px] bg-gradient-to-br from-navy-800 to-navy-600 text-[26px] font-extrabold text-white lg:h-[84px] lg:w-[84px] lg:rounded-[24px] lg:text-[34px]">
+          {`${profile?.first_name?.[0] ?? ""}${profile?.last_name?.[0] ?? ""}`.toUpperCase()}
+        </span>
+        <div className="min-w-0 flex-1">
+          <h1 className="font-display text-[28px] font-extrabold uppercase leading-none tracking-wide text-navy-900 lg:text-[40px]">
+            {profile?.first_name} {profile?.last_name}
+          </h1>
+          <p className="mt-1.5 text-sm text-navy-400">
+            {[playerRaw.position, playerRaw.club, age !== null ? `${age} ans` : null, groupName]
+              .filter(Boolean)
+              .join(" · ")}
+          </p>
+          <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+            <span
+              className={`rounded-full px-2.5 py-1 text-[11.5px] font-bold text-white ${
+                offer === "perf" ? "bg-[#111111]" : "bg-[#2563eb]"
+              }`}
+            >
+              {OFFER_LABELS[offer]}
+            </span>
+            <span
+              className={`rounded-full px-2.5 py-1 text-[11.5px] font-bold ${
+                availability === "injured"
+                  ? "bg-danger-soft text-danger"
+                  : availability === "vacation"
+                    ? "bg-warning-soft text-warning"
+                    : "bg-success-soft text-success"
+              }`}
+            >
+              {AVAILABILITY_LABELS[availability]}
+              {availability !== "available" && playerRaw.availability_since
+                ? ` · depuis le ${formatDateFr(playerRaw.availability_since)}`
+                : ""}
+            </span>
+            {checkin && (
+              <span
+                className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11.5px] font-bold ${
+                  checkin.question === "pain" && checkin.score >= 5
+                    ? "bg-danger-soft text-danger"
+                    : "bg-cream text-navy-500"
+                }`}
+              >
+                {checkin.question === "energy" ? <Zap size={11} /> : <HeartPulse size={11} />}
+                {checkin.question === "energy" ? "Énergie" : "Douleur"} {checkin.score}/10 ·{" "}
+                {formatAgoFr(checkin.created_at)}
+              </span>
+            )}
+            {playerRaw.kickoff_done_at && (
+              <span className="rounded-full bg-cream px-2.5 py-1 text-[11.5px] font-bold text-navy-500">
+                Visio de départ faite
+              </span>
+            )}
           </div>
         </div>
-
-        {/* la ligne de contexte — la même que sur un fil ouvert : ce qu'il faut
-            savoir avant de lire la suite, en pilules discrètes */}
-        <div className="mt-3 flex flex-wrap items-center gap-1.5">
-          <Badge tone={availability === "injured" ? "danger" : "neutral"}>
-            {AVAILABILITY_LABELS[availability]}
-            {availability !== "available" && playerRaw.availability_since
-              ? ` · depuis le ${formatDateFr(playerRaw.availability_since)}`
-              : ""}
-          </Badge>
-          <Badge tone={offer === "formation" ? "navy" : "neutral"}>{OFFER_LABELS[offer]}</Badge>
-          {groupName && <Badge>{groupName}</Badge>}
-          {weekEvents.length > 0 && (
-            <Badge>
-              Semaine {Math.min(weekDone, weekEvents.length)}/{weekEvents.length}
-            </Badge>
-          )}
-          {checkin && (
-            <Badge tone={checkin.question === "pain" && checkin.score >= 5 ? "danger" : "neutral"}>
-              {checkin.question === "energy" ? <Zap size={11} /> : <HeartPulse size={11} />}
-              {checkin.score}/10 · {formatAgoFr(checkin.created_at)}
-            </Badge>
-          )}
+        <dl className="flex gap-7">
+          <div>
+            <dd className="font-display text-[34px] font-extrabold leading-none text-navy-900">
+              {formatPercent(heroDiscipline)}
+            </dd>
+            <dt className="mt-1 text-[12px] text-navy-400">
+              discipline{heroTrend === "up" ? " ↗" : heroTrend === "down" ? " ↘" : ""}
+            </dt>
+          </div>
+          <div>
+            <dd
+              className={`font-display text-[34px] font-extrabold leading-none ${
+                matchStats[0] ? "text-success" : "text-navy-200"
+              }`}
+            >
+              {matchStats[0] ? matchStats[0].points : "—"}
+            </dd>
+            <dt className="mt-1 text-[12px] text-navy-400">pts dernier match</dt>
+          </div>
+          <div>
+            <dd className="font-display text-[34px] font-extrabold leading-none text-navy-900">
+              {weekEvents.length > 0
+                ? `${Math.min(weekDone, weekEvents.length)}/${weekEvents.length}`
+                : "—"}
+            </dd>
+            <dt className="mt-1 text-[12px] text-navy-400">cette semaine</dt>
+          </div>
+        </dl>
+        <div className="flex items-center gap-2">
+          <PlayerWhatsAppLink
+            whatsappNumber={profile?.whatsapp_number}
+            playerName={`${profile?.first_name ?? ""} ${profile?.last_name ?? ""}`.trim()}
+            size="md"
+          />
+          <Link
+            href="/coach?jarvis=1"
+            className="inline-flex min-h-10 items-center rounded-xl bg-accent px-4 text-[13px] font-extrabold text-white hover:opacity-90"
+          >
+            Demander à Jarvis
+          </Link>
+          <RowMenu
+            playerId={id}
+            playerName={`${profile?.first_name ?? ""} ${profile?.last_name ?? ""}`.trim()}
+            availability={availability}
+            hideFicheLink
+          />
         </div>
         {availability !== "available" && (
-          <p className="mt-1.5 text-[11px] text-navy-400">
+          <p className="w-full text-[11.5px] text-navy-400">
             Série et discipline gelées, hors moyennes et alertes.
           </p>
         )}
-      </div>
+      </section>
 
       {/* Cinq onglets au lieu de onze : Messages en premier (c'est la priorité
           du service), puis ce qu'on regarde par semaine, le programme par pôle,
@@ -435,18 +498,78 @@ export default async function PlayerDetailPage({
             label: "Messages",
             dot: conversationChannels.some((c) => c.hasUnread),
             content: (
-              <Card>
-                <CardTitle>Conversation avec {profile?.first_name ?? "le joueur"}</CardTitle>
-                <ConversationPanel
-                  playerId={id}
-                  currentUserId={user?.id ?? ""}
-                  channels={conversationChannels}
-                  initialChannelKey={channelKey(initialChannelAdminId)}
-                  initialMessages={conversationMessages}
-                  variant="coach"
-                  className="h-[460px]"
-                />
-              </Card>
+              <div className="grid gap-5 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+                <Card>
+                  <CardTitle>Conversation avec {profile?.first_name ?? "le joueur"}</CardTitle>
+                  <ConversationPanel
+                    playerId={id}
+                    currentUserId={user?.id ?? ""}
+                    channels={conversationChannels}
+                    initialChannelKey={channelKey(initialChannelAdminId)}
+                    initialMessages={conversationMessages}
+                    variant="coach"
+                    className="h-[460px] lg:h-[520px]"
+                  />
+                </Card>
+                <div className="space-y-5">
+                  <Card>
+                    <CardTitle>Sa semaine</CardTitle>
+                    <div className="flex justify-between">
+                      {dayBreakdown.map((d) => {
+                        const past = d.day < todayWeekday;
+                        const isToday = d.day === todayWeekday;
+                        const state =
+                          d.planned === 0
+                            ? "rest"
+                            : d.done >= d.planned
+                              ? "done"
+                              : past
+                                ? d.done > 0
+                                  ? "partial"
+                                  : "missed"
+                                : "todo";
+                        const look = {
+                          rest: "bg-cream text-navy-300",
+                          done: "bg-navy-800 text-white",
+                          partial: "bg-warning-soft text-warning",
+                          missed: "bg-danger-soft text-danger",
+                          todo: "bg-white text-navy-400 ring-1 ring-inset ring-sand",
+                        }[state];
+                        return (
+                          <div key={d.day} className="flex flex-col items-center gap-1.5">
+                            <span
+                              className={`text-[11px] font-bold ${isToday ? "text-accent" : "text-navy-400"}`}
+                            >
+                              {["LUN", "MAR", "MER", "JEU", "VEN", "SAM", "DIM"][d.day - 1]}
+                            </span>
+                            <span
+                              className={`flex h-10 w-10 items-center justify-center rounded-xl text-[12px] font-extrabold ${look}`}
+                              title={d.planned ? `${d.done}/${d.planned}` : "Repos"}
+                            >
+                              {state === "done" ? "✓" : state === "missed" ? "✕" : d.planned ? `${d.done}/${d.planned}` : "·"}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </Card>
+                  <Card>
+                    <CardTitle>Scoring</CardTitle>
+                    {matchStats.length === 0 ? (
+                      <p className="text-sm text-navy-400">Aucune feuille de match pour l&apos;instant.</p>
+                    ) : (
+                      <>
+                        <ScoringChart points={[...matchStats].slice(0, 8).reverse().map((m) => m.points)} />
+                        <p className="mt-2 text-[12.5px] text-navy-400">
+                          {Math.min(8, matchStats.length)} derniers matchs · moyenne{" "}
+                          {avgPoints !== null ? avgPoints.toFixed(1).replace(".", ",") : "—"} pts · record{" "}
+                          {recordPoints ?? "—"} pts
+                        </p>
+                      </>
+                    )}
+                  </Card>
+                </div>
+              </div>
             ),
           },
           {

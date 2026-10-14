@@ -82,8 +82,11 @@ export function Row({
   const bodyClass = `flex min-w-0 flex-1 items-start gap-3 ${dot || leading ? "" : "pl-5"}`;
   const rowPad = boxed ? (airy ? "py-3.5 px-3" : "py-2.5 px-3") : airy ? "py-4" : "py-2.5";
   const frame = boxed
-    ? `mb-2 rounded-2xl border bg-white transition-[border-color,box-shadow] hover:shadow-sm ${
-        emphasis ? "border-danger/40 hover:border-danger/60" : "border-navy-200 hover:border-navy-300"
+    ? // direction « Parquet » : carte blanche à ombre douce, liseré orange si elle attend
+      `mb-2.5 rounded-[18px] bg-white ${
+        emphasis
+          ? "shadow-[inset_4px_0_0_0_var(--color-accent),0_1px_2px_rgb(15_42_74/0.05),0_12px_32px_-16px_rgb(15_42_74/0.18)]"
+          : "shadow-soft"
       }`
     : "border-b border-navy-100 last:border-b-0";
   const rightContent =

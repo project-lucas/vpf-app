@@ -45,12 +45,12 @@ export function Tabs({
   const sub = variant === "sub";
   const segmented = !sub && items.length <= SEGMENTED_MAX;
 
-  const dot = (item: TabItem, isActive: boolean) =>
+  const dot = (item: TabItem) =>
     item.dot && (
       <span
         aria-hidden
         className={`absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border-2 bg-danger ${
-          isActive ? "border-navy-800" : "border-white"
+          "border-white"
         }`}
       />
     );
@@ -58,7 +58,8 @@ export function Tabs({
   return (
     <div>
       {segmented ? (
-        <div role="tablist" className="mb-4 flex gap-0.5 rounded-xl bg-sand p-0.5">
+        // onglets soulignés (direction « Parquet ») : le trait orange dit où l'on est
+        <div role="tablist" className="mb-5 flex gap-1 border-b border-sand sm:gap-6">
           {items.map((item, i) => {
             const isActive = i === active;
             return (
@@ -68,12 +69,14 @@ export function Tabs({
                 role="tab"
                 aria-selected={isActive}
                 onClick={() => setActive(i)}
-                className={`relative min-w-0 flex-1 truncate rounded-[10px] px-1 py-2 text-xs font-bold transition-colors ${
-                  isActive ? "bg-white text-navy-900 shadow-sm" : "text-navy-500 hover:text-navy-800"
+                className={`relative -mb-px min-w-0 flex-1 truncate border-b-[3px] px-1 py-2.5 text-[13px] font-bold transition-colors sm:flex-none sm:px-0.5 sm:text-sm ${
+                  isActive
+                    ? "border-accent text-navy-900"
+                    : "border-transparent text-navy-400 hover:text-navy-800"
                 }`}
               >
                 {item.label}
-                {dot(item, isActive)}
+                {dot(item)}
               </button>
             );
           })}
@@ -110,7 +113,7 @@ export function Tabs({
                 }
               >
                 {item.label}
-                {dot(item, isActive)}
+                {dot(item)}
               </button>
             );
           })}

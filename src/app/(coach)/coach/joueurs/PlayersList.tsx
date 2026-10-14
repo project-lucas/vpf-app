@@ -189,7 +189,7 @@ export function PlayersList({
         </div>
 
         {/* les vues : la colonne de droite change, la liste ne bouge pas */}
-        <div className="flex gap-0.5 rounded-xl bg-navy-100 p-0.5">
+        <div className="flex gap-0.5 rounded-xl bg-white p-1 shadow-soft">
           {VIEWS.map((v) => (
             <button
               key={v.key}
@@ -197,7 +197,7 @@ export function PlayersList({
               onClick={() => setView(v.key)}
               aria-pressed={view === v.key}
               className={`relative flex min-w-0 flex-1 items-center justify-center gap-1 rounded-[10px] px-1 py-1.5 text-[11px] font-bold transition-colors ${
-                view === v.key ? "bg-white text-navy-900 shadow-sm" : "text-navy-500"
+                view === v.key ? "bg-navy-800 text-white" : "text-navy-500 hover:text-navy-900"
               }`}
             >
               {v.icon}
