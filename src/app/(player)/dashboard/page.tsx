@@ -230,7 +230,7 @@ export default async function DashboardPage({
 
   // ---- Totaux carrière (style Call of) : tout ce qui a été validé depuis
   // le début, séances de la bibliothèque + événements du planning ----
-  const TECH_EVENTS = new Set(["entrainement_club", "training_basket"]);
+  const TECH_EVENTS = new Set(["entrainement_club", "match", "training_basket"]);
   const PHYS_EVENTS = new Set(["prep_physique", "mobilite"]);
   const doneEvents = allCompletions.filter((c) => c.status === "done");
   const totalTechnique =

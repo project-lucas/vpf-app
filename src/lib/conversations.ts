@@ -70,14 +70,16 @@ async function channelHasUnread(
   adminId: string | null,
   lastReadAt: string | null
 ): Promise<boolean> {
-  let query = supabase
-    .from("conversation_messages")
-    .select("id")
-    .eq("player_id", playerId)
-    // les siens ne comptent pas ; un compte supprimé (sender null) non plus
-    .neq("sender_id", viewerId)
-    .limit(1);
+  let query = supabase.from("conversation_messages").select("id").eq("player_id", playerId).limit(1);
   query = adminId ? query.eq("channel_admin_id", adminId) : query.is("channel_admin_id", null);
+  // Les siens ne comptent pas. Pour le JOUEUR, un message sans auteur compte
+  // (rappel automatique « VPF », 0043) — en SQL, `sender_id <> x` exclurait
+  // les NULL, d'où le `or`. Pour le staff et les parents, ni les comptes
+  // supprimés ni les rappels : un rappel s'adresse au joueur, pas à eux.
+  query =
+    viewerId === playerId
+      ? query.or(`sender_id.is.null,sender_id.neq.${viewerId}`)
+      : query.neq("sender_id", viewerId).eq("is_system", false);
   if (lastReadAt) query = query.gt("created_at", lastReadAt);
 
   const { data } = await query;
@@ -199,8 +201,9 @@ export async function fetchNavUnread(
       .from("conversation_messages")
       .select("channel_admin_id, created_at")
       .eq("player_id", playerId)
-      // ses propres messages ne se notifient pas
-      .neq("sender_id", playerId)
+      // ses propres messages ne se notifient pas ; un rappel « VPF » (sans
+      // auteur, 0043) si — d'où le `or`, `<>` exclurait les NULL
+      .or(`sender_id.is.null,sender_id.neq.${playerId}`)
       .order("created_at", { ascending: false })
       .limit(NAV_UNREAD_SCAN),
   ]);
@@ -268,8 +271,10 @@ export async function getStaffUnreadPlayerIds(
       .from("conversation_messages")
       .select("player_id, channel_admin_id, created_at")
       .in("player_id", playerIds)
-      // les siens ne comptent pas ; un compte supprimé (sender null) non plus
+      // les siens ne comptent pas ; un compte supprimé (sender null) non plus ;
+      // ni les rappels automatiques « VPF » (0043), adressés au joueur
       .neq("sender_id", viewerId)
+      .eq("is_system", false)
       // fil global + ses propres fils privés (cf. périmètre ci-dessus)
       .or(`channel_admin_id.is.null,channel_admin_id.eq.${viewerId}`)
       .order("created_at", { ascending: false })
@@ -425,6 +430,9 @@ export async function getStaffInbox(
       // sans ce filtre, un admin balaierait aussi les fils privés de ses
       // collègues (la RLS les lui rend) et pourrait épuiser la limite dessus
       .or(`channel_admin_id.is.null,channel_admin_id.eq.${viewerId}`)
+      // la boîte du staff parle des échanges humains : un rappel automatique
+      // « VPF » (0043) ne la remonte pas et ne l'allume pas
+      .eq("is_system", false)
       .order("created_at", { ascending: false })
       .limit(INBOX_SCAN_LIMIT),
     supabase
@@ -508,6 +516,7 @@ export async function getAdminInbox(
       .from("conversation_messages")
       .select("player_id, sender_id, body, created_at, attachment_kind")
       .eq("channel_admin_id", channelAdminId)
+      .eq("is_system", false)
       .order("created_at", { ascending: false })
       .limit(INBOX_SCAN_LIMIT),
     supabase

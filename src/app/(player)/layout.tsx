@@ -3,8 +3,11 @@ import { daysBetween, parisNow } from "@/lib/dates";
 import { canUseHygiene, toOffer } from "@/lib/offers";
 import { fetchNavUnread, hasNavUnread } from "@/lib/conversations";
 import { CHECKIN_INTERVAL_DAYS } from "@/lib/constants";
+import { getPlayerGates, type DueMatch, type DueReview } from "@/lib/player-gates";
 import { BottomNav } from "@/components/BottomNav";
 import { CheckinModal } from "@/components/CheckinModal";
+import { ReviewGate } from "@/components/ReviewGate";
+import { MatchGate } from "@/components/MatchGate";
 import { PushPrompt } from "@/components/PushPrompt";
 import { InstallPrompt } from "@/components/InstallPrompt";
 import { AnnouncementsBell } from "@/components/messages/AnnouncementsBell";
@@ -25,6 +28,9 @@ export default async function PlayerLayout({ children }: { children: React.React
   let notificationsEnabled = false;
   let announcements: Announcement[] = [];
   let unreadAnnouncementIds: string[] = [];
+  // les portes (0043) : bilan de la semaine, feuille de match — bloquantes
+  let dueReview: DueReview | null = null;
+  let dueMatch: DueMatch | null = null;
 
   if (user) {
     const [
@@ -34,6 +40,7 @@ export default async function PlayerLayout({ children }: { children: React.React
       { data: announcementRows },
       { data: announcementReads },
       navUnread,
+      gates,
     ] = await Promise.all([
       supabase
         .from("checkins")
@@ -50,7 +57,10 @@ export default async function PlayerLayout({ children }: { children: React.React
       // messagerie : la lecture part avec le reste, le verdict dépend de
       // l'offre (les fils privés n'existent qu'en formation)
       fetchNavUnread(supabase, user.id),
+      getPlayerGates(supabase, user.id),
     ]);
+    dueReview = gates.review;
+    dueMatch = gates.match;
 
     const offer = toOffer(playerRow?.offer);
     showHygiene = canUseHygiene(offer);
@@ -68,7 +78,9 @@ export default async function PlayerLayout({ children }: { children: React.React
     const daysSince = lastCheckin
       ? daysBetween(parisNow(new Date(lastCheckin.created_at)).date, parisNow().date)
       : Infinity;
-    if (daysSince >= CHECKIN_INTERVAL_DAYS) {
+    // une porte à la fois : le check-in attendra que le bilan ou la feuille
+    // de match soient remplis
+    if (daysSince >= CHECKIN_INTERVAL_DAYS && !dueReview && !dueMatch) {
       // alterne les deux questions de la V1
       checkinQuestion = lastCheckin?.question === "energy" ? "pain" : "energy";
     }
@@ -82,7 +94,27 @@ export default async function PlayerLayout({ children }: { children: React.React
     // sans créer de conteneur de défilement vertical (contrairement à hidden).
     <div className="ed min-h-dvh w-full overflow-x-clip bg-paper">
       <main className="w-full px-[22px] pb-32 pt-8 sm:px-8 lg:px-16 xl:px-24">{children}</main>
-      {checkinQuestion && <CheckinModal question={checkinQuestion} />}
+      {/* les portes bloquantes (0043), une à la fois : le bilan d'abord, puis
+          la feuille de match, puis seulement le check-in */}
+      {dueReview ? (
+        <ReviewGate
+          // une nouvelle porte = un composant neuf (son état « ouvert » est local)
+          key={dueReview.weekStart}
+          weekStart={dueReview.weekStart}
+          weekLabel={dueReview.weekLabel}
+          isCatchUp={dueReview.isCatchUp}
+        />
+      ) : dueMatch ? (
+        <MatchGate
+          key={`${dueMatch.eventId}:${dueMatch.date}`}
+          eventId={dueMatch.eventId}
+          weekStart={dueMatch.weekStart}
+          date={dueMatch.date}
+          dateLabel={dueMatch.dateLabel}
+        />
+      ) : (
+        checkinQuestion && <CheckinModal question={checkinQuestion} />
+      )}
       <PushPrompt notificationsEnabled={notificationsEnabled} />
       <InstallPrompt />
       {/* Cloche des annonces du club — remplace l'ancien bouton WhatsApp :

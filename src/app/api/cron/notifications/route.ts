@@ -4,6 +4,20 @@ import { sendPushToUser } from "@/lib/push";
 import { addDays, parisNow, timeToMinutes } from "@/lib/dates";
 import { EVENT_TYPE_LABELS } from "@/lib/constants";
 import { canUseHygiene, toOffer } from "@/lib/offers";
+import {
+  alreadySent,
+  matchSheetBody,
+  postSystemMessage,
+  reviewReminderBody,
+} from "@/lib/automations";
+import {
+  matchesAwaitingSheet,
+  matchOccurrencesDue,
+  REVIEW_DUE_HOUR,
+  reviewExpectedFor,
+  type MatchEventRow,
+} from "@/lib/player-gates";
+import { logStaffAction } from "@/lib/journal";
 import type { EventType } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -15,7 +29,9 @@ export const maxDuration = 60;
  * fuseau du serveur (robuste au changement d'heure été/hiver).
  *
  * 1. Rappel push 30 min avant chaque événement du planning (tous types).
- * 2. Dimanche 18h : rappel du bilan hebdomadaire (rendez-vous fixe du planning).
+ * 2. Dimanche 18h : rappel du bilan hebdomadaire (rendez-vous fixe du planning)
+ *    — un message « VPF » dans le fil Global de CHAQUE joueur disponible,
+ *    doublé d'un push pour ceux qui l'ont activé (0043).
  * 3. Clôture quotidienne : dès la première exécution après minuit, les
  *    événements de la veille (et de tout jour passé) non pointés sont
  *    matérialisés en "not_done" — un jour entièrement ignoré casse la série
@@ -27,6 +43,9 @@ export const maxDuration = 60;
  * 5. Lundi 12h-20h : récap push de la semaine écoulée.
  * 6. Tous les soirs à 20h : rappel de la mission d'hygiène aux joueurs de
  *    l'offre formation qui n'ont pas encore noté leur journée.
+ * 7. Après un match du planning (type « match », 0043) : feuille de match à
+ *    remplir — message « VPF » dans le fil + push, une fois par match, tant
+ *    que ni la feuille ni « je n'ai pas joué » ne sont posés.
  *
  * La table notification_log (contrainte UNIQUE) garantit qu'aucun rappel
  * n'est envoyé deux fois, même si deux exécutions se chevauchent.
@@ -52,6 +71,7 @@ export async function GET(request: NextRequest) {
     weeksClosed: 0,
     recaps: 0,
     hygieneReminders: 0,
+    matchSheetReminders: 0,
   };
 
   // Joueurs actifs + préférence notifications. Les joueurs blessés / en
@@ -63,7 +83,7 @@ export async function GET(request: NextRequest) {
   const { data: activePlayers } = await admin
     .from("players")
     .select(
-      "id, availability, availability_since, offer, profile:profiles!players_id_fkey(notifications_enabled)"
+      "id, availability, availability_since, offer, created_at, profile:profiles!players_id_fkey(notifications_enabled, first_name)"
     )
     .eq("status", "active");
 
@@ -73,11 +93,14 @@ export async function GET(request: NextRequest) {
       const profile = Array.isArray(p.profile) ? p.profile[0] : p.profile;
       return {
         id: p.id,
+        firstName: (profile?.first_name as string | undefined) ?? "",
+        createdDate: parisNow(new Date(p.created_at as string)).date,
         availabilitySince: p.availability_since as string | null,
         offer: toOffer(p.offer),
         notificationsEnabled: profile?.notifications_enabled ?? false,
       };
     });
+  const playerById = new Map(players.map((p) => [p.id, p]));
   const notifiablePlayerIds = new Set(
     players.filter((p) => p.notificationsEnabled).map((p) => p.id)
   );
@@ -126,35 +149,61 @@ export async function GET(request: NextRequest) {
   //    affiché dans le planning (fenêtre jusqu'à 21h pour absorber un cron en
   //    retard ; le notification_log garantit un seul envoi).
   // -------------------------------------------------------------------------
-  if (now.isoWeekday === 7 && now.minutesOfDay >= 18 * 60 && now.minutesOfDay < 21 * 60) {
+  if (
+    now.isoWeekday === 7 &&
+    now.minutesOfDay >= REVIEW_DUE_HOUR * 60 &&
+    now.minutesOfDay < (REVIEW_DUE_HOUR + 3) * 60 &&
+    players.length > 0
+  ) {
     // inutile de relancer un joueur qui a déjà rempli son bilan en avance
     const { data: doneReviews } = await admin
       .from("weekly_reviews")
       .select("player_id")
       .eq("week_start", weekStart)
-      .in("player_id", [...notifiablePlayerIds]);
+      .in(
+        "player_id",
+        players.map((p) => p.id)
+      );
     const alreadyDone = new Set((doneReviews ?? []).map((r) => r.player_id));
-
-    for (const playerId of notifiablePlayerIds) {
-      if (alreadyDone.has(playerId)) continue;
-      const refKey = `review:${weekStart}`;
-      const { data: logged } = await admin
-        .from("notification_log")
-        .upsert(
-          { user_id: playerId, kind: "weekly_review", ref_key: refKey },
-          { onConflict: "user_id,kind,ref_key", ignoreDuplicates: true }
-        )
-        .select("id");
-
-      if (logged && logged.length > 0) {
-        await sendPushToUser(playerId, {
-          title: "Ton bilan de la semaine 📝",
-          body: "Bien fait, à améliorer, et comment va ton corps ? 2 minutes suffisent.",
-          url: "/planning",
-          kind: "reminder",
-        });
-        results.reviewReminders++;
-      }
+    const refKey = `review:${weekStart}`;
+    // tous les joueurs disponibles dont on attend le bilan (même règle que la
+    // porte), pas seulement ceux qui ont le push : le message dans le fil est
+    // le rappel, le push n'est que son écho
+    const targets = players.filter(
+      (p) => !alreadyDone.has(p.id) && reviewExpectedFor(p.createdDate, weekStart, now.date)
+    );
+    const sent = await alreadySent(
+      "weekly_review",
+      targets.map((p) => ({ playerId: p.id, refKey }))
+    );
+    for (const player of targets) {
+      if (sent.has(`${player.id}|${refKey}`)) continue;
+      const posted = await postSystemMessage({
+        playerId: player.id,
+        kind: "weekly_review",
+        refKey,
+        body: reviewReminderBody(player.firstName),
+        push: player.notificationsEnabled
+          ? {
+              title: "Ton bilan de la semaine 📝",
+              body: "Bien fait, à améliorer, et comment va ton corps ? 2 minutes suffisent.",
+              url: "/planning",
+              kind: "reminder",
+            }
+          : null,
+      });
+      if (posted) results.reviewReminders++;
+    }
+    if (results.reviewReminders > 0) {
+      await logStaffAction({
+        actorId: null,
+        actorKind: "system",
+        playerId: null,
+        action: "auto_review_reminder",
+        summary: `a rappelé le bilan de la semaine à ${results.reviewReminders} joueur${
+          results.reviewReminders > 1 ? "s" : ""
+        }`,
+      });
     }
   }
 
@@ -337,6 +386,81 @@ export async function GET(request: NextRequest) {
           });
           results.hygieneReminders++;
         }
+      }
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // 7. Feuille de match (0043) : après chaque match du planning (coup d'envoi
+  //    + durée + marge), un message « VPF » dans le fil + push, une seule fois
+  //    par occurrence — tant que ni la feuille ni « je n'ai pas joué » ne sont
+  //    posés. Mêmes règles que la porte bloquante côté joueur
+  //    (src/lib/player-gates.ts) : c'est elle qui tranche, pas la route.
+  // -------------------------------------------------------------------------
+  if (players.length > 0) {
+    const { data: matchEvents } = await admin
+      .from("planned_events")
+      .select("id, player_id, weekday, event_time, duration_minutes, created_at")
+      .eq("event_type", "match")
+      .in(
+        "player_id",
+        players.map((p) => p.id)
+      );
+    const occurrences = matchOccurrencesDue((matchEvents ?? []) as MatchEventRow[], now, [
+      prevWeekStart,
+      weekStart,
+    ]);
+    if (occurrences.length > 0) {
+      const ids = [...new Set(occurrences.map((o) => o.playerId))];
+      const eventIds = [...new Set(occurrences.map((o) => o.eventId))];
+      const [{ data: sheets }, { data: skips }] = await Promise.all([
+        admin
+          .from("match_stats")
+          .select("player_id, match_date")
+          .in("player_id", ids)
+          .gte("match_date", prevWeekStart),
+        admin
+          .from("event_completions")
+          .select("planned_event_id, week_start")
+          .in("planned_event_id", eventIds)
+          .in("week_start", [prevWeekStart, weekStart])
+          .eq("status", "not_done")
+          .eq("auto_filled", false),
+      ]);
+      const waiting = matchesAwaitingSheet(occurrences, sheets ?? [], skips ?? []).map((o) => ({
+        ...o,
+        refKey: `match:${o.eventId}:${o.date}`,
+      }));
+      const sent = await alreadySent("match_sheet", waiting);
+      for (const o of waiting) {
+        const player = playerById.get(o.playerId);
+        if (!player || sent.has(`${o.playerId}|${o.refKey}`)) continue;
+        const posted = await postSystemMessage({
+          playerId: o.playerId,
+          kind: "match_sheet",
+          refKey: o.refKey,
+          body: matchSheetBody(player.firstName, o.date),
+          push: player.notificationsEnabled
+            ? {
+                title: "Ta feuille de match 🏀",
+                body: "Ton match est passé : remplis tes stats, une minute suffit.",
+                url: "/planning",
+                kind: "reminder",
+              }
+            : null,
+        });
+        if (posted) results.matchSheetReminders++;
+      }
+      if (results.matchSheetReminders > 0) {
+        await logStaffAction({
+          actorId: null,
+          actorKind: "system",
+          playerId: null,
+          action: "auto_match_reminder",
+          summary: `a demandé leur feuille de match à ${results.matchSheetReminders} joueur${
+            results.matchSheetReminders > 1 ? "s" : ""
+          }`,
+        });
       }
     }
   }

@@ -4,6 +4,7 @@ export const APP_NAME = "VPF — Centre de Performance";
 
 export const EVENT_TYPE_LABELS: Record<EventType, string> = {
   entrainement_club: "Entraînement club",
+  match: "Match",
   training_basket: "Training Basket",
   prep_physique: "Préparation Physique",
   mobilite: "Mobilité",
@@ -32,6 +33,7 @@ export function eventLabel(e: { event_type: EventType; custom_name?: string | nu
 // Le joueur peut la modifier ; elle sert de base au calcul du temps de travail.
 export const DEFAULT_EVENT_MINUTES: Record<EventType, number> = {
   entrainement_club: 90,
+  match: 90,
   training_basket: 60,
   prep_physique: 60,
   mobilite: 10,
@@ -47,6 +49,7 @@ export const DEFAULT_EVENT_MINUTES: Record<EventType, number> = {
 // (l'école, le sommeil et les collations n'en font pas partie).
 export const WORK_EVENT_TYPES = new Set<EventType>([
   "entrainement_club",
+  "match",
   "training_basket",
   "prep_physique",
   "mobilite",
@@ -85,6 +88,7 @@ export const SEASON_START = { month: 9, day: 1 };
 // (basket = orange, physique/nutrition = vert, récupération = violet, école = bleu)
 export const EVENT_TYPE_BAR_COLORS: Record<EventType, string> = {
   entrainement_club: "#f97316",
+  match: "#0f2a4a",
   training_basket: "#f97316",
   prep_physique: "#22c55e",
   collation: "#22c55e",
@@ -109,6 +113,16 @@ export const EVENT_TYPE_DETAILS: Record<
       "Arrive 10 min avant pour t'échauffer sérieusement",
       "Fixe-toi un objectif précis (ex. : zéro balle perdue)",
       "Après la séance, note une chose que tu as apprise",
+    ],
+  },
+  match: {
+    description:
+      "Ton match officiel avec le club. Après le coup de sifflet final, l'app te demande ta feuille de match : minutes, tirs, lancers francs.",
+    duration: "1 h 30 environ",
+    exercises: [
+      "Échauffe-toi comme à l'entraînement : tir, appuis, cardio",
+      "Un objectif simple pour le match (ex. : 3 rebonds offensifs)",
+      "Dès le retour, remplis ta feuille de match dans l'app",
     ],
   },
   training_basket: {

@@ -9,6 +9,8 @@ export type PlayerAvailability = "available" | "injured" | "vacation";
 export type PlayerOffer = "perf" | "formation";
 export type EventType =
   | "entrainement_club"
+  /** match officiel (0043) : déclenche la feuille de match à remplir */
+  | "match"
   | "training_basket"
   | "prep_physique"
   | "mobilite"
@@ -393,6 +395,8 @@ export interface ConversationMessage {
    */
   channel_admin_id: string | null;
   sender_id: string | null;
+  /** Message automatique « VPF » (rappel de bilan, de feuille de match…), sans auteur (0043). */
+  is_system: boolean;
   body: string;
   created_at: string;
   /** Date de la dernière modification du corps, null si jamais retouché (0036). */

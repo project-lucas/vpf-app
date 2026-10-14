@@ -9,10 +9,13 @@ import { EdButton, EdField, EdInput } from "@/components/editorial/forms";
 export function MatchStatForm({
   records,
   onSuccess,
+  initialDate,
 }: {
   /** records actuels : sert à détecter un record battu à la saisie */
   records?: MatchRecords;
   onSuccess?: (beaten: RecordKey[]) => void;
+  /** date pré-remplie (le match du planning qui attend sa feuille) */
+  initialDate?: string;
 }) {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -86,7 +89,16 @@ export function MatchStatForm({
     <form onSubmit={handleSubmit} className="space-y-4" onChange={() => setConfirming(false)}>
       <EdField label="Date du match">
         {/* max = aujourd'hui : un match ne se joue pas dans le futur (validé aussi côté serveur) */}
-        <EdInput name="match_date" type="date" required max={parisNow().date} />
+        {/* date verrouillée quand c'est LE match du planning qui attend sa
+            feuille : une autre date ne lèverait pas la porte */}
+        <EdInput
+          name="match_date"
+          type="date"
+          required
+          max={parisNow().date}
+          defaultValue={initialDate}
+          readOnly={Boolean(initialDate)}
+        />
       </EdField>
 
       {/* Titulaire oui / non */}

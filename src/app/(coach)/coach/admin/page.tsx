@@ -148,6 +148,9 @@ export default async function AdminPage() {
             .from("conversation_messages")
             .select("player_id, channel_admin_id, sender_id, created_at")
             .in("player_id", playerIds)
+            // un rappel automatique « VPF » (0043) n'est pas un échange : il
+            // ne doit ni masquer un fil sans réponse ni consommer la borne
+            .eq("is_system", false)
             .order("created_at", { ascending: false })
             .limit(INBOX_SCAN_LIMIT),
       // les invitations que J'ai créées, quel que soit le coach visé

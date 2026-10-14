@@ -335,3 +335,57 @@ export async function saveChallengeScore(
 // L'auto-sélection joueur (addSessionToMyList / removeSessionFromMyList) a été
 // retirée : c'est le coach qui décide de la visibilité des séances
 // (voir setSessionVisibility dans actions/coach.ts et la migration 0013).
+
+/**
+ * « Je n'ai pas joué ce match » (0043) : la seule sortie du pop-up de feuille
+ * de match sans saisie. Pointe le match comme non joué, de la main du joueur
+ * (`auto_filled = false`, à la différence d'un oubli matérialisé par le cron)
+ * — c'est ce qui éteint le rappel et la porte, et ce que le coach lit dans le
+ * planning. Lecture RLS d'abord (le match est bien le sien), écriture en
+ * service_role : le grant client ne couvre pas `auto_filled`.
+ */
+export async function skipMatch(eventId: string, weekStart: string): Promise<ActionResult> {
+  const supabase = await createClient();
+  const user = await getCachedUser();
+  if (!user) return { ok: false, error: "Session expirée." };
+
+  const thisWeek = currentWeekStart();
+  if (weekStart !== thisWeek && weekStart !== addDays(thisWeek, -7)) {
+    return { ok: false, error: "Cette semaine n'est plus modifiable." };
+  }
+  const { data: event } = await supabase
+    .from("planned_events")
+    .select("*")
+    .eq("id", eventId)
+    .eq("player_id", user.id)
+    .eq("event_type", "match")
+    .maybeSingle();
+  if (!event) return { ok: false, error: "Match introuvable." };
+  if (addDays(weekStart, event.weekday - 1) > parisNow().date) {
+    return { ok: false, error: "Ce match n'a pas encore eu lieu." };
+  }
+
+  const admin = createAdminClient();
+  const { error } = await admin.from("event_completions").upsert(
+    {
+      player_id: user.id,
+      planned_event_id: eventId,
+      week_start: weekStart,
+      event_type: event.event_type,
+      weekday: event.weekday,
+      event_time: event.event_time,
+      duration_minutes: event.duration_minutes ?? null,
+      custom_name: event.custom_name ?? "",
+      custom_icon: event.custom_icon ?? "",
+      custom_color: event.custom_color ?? "",
+      status: "not_done",
+      auto_filled: false,
+    },
+    { onConflict: "planned_event_id,week_start" }
+  );
+  if (error) return { ok: false, error: "Enregistrement impossible." };
+
+  revalidatePath("/planning");
+  revalidatePath("/dashboard");
+  return { ok: true };
+}

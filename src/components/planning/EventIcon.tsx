@@ -7,6 +7,7 @@ import {
   Moon,
   PersonStanding,
   Target,
+  Trophy,
   type LucideIcon,
 } from "lucide-react";
 import { habitPale, HABIT_COLORS } from "@/lib/constants";
@@ -49,6 +50,7 @@ type EventIconComponent = LucideIcon | typeof BasketballIcon;
 // l'équivalent déjà utilisé pour les habitudes (ex-🧘)
 const EVENT_TYPE_ICONS: Record<EventType, EventIconComponent> = {
   entrainement_club: BasketballIcon,
+  match: Trophy,
   training_basket: Target,
   prep_physique: Dumbbell,
   mobilite: PersonStanding,
@@ -64,6 +66,7 @@ const EVENT_TYPE_ICONS: Record<EventType, EventIconComponent> = {
 // technique = marron, physique = rouge, collation = vert, club = orange…
 export const EVENT_TYPE_COLORS: Record<EventType, string> = {
   entrainement_club: "#f97316",
+  match: "#0f2a4a",
   training_basket: "#b45309",
   prep_physique: "#ef4444",
   mobilite: "#14b8a6",

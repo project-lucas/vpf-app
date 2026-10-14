@@ -105,7 +105,10 @@ async function withSenders(
   );
   return messages.map((m) => ({
     ...m,
-    sender_name: (m.sender_id && byId.get(m.sender_id)?.name) || "Compte supprimé",
+    // un message automatique (0043) parle au nom du service, pas d'une personne
+    sender_name: m.is_system
+      ? "VPF"
+      : (m.sender_id && byId.get(m.sender_id)?.name) || "Compte supprimé",
     sender_role: (m.sender_id && byId.get(m.sender_id)?.role) || null,
     attachment_url: (m.attachment_path && signed.get(m.attachment_path)) || null,
   }));
