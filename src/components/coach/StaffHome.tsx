@@ -719,7 +719,11 @@ export function StaffHome({
               <ActionLink action={primaryAction(r)} />
             </div>
             <div className="mt-2 flex items-center justify-between">
-              <KickoffBox playerId={r.id} doneAt={r.kickoffDoneAt} canEdit={isAdmin} />
+              {r.kickoffExpected ? (
+                <KickoffBox playerId={r.id} doneAt={r.kickoffDoneAt} canEdit={isAdmin} />
+              ) : (
+                <span />
+              )}
               <CallLinks name={r.firstName} playerUrl={r.playerWhatsapp} parent={r.parentWhatsapp} />
             </div>
             {r.alerts.length > 0 && (
