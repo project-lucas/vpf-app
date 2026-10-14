@@ -1,6 +1,6 @@
 import { createClient, getCachedUser } from "@/lib/supabase/server";
 import { getPlayersWithDiscipline } from "@/lib/coach-data";
-import { getHomeRows } from "@/lib/staff-overview";
+import { DEFAULT_HISTORY_WEEKS, HISTORY_WEEK_CHOICES, getHomeRows } from "@/lib/staff-overview";
 import { getGroupsWithStaff, NO_GROUP_LABEL, staffFirstNames } from "@/lib/groups";
 import { getBriefsForDate, isMorningBriefConfigured } from "@/lib/briefs";
 import { getRecentJournal } from "@/lib/journal";
@@ -11,6 +11,8 @@ import { PushPrompt } from "@/components/PushPrompt";
 
 export const metadata = { title: "Accueil — VPF" };
 export const dynamic = "force-dynamic";
+// Jarvis (server action de cette page) enchaîne appels au modèle et outils
+export const maxDuration = 60;
 
 /**
  * Accueil du staff : la vue tableau, un groupe à la fois (cf. `StaffHome`).
@@ -21,7 +23,14 @@ export const dynamic = "force-dynamic";
  * Périmètre : les joueurs que la RLS me rend (mes groupes + mes référés) ;
  * tout le club pour un admin, ses groupes en tête.
  */
-export default async function CoachDashboardPage() {
+export default async function CoachDashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ semaines?: string }>;
+}) {
+  const { semaines } = await searchParams;
+  const asked = Number(semaines);
+  const weeks = (HISTORY_WEEK_CHOICES as readonly number[]).includes(asked) ? asked : DEFAULT_HISTORY_WEEKS;
   const supabase = await createClient();
   const user = await getCachedUser();
   const meId = user?.id ?? "";
@@ -34,7 +43,7 @@ export default async function CoachDashboardPage() {
   ]);
 
   const [rows, briefs, journal, { data: profile }] = await Promise.all([
-    getHomeRows(supabase, { viewerId: meId, isAdmin, players }),
+    getHomeRows(supabase, { viewerId: meId, isAdmin, players, weeks }),
     getBriefsForDate(
       supabase,
       allGroups.map((g) => g.id),
@@ -104,6 +113,7 @@ export default async function CoachDashboardPage() {
         isAdmin={isAdmin}
         todayLabel={todayLabel.charAt(0).toUpperCase() + todayLabel.slice(1)}
         initialGroupId={initialGroupId}
+        weeks={weeks}
       />
       <PushPrompt
         notificationsEnabled={profile?.notifications_enabled ?? true}

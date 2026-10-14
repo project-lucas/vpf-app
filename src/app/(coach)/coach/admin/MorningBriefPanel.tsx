@@ -38,9 +38,9 @@ export function MorningBriefPanel({
   return (
     <div className="space-y-3">
       <p className="text-xs text-navy-500">
-        Chaque matin à 7h, Claude lit l&apos;état de chaque groupe et écrit un brief : un résumé et
+        Chaque matin à 7h, Jarvis lit l&apos;état de chaque groupe et écrit un brief : un résumé et
         des recommandations avec leurs messages prêts à envoyer, à lire dans le volet
-        « Recommandations » de l&apos;accueil. Claude propose, le staff envoie.
+        « Recommandations » de l&apos;accueil. Jarvis propose, le staff envoie.
       </p>
       <p
         className={`rounded-xl px-3 py-2 text-sm font-semibold ${

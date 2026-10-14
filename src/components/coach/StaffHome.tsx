@@ -1,16 +1,25 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
-import { Check, ChevronRight, Pencil, Send, Sparkles, X } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Check, ChevronLeft, ChevronRight, Pencil, Send, Sparkles, X } from "lucide-react";
 import { sendConversationMessage } from "@/app/actions/messages";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PlayerAvatar } from "@/components/coach/PlayerAvatar";
+import { JarvisChat } from "@/components/coach/JarvisChat";
+import {
+  CallLinks,
+  KickoffBox,
+  OfferMark,
+  ScoreCell,
+  Sparkline,
+  WeekHistoryCell,
+} from "@/components/coach/HomeCells";
 import { AVAILABILITY_LABELS, MESSAGE_MAX_LENGTH, channelKey } from "@/lib/constants";
-import { OFFER_LABELS } from "@/lib/offers";
 import { formatPercent } from "@/lib/discipline";
 import { formatAgoFr } from "@/lib/dates";
-import type { HomeRow } from "@/lib/staff-overview";
+import { HISTORY_WEEK_CHOICES, type HomeRow } from "@/lib/staff-overview";
 import type { BriefAction, BriefRecommendation } from "@/lib/briefs";
 
 export interface HomeGroup {
@@ -177,7 +186,7 @@ function ActionLink({ action }: { action: ReturnType<typeof primaryAction> }) {
 }
 
 // ---------------------------------------------------------------------------
-// Une recommandation dans le volet Claude
+// Une recommandation dans le volet Jarvis
 // ---------------------------------------------------------------------------
 
 function RecoCard({ reco }: { reco: RecoView }) {
@@ -217,7 +226,7 @@ function RecoCard({ reco }: { reco: RecoView }) {
           </span>
           <span className="block truncate text-[12px] text-navy-500">{reco.title}</span>
         </span>
-        {reco.offer && <Tag tone={reco.offer === "formation" ? "navy" : "line"}>{OFFER_LABELS[reco.offer]}</Tag>}
+        {reco.offer && <OfferMark offer={reco.offer} />}
       </div>
       <p className="mt-2 text-[12.5px] leading-snug text-navy-500">{reco.why}</p>
 
@@ -295,7 +304,7 @@ function RecoCard({ reco }: { reco: RecoView }) {
 
 /**
  * L'accueil du staff en vue tableau : un groupe à la fois, tous ses joueurs
- * en lignes, une colonne par signal, l'action à droite. Le volet « Claude »
+ * en lignes, une colonne par signal, l'action à droite. Le volet « Jarvis »
  * se pose par-dessus (bouton en tête) : le mot du matin, les recommandations
  * avec leurs messages prêts à envoyer, et le journal du jour. Sans brief du
  * matin (clé API absente, ou pas encore 7h), le volet montre les messages à
@@ -310,6 +319,7 @@ export function StaffHome({
   isAdmin,
   todayLabel,
   initialGroupId,
+  weeks,
 }: {
   groups: HomeGroup[];
   rows: HomeRow[];
@@ -319,11 +329,16 @@ export function StaffHome({
   isAdmin: boolean;
   todayLabel: string;
   initialGroupId: string;
+  /** semaines d'historique chargées */
+  weeks: number;
 }) {
+  const router = useRouter();
+  const scroller = useRef<HTMLDivElement>(null);
   const [groupId, setGroupId] = useState(initialGroupId);
   const [scope, setScope] = useState<Scope>("todo");
   const [offer, setOffer] = useState<OfferFilter>("all");
   const [panelOpen, setPanelOpen] = useState(false);
+  const scrollTable = (dx: number) => scroller.current?.scrollBy({ left: dx, behavior: "smooth" });
 
   useEffect(() => {
     if (!panelOpen) return;
@@ -353,7 +368,7 @@ export function StaffHome({
   const perfCount = groupRows.filter((r) => r.offer === "perf").length;
   const formationCount = groupRows.length - perfCount;
 
-  // ---- le volet Claude : le brief du jour, sinon la couche 1
+  // ---- le volet Jarvis : le brief du jour, sinon la couche 1
   const brief = group ? briefs[group.id] : undefined;
   const rowById = new Map(groupRows.map((r) => [r.id, r]));
   const recos: RecoView[] = brief
@@ -480,18 +495,79 @@ export function StaffHome({
         </Pill>
       </div>
 
-      {/* ---- le tableau (ordinateur) ---- */}
-      <div className="hidden overflow-x-auto rounded-2xl border border-navy-100 bg-white md:block">
-        <table className="w-full border-separate border-spacing-0 text-[12.5px]">
+      {/* ---- le tableau (ordinateur) : défile à l'horizontale vers le passé ---- */}
+      <div className="mb-2 hidden items-center justify-between gap-2 md:flex">
+        <span className="text-[11.5px] text-navy-400">
+          Historique :
+          {HISTORY_WEEK_CHOICES.map((n) => (
+            <button
+              key={n}
+              type="button"
+              onClick={() => router.push(`/coach?semaines=${n}`)}
+              className={`ml-1.5 rounded-full px-2 py-0.5 text-[11.5px] font-semibold ${
+                n === weeks ? "bg-navy-800 text-white" : "text-navy-500 hover:bg-navy-50"
+              }`}
+            >
+              {n === 8 ? "8 sem." : n === 13 ? "3 mois" : "6 mois"}
+            </button>
+          ))}
+        </span>
+        <span className="inline-flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => scrollTable(-480)}
+            className="inline-flex h-8 items-center gap-1 rounded-full border border-navy-100 bg-white px-2.5 text-[11.5px] font-semibold text-navy-600 hover:bg-navy-50"
+          >
+            <ChevronLeft size={14} /> Aujourd&apos;hui
+          </button>
+          <button
+            type="button"
+            onClick={() => scrollTable(480)}
+            className="inline-flex h-8 items-center gap-1 rounded-full border border-navy-100 bg-white px-2.5 text-[11.5px] font-semibold text-navy-600 hover:bg-navy-50"
+          >
+            Semaines passées <ChevronRight size={14} />
+          </button>
+        </span>
+      </div>
+      <div
+        ref={scroller}
+        className="hidden overflow-x-auto rounded-2xl border border-navy-100 bg-white md:block"
+      >
+        <table className="w-max min-w-full border-separate border-spacing-0 text-[12.5px]">
           <thead>
             <tr>
-              {["Joueur", "Offre", "Dispo", "Discipline", "Semaine", "Bilan", "Échange", "Programme", "Action"].map((h) => (
+              {[
+                "Joueur",
+                "Offre",
+                "Visio départ",
+                "Dispo",
+                "Discipline",
+                "Tendance",
+                "Semaine",
+                "Bilan",
+                "Scoring",
+                "Échange",
+                "Programme",
+                "Action",
+                "Appeler",
+              ].map((h, i) => (
                 <th
                   key={h}
                   scope="col"
-                  className="whitespace-nowrap border-b border-navy-100 bg-navy-50/60 px-3 py-2.5 text-left text-[10.5px] font-bold uppercase tracking-[0.1em] text-navy-400"
+                  className={`whitespace-nowrap border-b border-navy-100 bg-navy-50 px-3 py-2.5 text-left text-[10.5px] font-bold uppercase tracking-[0.1em] text-navy-400 ${
+                    i === 0 ? "sticky left-0 z-20" : ""
+                  }`}
                 >
                   {h}
+                </th>
+              ))}
+              {visible[0]?.history.map((c) => (
+                <th
+                  key={c.weekStart}
+                  scope="col"
+                  className="whitespace-nowrap border-b border-l border-navy-100 bg-navy-50 px-3 py-2.5 text-left text-[10.5px] font-bold uppercase tracking-[0.1em] text-navy-400"
+                >
+                  Sem. {c.weekStart.slice(8, 10)}/{c.weekStart.slice(5, 7)}
                 </th>
               ))}
             </tr>
@@ -499,7 +575,7 @@ export function StaffHome({
           <tbody>
             {visible.length === 0 && (
               <tr>
-                <td colSpan={9} className="px-4 py-8 text-center text-sm text-navy-400">
+                <td colSpan={13} className="px-4 py-8 text-center text-sm text-navy-400">
                   {scope === "todo"
                     ? "Rien à traiter : messages lus, bilans répondus, plannings en place."
                     : "Aucun joueur."}
@@ -512,7 +588,7 @@ export function StaffHome({
               return (
                 <tr key={r.id} className="group">
                   <td
-                    className={`whitespace-nowrap border-b border-navy-50 px-3 py-2 group-hover:bg-navy-50/50 ${
+                    className={`sticky left-0 z-10 whitespace-nowrap border-b border-navy-50 bg-white px-3 py-2 group-hover:bg-navy-50 ${
                       r.critical ? "shadow-[inset_3px_0_0_0_#b91c1c]" : ""
                     }`}
                   >
@@ -521,13 +597,13 @@ export function StaffHome({
                       <span className="font-bold text-navy-900">
                         {r.firstName} {r.lastName}
                       </span>
-                      {r.coachFirstName && (
-                        <span className="text-[11px] font-semibold text-navy-300">· {r.coachFirstName}</span>
-                      )}
                     </Link>
                   </td>
                   <td className="border-b border-navy-50 px-3 py-2 group-hover:bg-navy-50/50">
-                    <Tag tone={r.offer === "formation" ? "navy" : "line"}>{OFFER_LABELS[r.offer]}</Tag>
+                    <OfferMark offer={r.offer} />
+                  </td>
+                  <td className="border-b border-navy-50 px-3 py-2 group-hover:bg-navy-50/50">
+                    <KickoffBox playerId={r.id} doneAt={r.kickoffDoneAt} canEdit={isAdmin} />
                   </td>
                   <td className="border-b border-navy-50 px-3 py-2 group-hover:bg-navy-50/50">
                     {r.alerts.some((a) => a.key === "pain") && r.pain ? (
@@ -542,6 +618,9 @@ export function StaffHome({
                   </td>
                   <td className="border-b border-navy-50 px-3 py-2 group-hover:bg-navy-50/50">
                     <DisciplineBar value={r.discipline} frozen={frozen} />
+                  </td>
+                  <td className="border-b border-navy-50 px-3 py-2 group-hover:bg-navy-50/50">
+                    <Sparkline history={r.history} trend={r.trend} />
                   </td>
                   <td className="border-b border-navy-50 px-3 py-2 tabular-nums group-hover:bg-navy-50/50">
                     {frozen ? (
@@ -566,6 +645,9 @@ export function StaffHome({
                     )}
                   </td>
                   <td className="border-b border-navy-50 px-3 py-2 group-hover:bg-navy-50/50">
+                    <ScoreCell matches={r.matches} trend={r.scoreTrend} />
+                  </td>
+                  <td className="border-b border-navy-50 px-3 py-2 group-hover:bg-navy-50/50">
                     {r.unread && r.lastExchangeAt ? (
                       <Tag tone="red">Message · {formatAgoFr(r.lastExchangeAt)}</Tag>
                     ) : silence ? (
@@ -582,14 +664,25 @@ export function StaffHome({
                   <td className="border-b border-navy-50 px-3 py-2 group-hover:bg-navy-50/50">
                     <ActionLink action={primaryAction(r)} />
                   </td>
+                  <td className="border-b border-navy-50 px-3 py-2 group-hover:bg-navy-50/50">
+                    <CallLinks name={r.firstName} playerUrl={r.playerWhatsapp} parent={r.parentWhatsapp} />
+                  </td>
+                  {r.history.map((c) => (
+                    <td
+                      key={c.weekStart}
+                      className="border-b border-l border-navy-50 px-3 py-2 group-hover:bg-navy-50/50"
+                    >
+                      <WeekHistoryCell cell={c} />
+                    </td>
+                  ))}
                 </tr>
               );
             })}
           </tbody>
         </table>
-        <p className="px-4 py-2 text-[11px] text-navy-300">
-          {visible.length} ligne{visible.length > 1 ? "s" : ""} · urgences d&apos;abord, puis le plus d&apos;alertes,
-          puis A → Z · le nom ouvre la fiche
+        <p className="sticky left-0 px-4 py-2 text-[11px] text-navy-300">
+          {visible.length} ligne{visible.length > 1 ? "s" : ""} · urgences d&apos;abord · le nom ouvre la fiche ·
+          à droite, les semaines passées (pointages, point = bilan rendu)
         </p>
       </div>
 
@@ -611,11 +704,17 @@ export function StaffHome({
                 <span className="block truncate text-sm font-bold text-navy-900">
                   {r.firstName} {r.lastName}
                 </span>
-                <span className="block text-[11px] text-navy-400">
-                  {OFFER_LABELS[r.offer]} · {formatPercent(r.discipline)} · {r.weekDone}/{r.weekPlanned}
+                <span className="flex items-center gap-1.5 text-[11px] text-navy-400">
+                  <OfferMark offer={r.offer} />
+                  {formatPercent(r.discipline)} · {r.weekDone}/{r.weekPlanned}
+                  {r.matches[0] && ` · ${r.matches[0].points} pts`}
                 </span>
               </Link>
               <ActionLink action={primaryAction(r)} />
+            </div>
+            <div className="mt-2 flex items-center justify-between">
+              <KickoffBox playerId={r.id} doneAt={r.kickoffDoneAt} canEdit={isAdmin} />
+              <CallLinks name={r.firstName} playerUrl={r.playerWhatsapp} parent={r.parentWhatsapp} />
             </div>
             {r.alerts.length > 0 && (
               <div className="mt-2 flex flex-wrap gap-1">
@@ -630,7 +729,7 @@ export function StaffHome({
         ))}
       </div>
 
-      {/* ---- le volet Claude, par-dessus ---- */}
+      {/* ---- le volet Jarvis, par-dessus ---- */}
       {panelOpen && (
         <div className="fixed inset-0 z-50 flex justify-end">
           <button
@@ -647,7 +746,7 @@ export function StaffHome({
             <div className="flex items-center justify-between gap-3 border-b border-navy-100 bg-white px-5 py-4">
               <h2 id="claude-panel-title" className="font-display flex items-center gap-2 text-[19px] font-bold uppercase tracking-wide text-navy-900">
                 <Sparkles size={17} className="text-gold" />
-                Claude · {group?.name ?? "Accueil"}
+                Jarvis · {group?.name ?? "Accueil"}
               </h2>
               <button
                 type="button"
@@ -677,12 +776,22 @@ export function StaffHome({
                   <p className="mt-1 text-[12px] leading-snug text-navy-500">
                     {briefConfigured
                       ? isAdmin
-                        ? "Il s'écrit à 7h. Tu peux le lancer maintenant depuis Admin › Claude du matin."
+                        ? "Il s'écrit à 7h. Tu peux le lancer maintenant depuis Admin › Jarvis du matin."
                         : "Il s'écrit à 7h."
                       : "Il manque la clé API Anthropic. En attendant, voici les messages proposés par les règles de l'app."}
                   </p>
                 </div>
               )}
+
+              <div>
+                <p className="mb-2 px-1 text-[10.5px] font-bold uppercase tracking-[0.12em] text-navy-400">
+                  Parler à Jarvis
+                </p>
+                <JarvisChat
+                  groupId={group && group.id !== NO_GROUP_ID ? group.id : null}
+                  configured={briefConfigured}
+                />
+              </div>
 
               <div>
                 <p className="mb-2 px-1 text-[10.5px] font-bold uppercase tracking-[0.12em] text-navy-400">

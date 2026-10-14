@@ -428,7 +428,7 @@ export default async function AdminPage() {
           {
             key: "claude",
             icon: <Sparkles size={16} />,
-            label: "Claude du matin",
+            label: "Jarvis du matin",
             content: (
               <MorningBriefPanel
                 configured={isMorningBriefConfigured()}

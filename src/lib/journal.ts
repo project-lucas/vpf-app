@@ -109,7 +109,7 @@ export async function getRecentJournal(
     ...entry,
     actorName:
       entry.actor_kind === "claude"
-        ? "Claude"
+        ? "Jarvis"
         : entry.actor_kind === "system"
           ? "VPF"
           : (entry.actor_id && firstName.get(entry.actor_id)) || "Staff",

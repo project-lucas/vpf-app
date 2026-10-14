@@ -11,6 +11,7 @@ import {
 } from "./alerts";
 import { suggestForRow } from "./briefing";
 import { addDays, currentWeekStart } from "./dates";
+import { waMeUrl } from "./whatsapp";
 import type { PlayerAvailability, PlayerOffer, ReviewHealthStatus } from "./types";
 
 /**
@@ -19,6 +20,25 @@ import type { PlayerAvailability, PlayerOffer, ReviewHealthStatus } from "./type
  * Tout est sérialisable (la ligne part vers un composant client).
  */
 export type ReviewState = "replied" | "to-reply" | "missing" | "none";
+export type Trend = "up" | "down" | "stable";
+
+/** Une semaine passée d'un joueur : pointages et bilan. */
+export interface WeekCell {
+  weekStart: string;
+  done: number;
+  planned: number;
+  review: boolean;
+}
+
+export interface MatchPoint {
+  date: string;
+  points: number;
+  minutes: number;
+}
+
+/** Semaines d'historique proposées dans le tableau. */
+export const HISTORY_WEEK_CHOICES = [8, 13, 26] as const;
+export const DEFAULT_HISTORY_WEEKS = 8;
 
 export interface HomeRow {
   id: string;
@@ -52,6 +72,45 @@ export interface HomeRow {
   /** message à trous de la couche 1, s'il y en a un */
   suggestion: { label: string; text: string } | null;
   createdAt: string;
+  /** semaines clôturées, de la plus récente à la plus ancienne */
+  history: WeekCell[];
+  /** tendance de la discipline sur les dernières semaines */
+  trend: Trend | null;
+  /** feuilles de match, la plus récente d'abord (10 au plus) */
+  matches: MatchPoint[];
+  /** tendance du scoring : dernier match contre la moyenne des précédents */
+  scoreTrend: Trend | null;
+  /** lien WhatsApp du joueur, null sans numéro */
+  playerWhatsapp: string | null;
+  /** lien WhatsApp d'un parent (le premier qui a un numéro) */
+  parentWhatsapp: { url: string; name: string } | null;
+  /** visio de départ validée par un admin (0045) */
+  kickoffDoneAt: string | null;
+}
+
+/** Taux d'une semaine, null si rien n'était prévu. */
+function rate(c: WeekCell): number | null {
+  return c.planned > 0 ? Math.min(1, c.done / c.planned) : null;
+}
+
+/** Les deux semaines récentes contre les deux d'avant : ±10 points = mouvement. */
+export function disciplineTrend(history: WeekCell[]): Trend | null {
+  const rates = history.slice(0, 4).map(rate).filter((r): r is number => r !== null);
+  if (rates.length < 2) return null;
+  const recent = rates.slice(0, Math.min(2, rates.length - 1));
+  const before = rates.slice(recent.length);
+  const avg = (xs: number[]) => xs.reduce((s, x) => s + x, 0) / xs.length;
+  const delta = avg(recent) - avg(before);
+  return delta >= 0.1 ? "up" : delta <= -0.1 ? "down" : "stable";
+}
+
+/** Le dernier match contre la moyenne des trois d'avant : ±2 points = mouvement. */
+export function scoreTrend(matches: MatchPoint[]): Trend | null {
+  if (matches.length < 2) return null;
+  const prev = matches.slice(1, 4);
+  const avg = prev.reduce((s, m) => s + m.points, 0) / prev.length;
+  const delta = matches[0].points - avg;
+  return delta >= 2 ? "up" : delta <= -2 ? "down" : "stable";
 }
 
 interface ReviewRow {
@@ -71,7 +130,7 @@ interface ReviewRow {
  */
 export async function getHomeRows(
   supabase: SupabaseClient,
-  input: { viewerId: string; isAdmin: boolean; players: PlayerDiscipline[] }
+  input: { viewerId: string; isAdmin: boolean; players: PlayerDiscipline[]; weeks?: number }
 ): Promise<HomeRow[]> {
   const { players, viewerId, isAdmin } = input;
   if (players.length === 0) return [];
@@ -80,6 +139,53 @@ export async function getHomeRows(
   const prevWeekStart = addDays(weekStart, -7);
   const nowIso = new Date().toISOString();
   const coachIds = [...new Set(players.map((p) => p.coach_id))].filter((id) => id !== viewerId);
+  const weeks = Math.min(52, Math.max(4, input.weeks ?? DEFAULT_HISTORY_WEEKS));
+  const historyWeeks = Array.from({ length: weeks }, (_, i) => addDays(prevWeekStart, -7 * i));
+  const oldestWeek = historyWeeks[historyWeeks.length - 1];
+
+  const [
+    { data: summaries },
+    { data: historyReviews },
+    { data: matchRows },
+    { data: parentLinks },
+    { data: kickoffs },
+  ] = await Promise.all([
+    supabase
+      .from("weekly_summaries")
+      .select("player_id, week_start, planned_count, done_count")
+      .in("player_id", ids)
+      .gte("week_start", oldestWeek),
+    supabase
+      .from("weekly_reviews")
+      .select("player_id, week_start")
+      .in("player_id", ids)
+      .gte("week_start", oldestWeek),
+    supabase
+      .from("match_stats")
+      .select("player_id, match_date, points, minutes")
+      .in("player_id", ids)
+      .order("match_date", { ascending: false })
+      .limit(ids.length * 12),
+    supabase.from("parent_links").select("player_id, parent_id").in("player_id", ids),
+    supabase.from("players").select("id, kickoff_done_at").in("id", ids),
+  ]);
+  // numéros des parents : service_role, les liens ont été lus sous RLS
+  const parentIds = [...new Set((parentLinks ?? []).map((l) => l.parent_id as string))];
+  const { data: parentProfiles } =
+    parentIds.length === 0
+      ? { data: [] }
+      : await createAdminClient()
+          .from("profiles")
+          .select("id, first_name, whatsapp_number")
+          .in("id", parentIds);
+  const parentById = new Map((parentProfiles ?? []).map((p) => [p.id as string, p]));
+  const summaryKey = new Map(
+    (summaries ?? []).map((s) => [`${s.player_id}|${s.week_start}`, s])
+  );
+  const reviewKey = new Set((historyReviews ?? []).map((r) => `${r.player_id}|${r.week_start}`));
+  const kickoffById = new Map(
+    (kickoffs ?? []).map((k) => [k.id as string, (k.kickoff_done_at as string | null) ?? null])
+  );
 
   const [tracking, health, coverage, threads, unreadIds, { data: reviews }, { data: coaches }] =
     await Promise.all([
@@ -157,6 +263,25 @@ export async function getHomeRows(
       ? [latest.went_well?.trim(), latest.to_improve?.trim()].filter(Boolean).join(" / ")
       : "";
 
+    const history: WeekCell[] = historyWeeks.map((ws) => {
+      const s = summaryKey.get(`${p.id}|${ws}`);
+      return {
+        weekStart: ws,
+        done: s?.done_count ?? 0,
+        planned: s?.planned_count ?? 0,
+        review: reviewKey.has(`${p.id}|${ws}`),
+      };
+    });
+    const matches: MatchPoint[] = (matchRows ?? [])
+      .filter((m) => m.player_id === p.id)
+      .slice(0, 10)
+      .map((m) => ({ date: m.match_date, points: m.points, minutes: m.minutes }));
+    const parent = (parentLinks ?? [])
+      .filter((l) => l.player_id === p.id)
+      .map((l) => parentById.get(l.parent_id as string))
+      .map((pp) => (pp ? { url: waMeUrl(pp.whatsapp_number as string), name: pp.first_name as string } : null))
+      .find((x) => x && x.url);
+
     return {
       id: p.id,
       firstName: p.first_name,
@@ -184,6 +309,13 @@ export async function getHomeRows(
       critical: alerts.some((a) => a.severity === "danger"),
       suggestion: suggestion ? { label: suggestion.alert.label, text: suggestion.text } : null,
       createdAt: p.created_at,
+      history,
+      trend: disciplineTrend(history),
+      matches,
+      scoreTrend: scoreTrend(matches),
+      playerWhatsapp: waMeUrl(p.whatsapp_number),
+      parentWhatsapp: parent ? { url: parent.url!, name: parent.name } : null,
+      kickoffDoneAt: kickoffById.get(p.id) ?? null,
     };
   });
 
