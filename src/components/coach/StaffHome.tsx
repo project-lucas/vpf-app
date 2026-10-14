@@ -469,7 +469,7 @@ export function StaffHome({
           onClick={() => setPanelOpen(true)}
           className="inline-flex min-h-11 items-center gap-2.5 rounded-full bg-navy-800 py-1.5 pl-1.5 pr-4 text-[13px] font-bold text-white shadow-sm transition-colors hover:bg-navy-700"
         >
-          <JarvisAvatar size={32} />
+          <JarvisAvatar size={34} pose="happy" />
           Jarvis
           {recos.length > 0 && (
             <span className="rounded-full bg-accent px-2 py-0.5 text-[10.5px] font-extrabold text-white">

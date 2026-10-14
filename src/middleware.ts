@@ -179,6 +179,6 @@ export async function middleware(request: NextRequest) {
 export const config = {
   matcher: [
     // tout sauf les assets statiques, les fichiers PWA et les routes API
-    "/((?!_next/static|_next/image|favicon.ico|api/|sw.js|manifest.webmanifest|icons/|.*\\.(?:png|svg|jpg|jpeg|ico|webp)).*)",
+    "/((?!_next/static|_next/image|favicon.ico|api/|sw.js|manifest.webmanifest|icons/|jarvis/|.*\\.(?:png|svg|jpg|jpeg|ico|webp)).*)",
   ],
 };

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { X } from "lucide-react";
-import { JarvisAvatar } from "@/components/coach/JarvisAvatar";
+import { JarvisAvatar, JarvisLoop } from "@/components/coach/JarvisAvatar";
 import { JarvisChat } from "@/components/coach/JarvisChat";
 
 /** La fiche d'un joueur ouverte : Jarvis parle alors de lui. */
@@ -50,9 +50,9 @@ export function JarvisLauncher({ configured }: { configured: boolean }) {
         onClick={() => setOpen(true)}
         aria-label="Parler à Jarvis"
         title="Parler à Jarvis"
-        className="jarvis-float bottom-above-nav fixed right-4 z-40 flex h-[68px] w-[68px] items-center justify-center rounded-full bg-navy-900 shadow-[0_10px_30px_-6px_rgba(10,29,51,0.55)] transition-transform hover:scale-105 lg:bottom-6 lg:right-6 lg:h-[76px] lg:w-[76px]"
+        className="jarvis-float bottom-above-nav fixed right-4 z-40 flex h-[68px] w-[68px] items-center justify-center rounded-full bg-navy-900 ring-2 ring-accent/70 shadow-[0_10px_30px_-6px_rgba(10,29,51,0.55)] transition-transform hover:scale-105 lg:bottom-6 lg:right-6 lg:h-[76px] lg:w-[76px]"
       >
-        <JarvisAvatar size={58} />
+        <JarvisLoop size={60} />
       </button>
 
       {open && (

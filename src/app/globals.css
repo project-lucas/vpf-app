@@ -813,115 +813,23 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     0 12px 32px -16px rgb(15 42 74 / 0.18);
 }
 
-/* ── Jarvis : l'avatar respire, regarde autour de lui et cligne des yeux ── */
-@keyframes jarvis-breathe {
-  0%,
-  100% {
-    transform: scale(1);
-    opacity: 0.55;
-  }
-  50% {
-    transform: scale(1.22);
-    opacity: 0;
-  }
-}
-@keyframes jarvis-blink {
-  0%,
-  91%,
-  100% {
-    transform: scaleY(1);
-  }
-  94% {
-    transform: scaleY(0.12);
-  }
-}
-@keyframes jarvis-look {
-  0%,
-  35% {
-    transform: translate(0, 0);
-  }
-  45%,
-  60% {
-    transform: translate(1.6px, -0.4px);
-  }
-  70%,
-  82% {
-    transform: translate(-1.6px, 0.2px);
-  }
-  92%,
-  100% {
-    transform: translate(0, 0);
-  }
-}
+/* ── Jarvis : quand il réfléchit, sa tête pulse doucement ── */
 @keyframes jarvis-think {
   0%,
   100% {
-    transform: translate(-1.6px, -0.6px);
+    transform: scale(1);
+    filter: brightness(1);
   }
   50% {
-    transform: translate(1.6px, -0.6px);
+    transform: scale(1.06);
+    filter: brightness(1.18);
   }
 }
-.jarvis-ring {
-  transform-origin: center;
-  transform-box: fill-box;
-  animation: jarvis-breathe 2.8s ease-in-out infinite;
-}
-.jarvis-eyes {
-  animation: jarvis-look 7s ease-in-out infinite;
-}
-.jarvis-eyes.thinking {
-  animation: jarvis-think 0.9s ease-in-out infinite;
-}
-.jarvis-eye {
-  transform-origin: center;
-  transform-box: fill-box;
-  animation: jarvis-blink 4.6s ease-in-out infinite;
+.jarvis-thinking {
+  animation: jarvis-think 1.1s ease-in-out infinite;
 }
 @media (prefers-reduced-motion: reduce) {
-  .jarvis-ring,
-  .jarvis-eyes,
-  .jarvis-eye {
-    animation: none;
-  }
-}
-
-/* Jarvis casque : les yeux pulsent comme un réacteur */
-@keyframes jarvis-eye-pulse {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.55;
-  }
-}
-@keyframes jarvis-eye-flicker {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  25% {
-    opacity: 0.3;
-  }
-  50% {
-    opacity: 0.9;
-  }
-  75% {
-    opacity: 0.45;
-  }
-}
-.jarvis-eye-glow {
-  animation:
-    jarvis-blink 4.6s ease-in-out infinite,
-    jarvis-eye-pulse 2.2s ease-in-out infinite;
-}
-.jarvis-eyes.thinking .jarvis-eye-glow {
-  animation: jarvis-eye-flicker 0.6s linear infinite;
-}
-@media (prefers-reduced-motion: reduce) {
-  .jarvis-eye-glow,
-  .jarvis-eyes.thinking .jarvis-eye-glow {
+  .jarvis-thinking {
     animation: none;
   }
 }
