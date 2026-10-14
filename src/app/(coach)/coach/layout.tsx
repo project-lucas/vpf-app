@@ -3,6 +3,8 @@ import { BottomNav, type NavItem } from "@/components/BottomNav";
 import { StaffMenu } from "@/components/coach/StaffMenu";
 import { StaffSidebar } from "@/components/coach/StaffSidebar";
 import { StaffMain } from "@/components/coach/StaffMain";
+import { JarvisLauncher } from "@/components/coach/JarvisLauncher";
+import { isMorningBriefConfigured } from "@/lib/briefs";
 import { getNavRole } from "@/lib/auth";
 import { createClient, getCachedUser } from "@/lib/supabase/server";
 import { hasStaffUnread } from "@/lib/conversations";
@@ -52,7 +54,8 @@ export default async function CoachLayout({ children }: { children: React.ReactN
   ];
 
   return (
-    <div className="staff min-h-dvh bg-cream lg:flex">
+    <div className="staff relative min-h-dvh bg-cream lg:flex">
+      <JarvisLauncher configured={isMorningBriefConfigured()} />
       <div className="hidden lg:block">
         <StaffSidebar
           items={items}
