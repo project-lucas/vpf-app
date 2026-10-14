@@ -112,17 +112,23 @@ const HEALTH_RECENT_MS = 7 * 86_400_000;
 function HealthCell({ row }: { row: HomeRow }) {
   const recentPain =
     row.pain && Date.now() - new Date(row.pain.at).getTime() <= HEALTH_RECENT_MS ? row.pain.score : null;
-  if (row.availability === "injured") return <Tag tone="red">Blessé</Tag>;
-  if (row.availability === "vacation") return <Tag tone="grey">Vacances</Tag>;
-  if (recentPain !== null && recentPain >= 5) return <Tag tone="red">Douleur {recentPain}/10</Tag>;
-  if (row.reviewHealth === "blessure") return <Tag tone="red">Blessure signalée</Tag>;
+  // la dernière note de douleur, toujours visible pour être sûr (tiret si jamais notée)
+  const note = (
+    <span className="font-semibold opacity-80" title={row.pain ? "Dernier check-in douleur" : "Aucun check-in douleur"}>
+      ({row.pain ? `${row.pain.score}/10` : "—"})
+    </span>
+  );
+  if (row.availability === "injured") return <Tag tone="red">Blessé {note}</Tag>;
+  if (row.availability === "vacation") return <Tag tone="grey">Vacances {note}</Tag>;
+  if (recentPain !== null && recentPain >= 5) return <Tag tone="red">Douleur {note}</Tag>;
+  if (row.reviewHealth === "blessure") return <Tag tone="red">Blessure signalée {note}</Tag>;
   if ((recentPain !== null && recentPain >= 3) || row.reviewHealth === "gene") {
-    return <Tag tone="amber">Gêne{recentPain !== null && recentPain >= 3 ? ` ${recentPain}/10` : ""}</Tag>;
+    return <Tag tone="amber">Gêne {note}</Tag>;
   }
   return (
     <span className="inline-flex items-center gap-1 text-[11.5px] font-semibold text-success">
       <span className="h-1.5 w-1.5 rounded-full bg-success" />
-      OK
+      OK {note}
     </span>
   );
 }
