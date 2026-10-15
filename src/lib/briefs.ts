@@ -43,16 +43,15 @@ export function isMorningBriefConfigured(): boolean {
 /** Les briefs d'un jour pour ces groupes, par id de groupe (RLS : staff du groupe, admins). */
 export async function getBriefsForDate(
   supabase: SupabaseClient,
-  groupIds: string[],
+  /** null : tous ceux que la RLS rend (sans attendre la liste des groupes) */
+  groupIds: string[] | null,
   date: string
 ): Promise<Map<string, StaffBrief>> {
   const briefs = new Map<string, StaffBrief>();
-  if (groupIds.length === 0) return briefs;
-  const { data } = await supabase
-    .from("staff_briefs")
-    .select("*")
-    .eq("brief_date", date)
-    .in("group_id", groupIds);
+  if (groupIds && groupIds.length === 0) return briefs;
+  let query = supabase.from("staff_briefs").select("*").eq("brief_date", date);
+  if (groupIds) query = query.in("group_id", groupIds);
+  const { data } = await query;
   for (const row of (data ?? []) as StaffBrief[]) {
     briefs.set(row.group_id, {
       ...row,

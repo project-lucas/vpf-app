@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "./supabase/admin";
 import { getHealthByPlayer, getWeekTracking, type PlayerDiscipline } from "./coach-data";
-import { getStaffInbox, getStaffUnreadPlayerIds } from "./conversations";
+import { getStaffInbox } from "./conversations";
 import {
   buildPlayerAlerts,
   getSessionCoverage,
@@ -165,6 +165,8 @@ export async function getHomeRows(
   const historyWeeks = Array.from({ length: weeks }, (_, i) => addDays(prevWeekStart, -7 * i));
   const oldestWeek = historyWeeks[historyWeeks.length - 1];
 
+  // UNE seule vague de requêtes parallèles : chaque aller-retour vers la base
+  // coûte ~60 ms, les enchaîner rendait l'accueil lent.
   const [
     { data: summaries },
     { data: historyReviews },
@@ -172,6 +174,12 @@ export async function getHomeRows(
     { data: parentLinks },
     { data: kickoffs },
     { data: energyRows },
+    tracking,
+    health,
+    coverage,
+    threads,
+    { data: reviews },
+    { data: coaches },
   ] = await Promise.all([
     supabase
       .from("weekly_summaries")
@@ -189,7 +197,13 @@ export async function getHomeRows(
       .in("player_id", ids)
       .order("match_date", { ascending: false })
       .limit(ids.length * 12),
-    supabase.from("parent_links").select("player_id, parent_id").in("player_id", ids),
+    // parents et leur numéro en une requête : service_role, les ids des
+    // joueurs viennent d'une lecture RLS (la RLS de profiles ne donne pas
+    // les numéros des parents au staff)
+    createAdminClient()
+      .from("parent_links")
+      .select("player_id, parent:profiles!parent_links_parent_id_fkey(first_name, whatsapp_number)")
+      .in("player_id", ids),
     supabase.from("players").select("id, kickoff_done_at").in("id", ids),
     // énergie des 4 dernières semaines : la pente du décrochage (dropout.ts)
     supabase
@@ -200,17 +214,24 @@ export async function getHomeRows(
       .gte("created_at", new Date(Date.now() - 28 * 86_400_000).toISOString())
       .order("created_at", { ascending: false })
       .limit(ids.length * 8),
+    getWeekTracking(supabase, ids, weekStart),
+    getHealthByPlayer(supabase, ids),
+    getSessionCoverage(supabase, ids),
+    // la boîte de réception dit aussi le non-lu (même périmètre que la pastille)
+    getStaffInbox(supabase, viewerId, isAdmin, ids),
+    supabase
+      .from("weekly_reviews")
+      .select("id, player_id, week_start, coach_reply, health_status, health_note, went_well, to_improve")
+      .in("week_start", [weekStart, prevWeekStart])
+      .in("player_id", ids)
+      .order("week_start", { ascending: false }),
+    // prénoms des référents : service_role, la RLS de `profiles` ne donne
+    // pas à un coach le profil de ses collègues (ids déjà obtenus sous RLS)
+    coachIds.length === 0
+      ? Promise.resolve({ data: [] })
+      : createAdminClient().from("profiles").select("id, first_name").in("id", coachIds),
   ]);
-  // numéros des parents : service_role, les liens ont été lus sous RLS
-  const parentIds = [...new Set((parentLinks ?? []).map((l) => l.parent_id as string))];
-  const { data: parentProfiles } =
-    parentIds.length === 0
-      ? { data: [] }
-      : await createAdminClient()
-          .from("profiles")
-          .select("id, first_name, whatsapp_number")
-          .in("id", parentIds);
-  const parentById = new Map((parentProfiles ?? []).map((p) => [p.id as string, p]));
+  const unreadIds = new Set(threads.filter((t) => t.hasUnread).map((t) => t.playerId));
   const summaryKey = new Map(
     (summaries ?? []).map((s) => [`${s.player_id}|${s.week_start}`, s])
   );
@@ -230,26 +251,6 @@ export async function getHomeRows(
   const kickoffById = new Map(
     (kickoffs ?? []).map((k) => [k.id as string, (k.kickoff_done_at as string | null) ?? null])
   );
-
-  const [tracking, health, coverage, threads, unreadIds, { data: reviews }, { data: coaches }] =
-    await Promise.all([
-      getWeekTracking(supabase, ids, weekStart),
-      getHealthByPlayer(supabase, ids),
-      getSessionCoverage(supabase, ids),
-      getStaffInbox(supabase, viewerId, isAdmin, ids),
-      getStaffUnreadPlayerIds(supabase, viewerId, ids),
-      supabase
-        .from("weekly_reviews")
-        .select("id, player_id, week_start, coach_reply, health_status, health_note, went_well, to_improve")
-        .in("week_start", [weekStart, prevWeekStart])
-        .in("player_id", ids)
-        .order("week_start", { ascending: false }),
-      // prénoms des référents : service_role, la RLS de `profiles` ne donne
-      // pas à un coach le profil de ses collègues (ids déjà obtenus sous RLS)
-      coachIds.length === 0
-        ? Promise.resolve({ data: [] })
-        : createAdminClient().from("profiles").select("id, first_name").in("id", coachIds),
-    ]);
 
   const coachFirstName = new Map(
     (coaches ?? []).map((c) => [c.id as string, c.first_name as string])
@@ -335,8 +336,8 @@ export async function getHomeRows(
       .map((m) => ({ date: m.match_date, points: m.points, minutes: m.minutes }));
     const parent = (parentLinks ?? [])
       .filter((l) => l.player_id === p.id)
-      .map((l) => parentById.get(l.parent_id as string))
-      .map((pp) => (pp ? { url: waMeUrl(pp.whatsapp_number as string), name: pp.first_name as string } : null))
+      .map((l) => (Array.isArray(l.parent) ? l.parent[0] : l.parent) as { first_name: string; whatsapp_number: string } | null)
+      .map((pp) => (pp ? { url: waMeUrl(pp.whatsapp_number), name: pp.first_name } : null))
       .find((x) => x && x.url);
 
     return {

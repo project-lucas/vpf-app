@@ -36,21 +36,15 @@ export default async function CoachDashboardPage({
   const supabase = await createClient();
   const user = await getCachedUser();
   const meId = user?.id ?? "";
-  const isAdmin = (await getNavRole()) === "admin";
   const today = parisNow().date;
 
-  const [players, allGroups] = await Promise.all([
+  // deux vagues seulement : tout ce qui ne dépend de rien part ensemble, puis
+  // ce qui a besoin des joueurs et du brief
+  const [role, players, allGroups, briefs, journal, { data: profile }, { count: reportsPending }] = await Promise.all([
+    getNavRole(),
     getPlayersWithDiscipline(supabase),
     getGroupsWithStaff(supabase),
-  ]);
-
-  const [rows, briefs, journal, { data: profile }, { count: reportsPending }] = await Promise.all([
-    getHomeRows(supabase, { viewerId: meId, isAdmin, players, weeks }),
-    getBriefsForDate(
-      supabase,
-      allGroups.map((g) => g.id),
-      today
-    ),
+    getBriefsForDate(supabase, null, today),
     getRecentJournal(supabase, 40),
     user
       ? supabase.from("profiles").select("notifications_enabled, first_name").eq("id", user.id).maybeSingle()
@@ -62,6 +56,7 @@ export default async function CoachDashboardPage({
       .eq("kind", "parent_report")
       .eq("status", "pending"),
   ]);
+  const isAdmin = role === "admin";
   const nextReport = nextReportDate(today);
 
   // ---- les groupes à montrer : les miens d'abord, puis ceux qui ont des joueurs
@@ -92,7 +87,11 @@ export default async function CoachDashboardPage({
       [...briefs.values()].flatMap((b) => b.recommendations.map((r) => r.playerId).filter((x): x is string => !!x))
     ),
   ];
-  const recentThreads = await getRecentThreadLines(supabase, recoPlayerIds);
+  // seconde vague : les lignes du tableau et les derniers échanges, ensemble
+  const [rows, recentThreads] = await Promise.all([
+    getHomeRows(supabase, { viewerId: meId, isAdmin, players, weeks }),
+    getRecentThreadLines(supabase, recoPlayerIds),
+  ]);
 
   const briefsByGroup: Record<string, HomeBrief> = {};
   for (const [gid, b] of briefs) {

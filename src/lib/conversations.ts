@@ -37,23 +37,19 @@ export interface ChannelHolders {
 export async function getChannelHolders(playerIds: string[]): Promise<Map<string, ChannelHolders>> {
   const out = new Map<string, ChannelHolders>();
   if (playerIds.length === 0) return out;
-  const admin = createAdminClient();
-  const { data: players } = await admin.from("players").select("id, coach_id, group_id").in("id", playerIds);
-  const groupIds = [...new Set((players ?? []).map((p) => p.group_id as string | null).filter(Boolean))] as string[];
-  const { data: roles } =
-    groupIds.length === 0
-      ? { data: [] }
-      : await admin
-          .from("group_staff")
-          .select("group_id, profile_id, role")
-          .in("group_id", groupIds)
-          .not("role", "is", null);
+  // une seule requête : le joueur, son groupe et le staff à rôle du groupe
+  const { data: players } = await createAdminClient()
+    .from("players")
+    .select("id, coach_id, group:groups(group_staff(profile_id, role))")
+    .in("id", playerIds);
   for (const p of players ?? []) {
-    const ofGroup = (roles ?? []).filter((r) => r.group_id === p.group_id);
+    const group = Array.isArray(p.group) ? p.group[0] : p.group;
+    const staff = ((group as { group_staff?: { profile_id: string; role: string | null }[] } | null)?.group_staff ??
+      []) as { profile_id: string; role: string | null }[];
     out.set(p.id as string, {
       coachId: (p.coach_id as string | null) ?? null,
-      technique: (ofGroup.find((r) => r.role === "technique")?.profile_id as string | undefined) ?? null,
-      physique: (ofGroup.find((r) => r.role === "physique")?.profile_id as string | undefined) ?? null,
+      technique: staff.find((r) => r.role === "technique")?.profile_id ?? null,
+      physique: staff.find((r) => r.role === "physique")?.profile_id ?? null,
     });
   }
   return out;
@@ -339,19 +335,18 @@ export async function getStaffUnreadPlayerIds(
  * suis le référent, plus ceux des groupes dont je fais partie du staff (0040).
  */
 export async function getMyPlayerIds(supabase: SupabaseClient, staffId: string): Promise<string[]> {
-  const { data: memberships } = await supabase
-    .from("group_staff")
-    .select("group_id")
-    .eq("profile_id", staffId);
-  const groupIds = (memberships ?? []).map((m) => m.group_id as string);
-
-  let query = supabase.from("players").select("id").eq("status", "active");
-  query =
-    groupIds.length > 0
-      ? query.or(`coach_id.eq.${staffId},group_id.in.(${groupIds.join(",")})`)
-      : query.eq("coach_id", staffId);
-  const { data: players } = await query;
-  return (players ?? []).map((p) => p.id as string);
+  // deux lectures en parallèle (un seul aller-retour) : mes référés, et les
+  // joueurs des groupes dont je fais partie du staff
+  const [{ data: own }, { data: memberships }] = await Promise.all([
+    supabase.from("players").select("id").eq("status", "active").eq("coach_id", staffId),
+    supabase.from("group_staff").select("group:groups(players(id, status))").eq("profile_id", staffId),
+  ]);
+  const ids = new Set((own ?? []).map((p) => p.id as string));
+  for (const m of memberships ?? []) {
+    const group = (Array.isArray(m.group) ? m.group[0] : m.group) as { players?: { id: string; status: string }[] } | null;
+    for (const p of group?.players ?? []) if (p.status === "active") ids.add(p.id);
+  }
+  return [...ids];
 }
 
 /** Le staff a-t-il du non-lu chez l'un de ses joueurs actifs ? */

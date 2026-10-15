@@ -43,11 +43,13 @@ export default async function TodayPage({
   const meId = user?.id ?? "";
   const mineOnly = isAdmin && vue === "moi";
 
-  let players = await getPlayersWithDiscipline(supabase);
-  if (mineOnly) {
-    const mine = new Set(await getMyPlayerIds(supabase, meId));
-    players = players.filter((p) => mine.has(p.id));
-  }
+  // joueurs et « ma part » ensemble, pas l'un après l'autre
+  const [allPlayers, myIds] = await Promise.all([
+    getPlayersWithDiscipline(supabase),
+    mineOnly ? getMyPlayerIds(supabase, meId) : Promise.resolve(null),
+  ]);
+  const mine = myIds ? new Set(myIds) : null;
+  const players = mine ? allPlayers.filter((p) => mine.has(p.id)) : allPlayers;
   const ids = players.map((p) => p.id);
   const weekStart = currentWeekStart();
 
