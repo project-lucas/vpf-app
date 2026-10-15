@@ -54,11 +54,21 @@ function Done({ p, text }: { p: QueuePlayer; text: string }) {
   );
 }
 
+/** Le petit titre d'une partie de carte : on lit la carte par blocs, pas d'une traite. */
+function Part({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-1.5">
+      <p className="text-[10.5px] font-extrabold uppercase tracking-[0.12em] text-navy-400">{label}</p>
+      {children}
+    </div>
+  );
+}
+
 function JarvisNote({ text }: { text: string }) {
   if (!text) return null;
   return (
-    <p className="flex gap-1.5 text-[12px] leading-snug text-navy-400">
-      <Sparkles size={12} className="mt-0.5 shrink-0 text-accent" />
+    <p className="flex gap-2 rounded-xl bg-cream/70 px-3 py-2.5 text-[13px] leading-relaxed text-navy-700">
+      <Sparkles size={14} className="mt-0.5 shrink-0 text-accent" />
       {text}
     </p>
   );
@@ -80,7 +90,9 @@ function DraftEditor({
       value={value}
       onChange={(e) => onChange(e.target.value.slice(0, max))}
       rows={rows}
-      className="w-full rounded-xl border border-navy-100 bg-white px-3 py-2 text-[14px] leading-relaxed text-navy-900 focus:border-accent focus:outline-none"
+      // la zone suit son texte : pas de mini-ascenseur dans une carte
+      style={{ fieldSizing: "content" } as React.CSSProperties}
+      className="min-h-[96px] w-full rounded-xl border border-navy-100 bg-white px-3.5 py-3 text-[14px] leading-relaxed text-navy-900 focus:border-accent focus:outline-none"
     />
   );
 }
@@ -121,9 +133,10 @@ export function ReviewCard({ item }: { item: QueueReview }) {
   if (d.state !== "open") return <Done p={item} text={d.state === "sent" ? "réponse envoyée" : "passé"} />;
   const health = item.health ? (REVIEW_HEALTH_LABELS[item.health] ?? item.health) : null;
   return (
-    <article className="space-y-3 rounded-2xl border border-navy-100 bg-white p-3 sm:p-4">
+    <article className="space-y-5 rounded-2xl border border-navy-100 bg-white p-4 sm:p-5">
       <PlayerLine p={item} extra={`bilan ${item.weekLabel}`} />
-      <dl className="grid gap-2 text-[13px] text-navy-700 sm:grid-cols-2">
+      <Part label="Son bilan">
+      <dl className="grid gap-3 rounded-xl bg-cream/50 px-3.5 py-3 text-[13.5px] leading-relaxed text-navy-700 sm:grid-cols-2">
         <div>
           <dt className="text-[10.5px] font-extrabold uppercase tracking-[0.1em] text-navy-400">Bien fait</dt>
           <dd className="whitespace-pre-line">{item.wentWell || "—"}</dd>
@@ -142,6 +155,14 @@ export function ReviewCard({ item }: { item: QueueReview }) {
           </div>
         )}
       </dl>
+      </Part>
+      {item.draft?.reason && (
+        <Part label="L'avis de Jarvis">
+          <JarvisNote text={item.draft.reason} />
+        </Part>
+      )}
+      <Part label="Ta réponse">
+      <div className="space-y-2.5">
       {!item.draft && (
         <p className="text-[12px] text-navy-400">
           {item.draftFailed
@@ -149,8 +170,10 @@ export function ReviewCard({ item }: { item: QueueReview }) {
             : "Brouillon en préparation par Jarvis — tu peux aussi répondre toi-même."}
         </p>
       )}
-      {item.draft && <JarvisNote text={item.draft.reason} />}
       <DraftEditor value={body} onChange={setBody} max={REVIEW_REPLY_MAX_LENGTH} />
+      </div>
+      </Part>
+      <div className="border-t border-navy-50 pt-4">
       <Actions
         pending={d.pending}
         error={d.error}
@@ -166,6 +189,7 @@ export function ReviewCard({ item }: { item: QueueReview }) {
           item.draft ? d.run(() => dismissDraft(item.draft!.id), "dismissed") : d.run(async () => ({ ok: true }), "dismissed")
         }
       />
+      </div>
     </article>
   );
 }
@@ -186,16 +210,25 @@ export function VisioCard({ item }: { item: QueueVisio }) {
     );
   }
   return (
-    <article className="space-y-3 rounded-2xl border border-navy-100 bg-white p-3 sm:p-4">
+    <article className="space-y-5 rounded-2xl border border-navy-100 bg-white p-4 sm:p-5">
       <PlayerLine p={item} />
-      <ul className="flex flex-wrap gap-1.5">
-        {item.reasons.map((r) => (
-          <li key={r} className="rounded-full bg-warning-soft px-2.5 py-0.5 text-[11px] font-semibold leading-snug text-warning sm:py-1 sm:text-[11.5px]">
-            {r}
-          </li>
-        ))}
-      </ul>
-      {item.reason && <JarvisNote text={item.reason} />}
+      <Part label="Les signaux">
+        <ul className="flex flex-wrap gap-1.5">
+          {item.reasons.map((r) => (
+            <li key={r} className="rounded-full bg-warning-soft px-2.5 py-1 text-[11.5px] font-semibold leading-snug text-warning">
+              {r}
+            </li>
+          ))}
+        </ul>
+      </Part>
+      {/* l'avis de Jarvis, sans répéter les signaux déjà en pastilles */}
+      {item.reason && (
+        <Part label="L'avis de Jarvis">
+          <JarvisNote text={item.reason.split(" — ")[0]} />
+        </Part>
+      )}
+      <Part label="Ta réponse">
+      <div className="space-y-2.5">
       {!item.fromJarvis && (
         <p className="text-[12px] text-navy-400">Message type — Jarvis le personnalisera au prochain passage du matin.</p>
       )}
@@ -221,6 +254,9 @@ export function VisioCard({ item }: { item: QueueVisio }) {
         ))}
       </div>
       <DraftEditor value={body} onChange={setBody} max={800} rows={3} />
+      </div>
+      </Part>
+      <div className="space-y-2 border-t border-navy-50 pt-4">
       <Actions
         pending={d.pending}
         error={d.error}
@@ -230,6 +266,7 @@ export function VisioCard({ item }: { item: QueueVisio }) {
         onSkip={() => d.run(() => decideVisio(item.id, "dismiss"), "dismissed")}
       />
       <p className="text-[11.5px] text-navy-400">Part dans le fil Global : lu par le joueur et ses parents.</p>
+      </div>
     </article>
   );
 }
@@ -239,7 +276,7 @@ export function ReportCard({ item }: { item: QueueReport }) {
   const d = useDecision();
   if (d.state !== "open") return <Done p={item} text={d.state === "sent" ? "rapport envoyé" : "passé"} />;
   return (
-    <article className="space-y-3 rounded-2xl border border-navy-100 bg-white p-3 sm:p-4">
+    <article className="space-y-5 rounded-2xl border border-navy-100 bg-white p-4 sm:p-5">
       <PlayerLine
         p={item}
         extra={`${item.monthLabel} · ${
@@ -248,8 +285,15 @@ export function ReportCard({ item }: { item: QueueReport }) {
             : "aucun parent inscrit : invite un parent pour l'envoyer"
         }`}
       />
-      <JarvisNote text={item.reason} />
-      <DraftEditor value={body} onChange={setBody} max={1500} rows={8} />
+      {item.reason && (
+        <Part label="À vérifier avant d'envoyer">
+          <JarvisNote text={item.reason} />
+        </Part>
+      )}
+      <Part label="Le rapport">
+        <DraftEditor value={body} onChange={setBody} max={1500} rows={8} />
+      </Part>
+      <div className="border-t border-navy-50 pt-4">
       <Actions
         pending={d.pending}
         error={d.error}
@@ -258,6 +302,7 @@ export function ReportCard({ item }: { item: QueueReport }) {
         onSend={() => d.run(() => approveReportDraft(item.draftId, body), "sent")}
         onSkip={() => d.run(() => dismissDraft(item.draftId), "dismissed")}
       />
+      </div>
     </article>
   );
 }

@@ -141,7 +141,7 @@ export function TodayQueue({
 
         {show("bilans") && data.reviews.length > 0 && (
           <Section title={`Bilans à valider · ${data.reviews.length}`}>
-            <div id="bilans" className="scroll-mt-20 space-y-3">
+            <div id="bilans" className="scroll-mt-20 space-y-4">
               {data.reviews.map((r) => (
                 <ReviewCard key={r.reviewId} item={r} />
               ))}
@@ -151,7 +151,7 @@ export function TodayQueue({
 
         {show("decrochage") && data.visios.length > 0 && (
           <Section title={`Décrochage : visio conseillée · ${data.visios.length}`}>
-            <div id="decrochage" className="scroll-mt-20 space-y-3">
+            <div id="decrochage" className="scroll-mt-20 space-y-4">
               {data.visios.map((v) => (
                 <VisioCard key={v.id} item={v} />
               ))}
@@ -169,7 +169,7 @@ export function TodayQueue({
 
         {show("rapports") && data.reports.length > 0 && (
           <Section title={`Rapports aux parents · ${data.reports.length}`}>
-            <div id="rapports" className="scroll-mt-20 space-y-3">
+            <div id="rapports" className="scroll-mt-20 space-y-4">
               {data.reports.map((r) => (
                 <ReportCard key={r.draftId} item={r} />
               ))}
