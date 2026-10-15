@@ -293,7 +293,7 @@ export function MessageComposer({
               className={
                 ed
                   ? "ed-field max-h-[140px] w-full flex-1 resize-none overflow-y-auto"
-                  : "max-h-[140px] w-full flex-1 resize-none overflow-y-auto border-0 bg-transparent px-2 py-2 text-[15px] text-[#111b21] placeholder:text-[#8696a0] focus:outline-none focus:ring-0"
+                  : "scrollbar-none max-h-[140px] w-full flex-1 resize-none overflow-y-auto border-0 bg-transparent px-2 py-2 text-[15px] text-[#111b21] placeholder:text-[#8696a0] focus:outline-none focus:ring-0"
               }
             />
 

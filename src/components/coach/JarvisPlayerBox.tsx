@@ -22,7 +22,7 @@ export function JarvisConversationSuggestions({
 }) {
   const withMessage = recos.filter((r) => r.message !== null);
   return (
-    <div className="mt-4 border-t border-navy-100 pt-4">
+    <div className="pt-4">
       <p className="mb-2 flex items-center gap-2 text-[10.5px] font-extrabold uppercase tracking-[0.12em] text-accent">
         <JarvisAvatar size={20} />
         Suggestion de Jarvis

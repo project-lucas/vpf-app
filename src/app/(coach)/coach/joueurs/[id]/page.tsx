@@ -606,8 +606,8 @@ export default async function PlayerDetailPage({
             dot: conversationChannels.some((c) => c.hasUnread),
             content: (
               <div className="grid gap-5 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
-                <Card>
-                  <CardTitle>Conversation avec {profile?.first_name ?? "le joueur"}</CardTitle>
+                {/* la messagerie seule, sans cadre ni titre : tout l'espace aux discussions */}
+                <div className="min-w-0">
                   <ConversationPanel
                     playerId={id}
                     currentUserId={user?.id ?? ""}
@@ -616,10 +616,12 @@ export default async function PlayerDetailPage({
                     startInChat={Boolean(canal)}
                     initialMessages={conversationMessages}
                     variant="coach"
-                    className="h-[460px] lg:h-[520px]"
+                    className="shadow-soft h-[560px] rounded-[20px] lg:h-[640px]"
                   />
-                  <JarvisConversationSuggestions playerId={id} recos={playerRecos} />
-                </Card>
+                  <div className="shadow-soft mt-4 rounded-[20px] bg-white px-4 pb-4">
+                    <JarvisConversationSuggestions playerId={id} recos={playerRecos} />
+                  </div>
+                </div>
                 <div className="space-y-5">
                   <WeekDaysCard days={weekDetail} today={todayWeekday} playerId={id} />
                   <Card>
