@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ChevronRight, MessageCircle, Search } from "lucide-react";
 import { PlayerAvatar } from "@/components/coach/PlayerAvatar";
 import { RowMenu } from "@/components/coach/RowMenu";
@@ -109,6 +110,7 @@ export function PlayersList({
   const [query, setQuery] = useState("");
   const [groupId, setGroupId] = useState<string | null>(null);
   const desktop = useIsDesktop();
+  const router = useRouter();
 
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -141,7 +143,8 @@ export function PlayersList({
       <Row
         key={p.id}
         href={desktop ? undefined : href}
-        onClick={desktop ? () => setSelectedId(p.id) : undefined}
+        // ordinateur : un clic montre l'aperçu à droite, un second ouvre le fil
+        onClick={desktop ? () => (isSel ? router.push(href) : setSelectedId(p.id)) : undefined}
         airy
         boxed
         className={isSel ? "ring-2 ring-accent" : ""}
@@ -173,6 +176,14 @@ export function PlayersList({
               >
                 {formatAgoFr(p.inbox.lastAt)}
               </span>
+            )}
+            {isSel && (
+              <Link
+                href={href}
+                className="inline-flex min-h-8 items-center gap-0.5 rounded-full bg-navy-800 px-3 text-[12px] font-bold text-white hover:bg-navy-700"
+              >
+                Ouvrir <ChevronRight size={13} />
+              </Link>
             )}
             <RowMenu playerId={p.id} playerName={name} availability={p.availability} />
           </>

@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Check, ChevronLeft, ChevronRight, Pencil, Send, Sparkles, X } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Pencil, RefreshCw, Send, Sparkles, X } from "lucide-react";
+import { refreshGroupBrief } from "@/app/actions/home";
 import { sendConversationMessage } from "@/app/actions/messages";
 import { StatStrip } from "@/components/ui/StatStrip";
 import { JarvisAvatar } from "@/components/coach/JarvisAvatar";
@@ -235,6 +236,55 @@ function ReportCountdown({ due }: { due: { days: number; dateLabel: string; pend
       </span>
       <ChevronRight size={16} strokeWidth={2.4} aria-hidden className="transition-transform group-hover:translate-x-0.5" />
     </Link>
+  );
+}
+
+/**
+ * Actualiser les recommandations du groupe affiché : Jarvis réécrit le brief
+ * à partir de l'état du moment (20 à 50 s). L'icône tourne pendant ce temps.
+ */
+function RefreshBriefButton({ groupId, disabled }: { groupId: string; disabled: boolean }) {
+  const [pending, start] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
+  const label = pending
+    ? "Jarvis réécrit les recommandations…"
+    : disabled
+      ? "Jarvis n'est pas branché (clé API absente)"
+      : "Actualiser les recommandations";
+  return (
+    <span className="relative inline-flex">
+      <button
+        type="button"
+        aria-label={label}
+        title={error ?? label}
+        disabled={disabled || pending}
+        onClick={() =>
+          start(async () => {
+            setError(null);
+            setDone(false);
+            const r = await refreshGroupBrief(groupId);
+            if (r.ok) setDone(true);
+            else setError(r.error);
+          })
+        }
+        className={`flex h-11 w-11 items-center justify-center rounded-2xl border bg-white shadow-[0_8px_20px_-14px_rgba(15,42,74,0.4)] transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+          error ? "border-danger text-danger" : "border-sand text-navy-700 hover:text-accent"
+        }`}
+      >
+        <RefreshCw size={18} strokeWidth={2.2} className={pending ? "animate-spin" : ""} />
+      </button>
+      {(pending || done || error) && (
+        <span
+          role="status"
+          className={`absolute right-0 top-full mt-1.5 whitespace-nowrap text-[11px] font-semibold ${
+            error ? "text-danger" : done && !pending ? "text-success" : "text-navy-400"
+          }`}
+        >
+          {pending ? "Jarvis réfléchit…" : error ? error : "Recommandations à jour"}
+        </span>
+      )}
+    </span>
   );
 }
 
@@ -594,6 +644,9 @@ export function StaffHome({
             className="transition-transform group-hover:translate-x-0.5"
           />
         </button>
+        {group && group.id !== NO_GROUP_ID && (
+          <RefreshBriefButton groupId={group.id} disabled={!briefConfigured} />
+        )}
         </div>
       </header>
 
