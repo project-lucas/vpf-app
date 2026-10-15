@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useState, useTransition, type ReactNode } from "react";
 import Link from "next/link";
 import { MoreHorizontal, Plus, Settings2, Trash2, UserMinus, X } from "lucide-react";
 import { createGroup, deleteGroup, moveStaffToGroup, renameGroup, setGroupStaff } from "@/app/actions/groups";
@@ -44,7 +44,8 @@ type Run = (action: () => Promise<Result>, after?: () => void) => void;
  * ses joueurs ; un joueur qui quitte le club se retire en TROIS
  * clics (icône → « Retirer du club ? » → « Confirmer le départ ») — c'est un
  * archivage : il ne peut plus se connecter, son historique reste, la fiche
- * coach permet de le réactiver. La dernière colonne crée le groupe suivant.
+ * coach permet de le réactiver. « Nouveau groupe » vit dans la tête du dernier
+ * groupe.
  */
 export function GroupBoard({
   groups,
@@ -58,7 +59,6 @@ export function GroupBoard({
 }) {
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
-  const [newName, setNewName] = useState("");
 
   const run: Run = (action, after) => {
     setError(null);
@@ -76,8 +76,8 @@ export function GroupBoard({
       {error && (
         <p className="mb-3 rounded-xl bg-danger-soft px-3 py-2 text-sm font-semibold text-danger">{error}</p>
       )}
-      <div className="grid min-h-0 flex-1 gap-4 lg:auto-cols-[minmax(300px,1fr)] lg:grid-flow-col lg:overflow-x-auto lg:pb-1">
-        {groups.map((g) => (
+      <div className="grid min-h-0 flex-1 gap-4 sm:auto-cols-[minmax(300px,1fr)] sm:grid-flow-col sm:overflow-x-auto sm:pb-1">
+        {groups.map((g, i) => (
           <GroupColumn
             key={g.id}
             group={g}
@@ -86,39 +86,93 @@ export function GroupBoard({
             meId={meId}
             disabled={pending}
             run={run}
+            // créer le groupe suivant : dans la tête du dernier groupe
+            headerAction={
+              i === groups.length - 1 ? (
+                <NewGroupButton
+                  nextName={nextName}
+                  disabled={pending}
+                  onCreate={(name, done) => run(() => createGroup(name), done)}
+                />
+              ) : null
+            }
           />
         ))}
-
-        {/* créer le groupe suivant */}
-        <form
-          className="flex flex-col items-center justify-center gap-3 rounded-[20px] border-2 border-dashed border-sand p-5 text-center lg:w-[240px]"
-          onSubmit={(e) => {
-            e.preventDefault();
-            const name = newName.trim() || nextName;
-            run(() => createGroup(name), () => setNewName(""));
-          }}
-        >
-          <span className="shadow-soft flex h-11 w-11 items-center justify-center rounded-full bg-white text-accent">
-            <Plus size={20} />
-          </span>
-          <p className="text-[13px] font-bold text-navy-800">Nouveau groupe</p>
-          <input
-            value={newName}
-            onChange={(e) => setNewName(e.target.value.slice(0, 40))}
-            placeholder={nextName}
-            aria-label="Nom du nouveau groupe"
-            className="w-full rounded-lg border border-sand bg-white px-3 py-2 text-center text-[13px] focus:border-accent focus:outline-none"
-          />
-          <button
-            type="submit"
-            disabled={pending}
-            className="w-full rounded-lg bg-navy-800 py-2 text-[13px] font-bold text-white hover:bg-navy-700 disabled:opacity-40"
-          >
-            Créer {newName.trim() || nextName}
-          </button>
-        </form>
+        {groups.length === 0 && (
+          <div className="flex items-center justify-center rounded-[20px] border-2 border-dashed border-sand p-5">
+            <NewGroupButton
+              nextName={nextName}
+              disabled={pending}
+              onCreate={(name, done) => run(() => createGroup(name), done)}
+            />
+          </div>
+        )}
       </div>
     </div>
+  );
+}
+
+/** « + Nouveau groupe » dans la tête de colonne ; se déplie en champ + Créer. */
+function NewGroupButton({
+  nextName,
+  disabled,
+  onCreate,
+}: {
+  nextName: string;
+  disabled: boolean;
+  onCreate: (name: string, done: () => void) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [value, setValue] = useState("");
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-sand px-2 py-1 text-[11.5px] font-bold text-navy-600 hover:bg-cream hover:text-navy-900"
+      >
+        <Plus size={13} className="text-accent" /> Nouveau groupe
+      </button>
+    );
+  }
+
+  return (
+    <form
+      className="flex shrink-0 items-center gap-1"
+      onSubmit={(e) => {
+        e.preventDefault();
+        onCreate(value.trim() || nextName, () => {
+          setValue("");
+          setOpen(false);
+        });
+      }}
+    >
+      <input
+        autoFocus
+        value={value}
+        onChange={(e) => setValue(e.target.value.slice(0, 40))}
+        onKeyDown={(e) => e.key === "Escape" && setOpen(false)}
+        placeholder={nextName}
+        aria-label="Nom du nouveau groupe"
+        className="w-24 rounded-lg border border-sand bg-white px-2 py-1 text-[12px] focus:border-accent focus:outline-none"
+      />
+      <button
+        type="submit"
+        disabled={disabled}
+        className="rounded-lg bg-navy-800 px-2 py-1 text-[11.5px] font-bold text-white hover:bg-navy-700 disabled:opacity-40"
+      >
+        Créer
+      </button>
+      <button
+        type="button"
+        onClick={() => setOpen(false)}
+        aria-label="Annuler"
+        className="flex h-6 w-6 items-center justify-center rounded-md text-navy-400 hover:bg-cream"
+      >
+        <X size={13} />
+      </button>
+    </form>
   );
 }
 
@@ -138,6 +192,7 @@ function GroupColumn({
   meId,
   disabled,
   run,
+  headerAction,
 }: {
   group: BoardGroup;
   groups: BoardGroup[];
@@ -145,6 +200,7 @@ function GroupColumn({
   meId: string;
   disabled: boolean;
   run: Run;
+  headerAction?: ReactNode;
 }) {
   const [name, setName] = useState(group.name);
   const [editStaff, setEditStaff] = useState(false);
@@ -173,6 +229,7 @@ function GroupColumn({
           aria-label="Nom du groupe"
           className="font-display min-w-0 flex-1 rounded-md bg-transparent px-1 text-[20px] font-extrabold uppercase tracking-wide text-navy-900 hover:bg-cream focus:bg-cream focus:outline-none"
         />
+        {headerAction}
         <span className="shrink-0 text-[11.5px] font-semibold text-navy-400">
           {count} joueur{count > 1 ? "s" : ""}
           {count > 0 ? ` · ${perf} P · ${count - perf} F` : ""}
