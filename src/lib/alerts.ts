@@ -26,7 +26,8 @@ export type AlertKey =
   | "no-physique"
   | "discipline"
   | "silence"
-  | "review-missing";
+  | "review-missing"
+  | "dropout";
 
 export interface PlayerAlert {
   key: AlertKey;
@@ -104,6 +105,8 @@ export interface AlertInput {
   hasLastWeekReview: boolean;
   /** lundi de la semaine en cours (référence des alertes de la semaine) */
   weekStart?: string;
+  /** signaux de décrochage (cf. `dropout.ts`), null si rien ne glisse */
+  dropoutReasons?: string[] | null;
   /** « maintenant » en ISO (heure de Paris) */
   nowIso: string;
 }
@@ -229,6 +232,17 @@ export function buildPlayerAlerts(input: AlertInput): PlayerAlert[] {
       severity: "warning",
       label: "Bilan manquant",
       tab: "semaine",
+      ref: week,
+    });
+  }
+
+  // décrochage en cours : plusieurs pentes concordantes (cf. dropout.ts)
+  if (input.dropoutReasons && input.dropoutReasons.length > 0) {
+    alerts.push({
+      key: "dropout",
+      severity: "warning",
+      label: "Décrochage : visio conseillée",
+      tab: "messages",
       ref: week,
     });
   }

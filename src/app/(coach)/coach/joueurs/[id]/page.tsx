@@ -42,6 +42,8 @@ import {
 } from "@/lib/session-suggestions";
 import { EVENT_TYPE_LABELS, formatDuration } from "@/lib/constants";
 import { JarvisPlayerButton } from "@/components/coach/JarvisPlayerBox";
+import { PlayerMemoryCard } from "@/components/coach/PlayerMemoryCard";
+import { getPlayerMemories } from "@/lib/player-memory";
 import { getBriefsForDate, isMorningBriefConfigured, type BriefRecommendation } from "@/lib/briefs";
 import { Tabs } from "@/components/ui/Tabs";
 import { Card, CardTitle } from "@/components/ui/Card";
@@ -237,7 +239,7 @@ export default async function PlayerDetailPage({
   // c'est elle qui prouve que l'utilisateur a le droit de consulter ce joueur.
   // Le comptage et les noms des parents, eux, contournent la RLS
   // (voir countPushDevices / getPlayerParents).
-  const [pushDeviceCount, playerParents, channels, { data: groups }] = await Promise.all([
+  const [pushDeviceCount, playerParents, channels, { data: groups }, memories] = await Promise.all([
     countPushDevices(id),
     getPlayerParents(id),
     getConversationChannels(supabase, {
@@ -250,7 +252,10 @@ export default async function PlayerDetailPage({
     // les groupes du service (0040) : l'étiquette de la tête de fiche, et le
     // sélecteur de l'onglet Fiche pour un admin
     supabase.from("groups").select("id, name").order("position").order("created_at"),
+    // la fiche mémoire de Jarvis (0046) — staff seulement, sous RLS
+    getPlayerMemories(supabase, [id]),
   ]);
+  const memory = memories.get(id) ?? null;
   const groupName =
     (groups ?? []).find((g) => g.id === (playerRaw.group_id as string | null))?.name ?? null;
 
@@ -593,6 +598,9 @@ export default async function PlayerDetailPage({
           </p>
         )}
       </section>
+
+      <PlayerMemoryCard memory={memory} />
+
 
       {/* Cinq onglets au lieu de onze : Messages en premier (c'est la priorité
           du service), puis ce qu'on regarde par semaine, le programme par pôle,

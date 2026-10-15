@@ -18,7 +18,8 @@
     "vapid": "node scripts/generate-vapid.mjs",
     "icons": "node scripts/generate-icons.mjs",
     "splash": "node scripts/generate-splash.mjs",
-    "setup:cron:brief": "node --env-file=.env.local scripts/setup-pg-cron-brief.mjs"
+    "setup:cron:brief": "node --env-file=.env.local scripts/setup-pg-cron-brief.mjs",
+    "setup:cron:jarvis": "node --env-file=.env.local scripts/setup-pg-cron-jarvis.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.134.0",

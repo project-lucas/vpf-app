@@ -10,6 +10,7 @@ import { formatAgoFr, parisNow } from "./dates";
 import { formatPercent } from "./discipline";
 import { BRIEF_ACTIONS, isMorningBriefConfigured, type BriefRecommendation } from "./briefs";
 import { OFFER_LABELS } from "./offers";
+import { getPlayerMemories, memoryAsText } from "./player-memory";
 import { AVAILABILITY_LABELS, REVIEW_HEALTH_LABELS } from "./constants";
 import type { GroupWithStaff } from "./types";
 
@@ -56,7 +57,8 @@ Ce que tu écris :
 - Un message au joueur : tutoiement, son prénom, 1 à 3 phrases, chaleureux et concret, le ton d'un coach qui connaît le joueur. Il part dans le fil Global, lu aussi par les parents : jamais de diagnostic médical, jamais de reproche humiliant, jamais d'information qu'on ne t'a pas donnée. Pour une douleur, tu demandes où et depuis quand et tu proposes d'adapter.
 - Tu ne recommandes pas ce que le staff a déjà fait aujourd'hui ou hier (voir le journal). Tu n'inventes rien : si tu ne sais pas, tu ne dis pas.
 - Un joueur blessé / en vacances : seulement prendre des nouvelles ou répondre à son message.
-- Un message en attente d'un joueur ou d'un parent passe avant tout le reste : tu proposes la réponse quand tu as de quoi la faire.`;
+- Un message en attente d'un joueur ou d'un parent passe avant tout le reste : tu proposes la réponse quand tu as de quoi la faire.
+- Chaque joueur a une fiche mémoire (ficheMemoire) : sers-t'en pour la continuité et les détails justes. « decrochage » liste des pentes inquiétantes ; les réponses aux bilans, les visios de décrochage et les rapports aux parents sont déjà préparés par ailleurs dans la file « Aujourd'hui » — ne les recopie pas ici.`;
 
 interface RowForModel {
   id: string;
@@ -73,9 +75,11 @@ interface RowForModel {
   energie: string;
   alertes: string[];
   ancienneteJours: number;
+  decrochage: string[];
+  ficheMemoire: string;
 }
 
-function rowForModel(r: HomeRow, nowIso: string): RowForModel {
+function rowForModel(r: HomeRow, nowIso: string, memory: string): RowForModel {
   const days = Math.floor((new Date(nowIso).getTime() - new Date(r.createdAt).getTime()) / 86_400_000);
   const bilan =
     r.review === "to-reply"
@@ -111,6 +115,8 @@ function rowForModel(r: HomeRow, nowIso: string): RowForModel {
     energie: r.energy ? `${r.energy.score}/10 ${formatAgoFr(r.energy.at)}` : "pas de check-in",
     alertes: r.alerts.map((a) => a.label),
     ancienneteJours: days,
+    decrochage: r.dropout?.reasons ?? [],
+    ficheMemoire: memory,
   };
 }
 
@@ -176,9 +182,10 @@ async function writeGroupBrief(
   const admin = createAdminClient();
   // le « lecteur » pour le non-lu : le premier membre du staff du groupe
   const viewerId = group.staff[0]?.id ?? "";
-  const [rows, journal] = await Promise.all([
+  const [rows, journal, memories] = await Promise.all([
     getHomeRows(admin, { viewerId, isAdmin: true, players: members }),
     getRecentJournal(admin, 30),
+    getPlayerMemories(admin, members.map((m) => m.id)),
   ]);
   const since = Date.now() - 36 * 3_600_000;
   const recentJournal = journal
@@ -189,7 +196,7 @@ async function writeGroupBrief(
     `Date : ${today} (heure de Paris). Groupe : ${group.name}, staff : ${group.staff.map((s) => s.first_name).join(", ") || "—"}.`,
     "",
     "Joueurs du groupe (JSON) :",
-    JSON.stringify(rows.map((r) => rowForModel(r, nowIso)), null, 0),
+    JSON.stringify(rows.map((r) => rowForModel(r, nowIso, memoryAsText(memories.get(r.id)))), null, 0),
     "",
     recentJournal.length > 0
       ? `Ce que le staff (et toi) avez déjà fait ces dernières 36 h :\n- ${recentJournal.join("\n- ")}`

@@ -17,6 +17,7 @@ import { addPlannedEvent } from "@/app/actions/planning";
 import { sendConversationMessage } from "@/app/actions/messages";
 import type { EventType } from "@/lib/types";
 import { painZonesFromNotes, suggestSessions } from "@/lib/session-suggestions";
+import { getPlayerMemories, memoryAsText } from "@/lib/player-memory";
 import { SESSION_PROFILES } from "@/lib/session-profiles";
 
 /**
@@ -48,7 +49,7 @@ const SYSTEM = `Tu es Jarvis, l'assistant du staff de VPF, un centre de performa
 Le service : deux offres, Perf (suivi à distance) et Formation (Perf + hygiène de vie + fils privés). Chaque joueur a une semaine type (planning), des séances affectées par pôle (technique = basket, physique, routine) sur des jours précis, un bilan le dimanche soir, des check-ins énergie/douleur, des feuilles de match, et un fil de discussion « Global » lu par le joueur, ses parents et le staff.
 
 Tu as l'état du groupe ci-dessous et des outils pour aller plus loin :
-- pour LIRE : get_player_details (planning, séances, bilans, matchs, notes d'un joueur), search_sessions (la bibliothèque de séances) ;
+- pour LIRE : get_player_details (planning, séances, bilans, matchs, notes, fiche mémoire d'un joueur), search_sessions (la bibliothèque de séances) ;
 - pour AGIR : assign_session, add_planned_event, send_message, set_week_focus, add_private_note, set_availability.
 
 Règles :
@@ -133,7 +134,7 @@ export async function askJarvis(
       inputSchema: z.object({ playerId: z.string() }),
       run: async ({ playerId }) => {
         ensure(playerId);
-        const [ev, asg, rev, mat, foc, notes, pl] = await Promise.all([
+        const [ev, asg, rev, mat, foc, notes, pl, memories] = await Promise.all([
           supabase.from("planned_events").select("event_type, weekday, event_time, duration_minutes, custom_name").eq("player_id", playerId).order("weekday"),
           supabase.from("session_assignments").select("weekday, session_id, session:library_sessions(name, pole)").eq("player_id", playerId).is("removed_at", null),
           supabase.from("weekly_reviews").select("week_start, went_well, to_improve, health_status, health_note, coach_reply").eq("player_id", playerId).order("week_start", { ascending: false }).limit(3),
@@ -141,6 +142,7 @@ export async function askJarvis(
           supabase.from("coach_focus").select("content").eq("player_id", playerId).maybeSingle(),
           supabase.from("coach_notes").select("content, created_at").eq("player_id", playerId).order("created_at", { ascending: false }).limit(3),
           supabase.from("players").select("position, club, season_goal").eq("id", playerId).maybeSingle(),
+          getPlayerMemories(supabase, [playerId]),
         ]);
         // les séances à lui donner : poste + douleurs des derniers bilans
         const { data: lib } = await supabase
@@ -165,6 +167,7 @@ export async function askJarvis(
           matchs: mat.data,
           focus: foc.data?.content ?? null,
           notes: notes.data,
+          ficheMemoire: memoryAsText(memories.get(playerId)),
           douleursReperees: painZones,
           seancesSuggerees: suggested,
         });

@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { Megaphone, Sparkles, UserPlus, UserRoundPlus } from "lucide-react";
+import { Megaphone, Route, Sparkles, UserPlus, UserRoundPlus } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { getAuthProfile } from "@/lib/auth";
 import { getPlayersWithDiscipline } from "@/lib/coach-data";
@@ -9,6 +9,7 @@ import { AnnouncementsManager } from "./AnnouncementsManager";
 import { AdminTools } from "./AdminTools";
 import { GroupBoard, type BoardGroup, type BoardStaff } from "./GroupBoard";
 import { MorningBriefPanel } from "./MorningBriefPanel";
+import { PlayerJourneyPanel } from "./PlayerJourneyPanel";
 import { CoachInvitations, type CoachChoice } from "@/components/coach/CoachInvitations";
 import { getGroupsWithStaff } from "@/lib/groups";
 import { getLastBriefDates, isMorningBriefConfigured } from "@/lib/briefs";
@@ -136,7 +137,7 @@ export default async function AdminPage() {
             {
               key: "jarvis",
               icon: <Sparkles size={16} />,
-              label: "Jarvis du matin",
+              label: "À savoir sur Jarvis",
               content: (
                 <MorningBriefPanel
                   configured={isMorningBriefConfigured()}
@@ -147,6 +148,12 @@ export default async function AdminPage() {
                   }))}
                 />
               ),
+            },
+            {
+              key: "parcours",
+              icon: <Route size={16} />,
+              label: "Parcours",
+              content: <PlayerJourneyPanel />,
             },
             {
               key: "coach",

@@ -10,6 +10,7 @@ import {
   type SessionCoverage,
 } from "./alerts";
 import { suggestForRow } from "./briefing";
+import { detectDropout, type DropoutRisk } from "./dropout";
 import { addDays, currentWeekStart, parisNow } from "./dates";
 import { waMeUrl } from "./whatsapp";
 import type { PlayerAvailability, PlayerOffer, ReviewHealthStatus } from "./types";
@@ -86,6 +87,8 @@ export interface HomeRow {
   history: WeekCell[];
   /** tendance de la discipline sur les dernières semaines */
   trend: Trend | null;
+  /** décrochage en cours (plusieurs pentes concordantes), null sinon */
+  dropout: DropoutRisk | null;
   /** feuilles de match, la plus récente d'abord (10 au plus) */
   matches: MatchPoint[];
   /** tendance du scoring : dernier match contre la moyenne des précédents */
@@ -168,6 +171,7 @@ export async function getHomeRows(
     { data: matchRows },
     { data: parentLinks },
     { data: kickoffs },
+    { data: energyRows },
   ] = await Promise.all([
     supabase
       .from("weekly_summaries")
@@ -176,7 +180,7 @@ export async function getHomeRows(
       .gte("week_start", oldestWeek),
     supabase
       .from("weekly_reviews")
-      .select("player_id, week_start")
+      .select("player_id, week_start, went_well, to_improve")
       .in("player_id", ids)
       .gte("week_start", oldestWeek),
     supabase
@@ -187,6 +191,15 @@ export async function getHomeRows(
       .limit(ids.length * 12),
     supabase.from("parent_links").select("player_id, parent_id").in("player_id", ids),
     supabase.from("players").select("id, kickoff_done_at").in("id", ids),
+    // énergie des 4 dernières semaines : la pente du décrochage (dropout.ts)
+    supabase
+      .from("checkins")
+      .select("player_id, score, created_at")
+      .eq("question", "energy")
+      .in("player_id", ids)
+      .gte("created_at", new Date(Date.now() - 28 * 86_400_000).toISOString())
+      .order("created_at", { ascending: false })
+      .limit(ids.length * 8),
   ]);
   // numéros des parents : service_role, les liens ont été lus sous RLS
   const parentIds = [...new Set((parentLinks ?? []).map((l) => l.parent_id as string))];
@@ -201,7 +214,19 @@ export async function getHomeRows(
   const summaryKey = new Map(
     (summaries ?? []).map((s) => [`${s.player_id}|${s.week_start}`, s])
   );
-  const reviewKey = new Set((historyReviews ?? []).map((r) => `${r.player_id}|${r.week_start}`));
+  // longueur de chaque bilan (signes écrits) : un bilan qui raccourcit est un signal
+  const reviewChars = new Map(
+    (historyReviews ?? []).map((r) => [
+      `${r.player_id}|${r.week_start}`,
+      `${r.went_well ?? ""}${r.to_improve ?? ""}`.trim().length,
+    ])
+  );
+  const energiesByPlayer = new Map<string, number[]>();
+  for (const c of energyRows ?? []) {
+    const list = energiesByPlayer.get(c.player_id as string) ?? [];
+    list.push(c.score as number);
+    energiesByPlayer.set(c.player_id as string, list);
+  }
   const kickoffById = new Map(
     (kickoffs ?? []).map((k) => [k.id as string, (k.kickoff_done_at as string | null) ?? null])
   );
@@ -259,6 +284,27 @@ export async function getHomeRows(
     const unread = unreadThread.get(p.id);
     const last = lastByPlayer.get(p.id);
 
+    const history: WeekCell[] = historyWeeks.map((ws) => {
+      const s = summaryKey.get(`${p.id}|${ws}`);
+      return {
+        weekStart: ws,
+        done: s?.done_count ?? 0,
+        planned: s?.planned_count ?? 0,
+        review: reviewChars.has(`${p.id}|${ws}`),
+      };
+    });
+    const dropout = detectDropout({
+      availability: p.availability,
+      createdAt: p.created_at,
+      nowIso,
+      weeks: history.map((w) => ({
+        ...w,
+        reviewChars: reviewChars.get(`${p.id}|${w.weekStart}`) ?? null,
+      })),
+      energies: energiesByPlayer.get(p.id) ?? [],
+      lastExchangeAt: last?.at ?? null,
+    });
+
     const alerts = buildPlayerAlerts({
       player: p,
       hasUnread: unreadIds.has(p.id),
@@ -269,6 +315,7 @@ export async function getHomeRows(
       lastMessageAt: last?.at ?? null,
       hasLastWeekReview: hasLastWeek.has(p.id),
       weekStart,
+      dropoutReasons: dropout?.reasons ?? null,
       nowIso,
     });
     const suggestion = suggestForRow(alerts, p);
@@ -282,15 +329,6 @@ export async function getHomeRows(
       ? [latest.went_well?.trim(), latest.to_improve?.trim()].filter(Boolean).join(" / ")
       : "";
 
-    const history: WeekCell[] = historyWeeks.map((ws) => {
-      const s = summaryKey.get(`${p.id}|${ws}`);
-      return {
-        weekStart: ws,
-        done: s?.done_count ?? 0,
-        planned: s?.planned_count ?? 0,
-        review: reviewKey.has(`${p.id}|${ws}`),
-      };
-    });
     const matches: MatchPoint[] = (matchRows ?? [])
       .filter((m) => m.player_id === p.id)
       .slice(0, 10)
@@ -341,6 +379,7 @@ export async function getHomeRows(
       createdAt: p.created_at,
       history,
       trend: disciplineTrend(history),
+      dropout,
       matches,
       scoreTrend: scoreTrend(matches),
       playerWhatsapp: waMeUrl(p.whatsapp_number),

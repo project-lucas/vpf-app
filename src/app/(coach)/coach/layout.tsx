@@ -1,4 +1,4 @@
-import { MessagesSquare, Settings } from "lucide-react";
+import { ListChecks, MessagesSquare, Settings } from "lucide-react";
 import { BottomNav, type NavItem } from "@/components/BottomNav";
 import { StaffMenu } from "@/components/coach/StaffMenu";
 import { StaffSidebar } from "@/components/coach/StaffSidebar";
@@ -47,6 +47,7 @@ export default async function CoachLayout({ children }: { children: React.ReactN
     ...(isAdmin ? [{ href: "/coach/admin", label: "Admin", icon: <ShieldIcon /> }] : []),
   ];
   const secondary = [
+    { href: "/coach/aujourdhui", label: "Aujourd'hui", icon: <ListChecks /> },
     ...(isAdmin
       ? [{ href: "/coach/messages", label: "Relais messages", icon: <MessagesSquare /> }]
       : []),

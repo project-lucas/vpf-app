@@ -181,6 +181,8 @@ function primaryAction(row: HomeRow): { label: string; href: string; tone: "dang
       return { label: "Programme", href: `${fiche}?onglet=programme`, tone: "ghost" };
     case "planning-empty":
       return { label: "Planning", href: `${fiche}?onglet=semaine`, tone: "ghost" };
+    case "dropout":
+      return { label: "Proposer une visio", href: "/coach/aujourdhui#decrochage", tone: "primary" };
     default:
       return { label: "Écrire", href: `${fiche}?onglet=messages`, tone: "ghost" };
   }
@@ -377,6 +379,8 @@ export function StaffHome({
     [rows, group]
   );
   const todoRows = groupRows.filter((r) => r.alerts.length > 0);
+  // la file « Aujourd'hui » couvre tous les groupes : messages, bilans, décrochage
+  const todoPlayers = rows.filter((r) => r.unread || r.review === "to-reply" || r.dropout).length;
   // la visio de départ ne concerne que les joueurs arrivés après la règle
   const showKickoff = groupRows.some((r) => r.kickoffExpected);
   const visible = (scope === "todo" ? todoRows : groupRows).filter(
@@ -464,6 +468,20 @@ export function StaffHome({
             {groupRows.length > 0 ? `, ${perfCount} perf et ${formationCount} formation` : ""}
           </p>
         </div>
+        <div className="flex flex-wrap items-center gap-2">
+        {/* la file du jour, tout le périmètre d'un coup (bilans, décrochage, programmes, rapports) */}
+        <Link
+          href="/coach/aujourdhui"
+          className="group inline-flex min-h-11 items-center gap-2.5 rounded-2xl bg-navy-800 py-2 pl-3.5 pr-3 text-white shadow-[0_8px_20px_-14px_rgba(15,42,74,0.6)] hover:bg-navy-700"
+        >
+          <span className="flex flex-col leading-tight">
+            <span className="text-[10px] font-extrabold uppercase tracking-[0.1em] text-accent">Aujourd&apos;hui</span>
+            <span className="text-[13px] font-extrabold">
+              {todoPlayers > 0 ? `${todoPlayers} joueur${todoPlayers > 1 ? "s" : ""} à traiter` : "Ma file du jour"}
+            </span>
+          </span>
+          <ChevronRight size={16} strokeWidth={2.4} aria-hidden className="transition-transform group-hover:translate-x-0.5" />
+        </Link>
         <button
           type="button"
           onClick={() => setPanelOpen(true)}
@@ -487,6 +505,7 @@ export function StaffHome({
             className="transition-transform group-hover:translate-x-0.5"
           />
         </button>
+        </div>
       </header>
 
       {/* ---- les chiffres du groupe ---- */}
@@ -795,7 +814,7 @@ export function StaffHome({
                   <p className="mt-1 text-[12px] leading-snug text-navy-500">
                     {briefConfigured
                       ? isAdmin
-                        ? "Il s'écrit à 7h. Tu peux le lancer maintenant depuis Admin › Jarvis du matin."
+                        ? "Il s'écrit à 7h. Tu peux le lancer maintenant depuis Admin › À savoir sur Jarvis."
                         : "Il s'écrit à 7h."
                       : "Il manque la clé API Anthropic. En attendant, voici les messages proposés par les règles de l'app."}
                   </p>
