@@ -94,7 +94,7 @@ export function PushPrompt({
     <div
       className={
         staff
-          ? "bottom-above-nav fixed inset-x-0 z-[45] mx-auto max-w-lg px-3 lg:bottom-6"
+          ? "bottom-above-nav fixed inset-x-0 z-[45] mx-auto max-w-lg pl-3 pr-[4.75rem] lg:bottom-6 lg:pr-3"
           : "fixed inset-x-0 bottom-16 z-30 mx-auto max-w-lg px-4 pb-2"
       }
     >

@@ -862,3 +862,13 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   background-size: 22px 22px, 22px 22px;
   background-position: 0 0, 11px 11px;
 }
+
+/* Bouton flottant Jarvis (staff) : un peu au-dessus de la barre du bas sur téléphone */
+.jarvis-float-pos {
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 5.25rem);
+}
+@media (min-width: 1024px) {
+  .jarvis-float-pos {
+    bottom: 2rem;
+  }
+}

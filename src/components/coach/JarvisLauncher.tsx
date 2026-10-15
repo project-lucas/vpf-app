@@ -49,9 +49,9 @@ export function JarvisLauncher({ configured }: { configured: boolean }) {
         type="button"
         onClick={() => setOpen(true)}
         aria-label="Parler à Jarvis"
-        className="jarvis-float bottom-above-nav fixed right-3 z-40 flex h-12 w-12 items-center justify-center rounded-full border border-sand bg-white shadow-[0_12px_30px_-10px_rgba(10,29,51,0.45)] transition-shadow hover:shadow-[0_16px_36px_-10px_rgba(10,29,51,0.55)] lg:bottom-8 lg:right-8 lg:h-24 lg:w-24"
+        className="jarvis-float jarvis-float-pos fixed right-3 z-40 flex h-14 w-14 items-center justify-center rounded-full border border-sand bg-white shadow-[0_12px_30px_-10px_rgba(10,29,51,0.45)] transition-shadow hover:shadow-[0_16px_36px_-10px_rgba(10,29,51,0.55)] lg:bottom-8 lg:right-8 lg:h-24 lg:w-24"
       >
-        <JarvisAvatar bare pose="happy-left" size={0} className="h-[40px] w-[40px] lg:h-[80px] lg:w-[80px]" />
+        <JarvisAvatar bare pose="happy-left" size={0} className="h-[46px] w-[46px] lg:h-[80px] lg:w-[80px]" />
       </button>
 
       {open && (
