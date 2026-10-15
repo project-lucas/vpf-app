@@ -40,6 +40,19 @@ export async function subscribeToPush(): Promise<boolean> {
  * Le libellé se personnalise : un joueur attend des rappels de séance, un
  * coach des messages et des alertes santé.
  */
+/** « Plus tard » laisse tranquille une semaine (mémorisé sur l'appareil). */
+const LATER_KEY = "vpf-push-later";
+const LATER_MS = 7 * 86_400_000;
+
+function snoozed(): boolean {
+  try {
+    const at = Number(localStorage.getItem(LATER_KEY));
+    return Number.isFinite(at) && Date.now() - at < LATER_MS;
+  } catch {
+    return false;
+  }
+}
+
 export function PushPrompt({
   notificationsEnabled,
   title = "Active tes rappels",
@@ -56,7 +69,7 @@ export function PushPrompt({
     if (!notificationsEnabled) return;
     if (!("Notification" in window) || !("serviceWorker" in navigator)) return;
     if (Notification.permission === "default") {
-      setVisible(true);
+      if (!snoozed()) setVisible(true);
     } else if (Notification.permission === "granted") {
       subscribeToPush().catch(() => {});
     }
@@ -75,7 +88,7 @@ export function PushPrompt({
   if (!visible) return null;
 
   return (
-    <div className="fixed inset-x-0 bottom-16 z-30 mx-auto max-w-lg px-4 pb-2">
+    <div className="bottom-above-nav fixed inset-x-0 z-[45] mx-auto max-w-lg px-3 lg:bottom-6">
       <div className="flex items-center gap-3 rounded-2xl border border-navy-100 bg-white p-3.5 shadow-lg">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-navy-800 text-white">
           <BellIcon size={20} />
@@ -89,7 +102,14 @@ export function PushPrompt({
             Activer
           </Button>
           <button
-            onClick={() => setVisible(false)}
+            onClick={() => {
+              try {
+                localStorage.setItem(LATER_KEY, String(Date.now()));
+              } catch {
+                // stockage indisponible : le bandeau reviendra, rien de grave
+              }
+              setVisible(false);
+            }}
             className="text-xs font-medium text-navy-400"
           >
             Plus tard

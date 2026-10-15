@@ -121,7 +121,7 @@ export function ReviewCard({ item }: { item: QueueReview }) {
   if (d.state !== "open") return <Done p={item} text={d.state === "sent" ? "réponse envoyée" : "passé"} />;
   const health = item.health ? (REVIEW_HEALTH_LABELS[item.health] ?? item.health) : null;
   return (
-    <article className="space-y-3 rounded-2xl border border-navy-100 bg-white p-4">
+    <article className="space-y-3 rounded-2xl border border-navy-100 bg-white p-3 sm:p-4">
       <PlayerLine p={item} extra={`bilan ${item.weekLabel}`} />
       <dl className="grid gap-2 text-[13px] text-navy-700 sm:grid-cols-2">
         <div>
@@ -186,11 +186,11 @@ export function VisioCard({ item }: { item: QueueVisio }) {
     );
   }
   return (
-    <article className="space-y-3 rounded-2xl border border-navy-100 bg-white p-4">
+    <article className="space-y-3 rounded-2xl border border-navy-100 bg-white p-3 sm:p-4">
       <PlayerLine p={item} />
       <ul className="flex flex-wrap gap-1.5">
         {item.reasons.map((r) => (
-          <li key={r} className="rounded-full bg-warning-soft px-2.5 py-1 text-[11.5px] font-semibold text-warning">
+          <li key={r} className="rounded-full bg-warning-soft px-2.5 py-0.5 text-[11px] font-semibold leading-snug text-warning sm:py-1 sm:text-[11.5px]">
             {r}
           </li>
         ))}
@@ -239,7 +239,7 @@ export function ReportCard({ item }: { item: QueueReport }) {
   const d = useDecision();
   if (d.state !== "open") return <Done p={item} text={d.state === "sent" ? "rapport envoyé" : "passé"} />;
   return (
-    <article className="space-y-3 rounded-2xl border border-navy-100 bg-white p-4">
+    <article className="space-y-3 rounded-2xl border border-navy-100 bg-white p-3 sm:p-4">
       <PlayerLine
         p={item}
         extra={`${item.monthLabel} · ${

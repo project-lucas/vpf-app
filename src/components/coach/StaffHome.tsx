@@ -75,8 +75,9 @@ interface RecoView {
 
 function FilterGroup({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex flex-col gap-1.5">
-      <span className="text-[10.5px] font-bold uppercase tracking-[0.1em] text-navy-400">{label}</span>
+    <div className="flex shrink-0 flex-col gap-1.5">
+      {/* téléphone : les filtres sur une ligne, sans étiquette */}
+      <span className="hidden text-[10.5px] font-bold uppercase tracking-[0.1em] text-navy-400 md:block">{label}</span>
       <div className="inline-flex rounded-xl bg-cream p-1">{children}</div>
     </div>
   );
@@ -219,22 +220,22 @@ function ReportCountdown({ due }: { due: { days: number; dateLabel: string; pend
   return (
     <Link
       href="/coach/aujourdhui?section=rapports"
-      className="group inline-flex min-h-11 items-center gap-3 rounded-2xl border border-sand bg-white py-2 pl-2 pr-3.5 text-navy-900 shadow-[0_8px_20px_-14px_rgba(15,42,74,0.4)] transition-shadow hover:shadow-[0_12px_26px_-14px_rgba(15,42,74,0.55)]"
+      className="group inline-flex min-h-11 min-w-0 items-center gap-2 rounded-2xl border border-sand bg-white py-2 pl-1.5 pr-2.5 text-navy-900 shadow-[0_8px_20px_-14px_rgba(15,42,74,0.4)] transition-shadow hover:shadow-[0_12px_26px_-14px_rgba(15,42,74,0.55)] md:gap-3 md:pl-2 md:pr-3.5"
     >
       <span
-        className={`flex h-10 min-w-10 items-center justify-center rounded-xl px-1.5 font-display text-[15px] font-extrabold tabular-nums text-white ${
+        className={`flex h-9 min-w-9 shrink-0 items-center justify-center rounded-xl px-1.5 font-display text-[14px] font-extrabold tabular-nums text-white md:h-10 md:min-w-10 md:text-[15px] ${
           urgent ? "bg-accent" : "bg-navy-800"
         }`}
       >
         {badge}
       </span>
-      <span className="flex flex-col leading-tight">
-        <span className="text-[10px] font-extrabold uppercase tracking-[0.1em] text-accent">
-          Rapports parents · {due.dateLabel}
+      <span className="flex min-w-0 flex-col leading-tight">
+        <span className="truncate text-[10px] font-extrabold uppercase tracking-[0.1em] text-accent">
+          Rapports<span className="hidden md:inline"> parents</span> · {due.dateLabel}
         </span>
-        <span className="text-[13px] font-extrabold">{main}</span>
+        <span className="truncate text-[13px] font-extrabold">{main}</span>
       </span>
-      <ChevronRight size={16} strokeWidth={2.4} aria-hidden className="transition-transform group-hover:translate-x-0.5" />
+      <ChevronRight size={16} strokeWidth={2.4} aria-hidden className="hidden shrink-0 transition-transform group-hover:translate-x-0.5 md:block" />
     </Link>
   );
 }
@@ -609,29 +610,30 @@ export function StaffHome({
       <header className="mb-5 flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="text-[12px] font-bold uppercase tracking-[0.08em] text-accent">{todayLabel}</p>
-          <h1 className="font-display mt-1 text-[32px] font-extrabold uppercase leading-none tracking-wide text-navy-900 lg:text-[44px]">
+          <h1 className="font-display mt-1 text-[26px] font-extrabold uppercase leading-none tracking-wide text-navy-900 sm:text-[32px] lg:text-[44px]">
             {viewerFirstName ? `Bonjour ${viewerFirstName}` : (group?.name ?? "Accueil")}
           </h1>
-          <p className="mt-1.5 text-sm text-navy-400">
+          <p className="mt-1.5 text-[12.5px] text-navy-400 sm:text-sm">
             {group?.name ?? "Accueil"}
             {group?.staffNames ? ` · ${group.staffNames}` : ""} · {groupRows.length} joueur
             {groupRows.length > 1 ? "s" : ""}
             {groupRows.length > 0 ? `, ${perfCount} perf et ${formationCount} formation` : ""}
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        {/* téléphone : les trois boutons sur une ligne ; ordinateur : inchangé */}
+        <div className="grid w-full grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-2 md:flex md:w-auto md:flex-wrap md:items-center">
         <ReportCountdown due={reportDue} />
         <button
           type="button"
           onClick={() => setPanelOpen(true)}
-          className="group inline-flex min-h-11 items-center gap-3 rounded-2xl border border-sand bg-white py-2 pl-2 pr-3.5 text-left text-navy-900 shadow-[0_8px_20px_-14px_rgba(15,42,74,0.4)] transition-shadow hover:shadow-[0_12px_26px_-14px_rgba(15,42,74,0.55)]"
+          className="group inline-flex min-h-11 min-w-0 items-center gap-2 rounded-2xl border border-sand bg-white py-2 pl-1.5 pr-2.5 text-left text-navy-900 shadow-[0_8px_20px_-14px_rgba(15,42,74,0.4)] transition-shadow hover:shadow-[0_12px_26px_-14px_rgba(15,42,74,0.55)] md:gap-3 md:pl-2 md:pr-3.5"
         >
-          <JarvisAvatar bare pose="happy" size={40} />
-          <span className="flex flex-col leading-tight">
-            <span className="text-[10px] font-extrabold uppercase tracking-[0.1em] text-accent">
-              Jarvis · ce matin
+          <JarvisAvatar bare pose="happy" size={34} />
+          <span className="flex min-w-0 flex-col leading-tight">
+            <span className="truncate text-[10px] font-extrabold uppercase tracking-[0.1em] text-accent">
+              Jarvis<span className="hidden md:inline"> · ce matin</span>
             </span>
-            <span className="text-[13px] font-extrabold">
+            <span className="truncate text-[13px] font-extrabold">
               {recos.length > 0
                 ? `${recos.length} recommandation${recos.length > 1 ? "s" : ""}`
                 : "Parler à Jarvis"}
@@ -641,7 +643,7 @@ export function StaffHome({
             size={16}
             strokeWidth={2.4}
             aria-hidden
-            className="transition-transform group-hover:translate-x-0.5"
+            className="hidden shrink-0 transition-transform group-hover:translate-x-0.5 md:block"
           />
         </button>
         {group && group.id !== NO_GROUP_ID && (
@@ -667,7 +669,7 @@ export function StaffHome({
       />
 
       {/* ---- filtres : une barre, trois groupes étiquetés, défilement à droite ---- */}
-      <div className="shadow-soft mb-4 flex flex-wrap items-end gap-x-6 gap-y-3 rounded-[18px] bg-white px-4 py-3">
+      <div className="scrollbar-none shadow-soft mb-4 flex flex-nowrap items-end gap-x-2 gap-y-3 overflow-x-auto rounded-[18px] bg-white px-2 py-2 md:flex-wrap md:gap-x-6 md:overflow-visible md:px-4 md:py-3">
         {groups.length > 1 && (
           <FilterGroup label="Groupe">
             {groups.map((g) => (
@@ -889,7 +891,7 @@ export function StaffHome({
         {visible.map((r) => (
           <div
             key={r.id}
-            className={`rounded-2xl border bg-white px-3 py-3 ${r.critical ? "border-danger/40" : "border-navy-100"}`}
+            className={`rounded-2xl border bg-white px-3 py-2.5 ${r.critical ? "border-l-4 border-danger/40 border-l-danger" : "border-navy-100"}`}
           >
             <div className="flex items-center gap-2.5">
               <PlayerAvatar firstName={r.firstName} lastName={r.lastName} alert={r.unread} />
@@ -905,21 +907,21 @@ export function StaffHome({
               </Link>
               <ActionLink action={primaryAction(r)} />
             </div>
-            <div className="mt-2 flex items-center justify-between">
-              {r.kickoffExpected ? (
-                <KickoffBox playerId={r.id} doneAt={r.kickoffDoneAt} canEdit={isAdmin} />
-              ) : (
-                <span />
-              )}
-              <CallLinks name={r.firstName} playerUrl={r.playerWhatsapp} parent={r.parentWhatsapp} />
-            </div>
-            {r.alerts.length > 0 && (
-              <div className="mt-2 flex flex-wrap gap-1">
-                {r.alerts.slice(0, 4).map((a) => (
+            {/* une seule ligne sous le nom : les alertes (3 au plus), puis les appels */}
+            <div className="mt-2 flex items-center gap-2">
+              <div className="flex min-w-0 flex-1 flex-wrap gap-1">
+                {r.alerts.slice(0, 3).map((a) => (
                   <Tag key={a.key} tone={a.severity === "danger" ? "red" : "amber"}>
                     {a.label}
                   </Tag>
                 ))}
+                {r.alerts.length > 3 && <Tag tone="grey">+{r.alerts.length - 3}</Tag>}
+              </div>
+              <CallLinks name={r.firstName} playerUrl={r.playerWhatsapp} parent={r.parentWhatsapp} />
+            </div>
+            {r.kickoffExpected && (
+              <div className="mt-2">
+                <KickoffBox playerId={r.id} doneAt={r.kickoffDoneAt} canEdit={isAdmin} />
               </div>
             )}
           </div>

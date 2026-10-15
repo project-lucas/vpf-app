@@ -204,7 +204,9 @@ function JarvisNowButton({ configured }: { configured: boolean }) {
         }
       >
         <Sparkles size={14} className="mr-1.5 inline text-accent" />
-        Préparer maintenant
+        <span className="whitespace-nowrap">
+          Préparer<span className="hidden sm:inline"> maintenant</span>
+        </span>
       </Button>
       {note && <span className="max-w-[260px] text-right text-[11.5px] text-navy-400">{note}</span>}
     </div>
