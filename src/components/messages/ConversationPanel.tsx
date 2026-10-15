@@ -21,6 +21,22 @@ const CHANNEL_LOOK: Record<ConversationChannel["kind"], { icon: React.ReactNode;
 
 function ChannelAvatar({ kind, size = 44 }: { kind: ConversationChannel["kind"]; size?: number }) {
   const look = CHANNEL_LOOK[kind];
+  // les quatre rôles et le Global ont leur icône dessinée (public/channels) ;
+  // l'archive garde une simple icône
+  if (kind !== "legacy") {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element -- petite icône statique (3 Ko)
+      <img
+        src={`/channels/${kind}.webp`}
+        alt=""
+        aria-hidden
+        width={size}
+        height={size}
+        className="shrink-0 rounded-full"
+        style={{ width: size, height: size, backgroundColor: look.bg }}
+      />
+    );
+  }
   return (
     <span
       aria-hidden

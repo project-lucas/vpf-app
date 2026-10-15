@@ -50,7 +50,7 @@ export const CHANNEL_MEMBERS: Record<ChannelKind, string> = {
   global: "Joueur, parents et staff",
   technique: "Le joueur et son coach technique",
   physique: "Le joueur et son coach physique",
-  referent: "Le joueur et son référent",
+  referent: "Le joueur et son référent (scolaire et mental)",
   parents: "Les parents et le staff, sans le joueur",
   legacy: "Archive en lecture seule",
 };
