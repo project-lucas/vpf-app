@@ -254,7 +254,7 @@ function RefreshBriefButton({ groupId, disabled }: { groupId: string; disabled: 
       ? "Jarvis n'est pas branché (clé API absente)"
       : "Actualiser les recommandations";
   return (
-    <span className="relative inline-flex">
+    <span className="relative flex self-stretch">
       <button
         type="button"
         aria-label={label}
@@ -269,8 +269,8 @@ function RefreshBriefButton({ groupId, disabled }: { groupId: string; disabled: 
             else setError(r.error);
           })
         }
-        className={`flex h-11 w-11 items-center justify-center rounded-2xl border bg-white shadow-[0_8px_20px_-14px_rgba(15,42,74,0.4)] transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
-          error ? "border-danger text-danger" : "border-sand text-navy-700 hover:text-accent"
+        className={`flex w-12 items-center justify-center rounded-r-2xl border-l border-sand transition-colors hover:bg-cream disabled:cursor-not-allowed disabled:opacity-60 ${
+          error ? "text-danger" : "text-navy-600 hover:text-accent"
         }`}
       >
         <RefreshCw size={18} strokeWidth={2.2} className={pending ? "animate-spin" : ""} />
@@ -621,12 +621,15 @@ export function StaffHome({
           </p>
         </div>
         {/* téléphone : les trois boutons sur une ligne ; ordinateur : inchangé */}
-        <div className="grid w-full grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-2 md:flex md:w-auto md:flex-wrap md:items-center">
+        <div className="grid w-full grid-cols-2 gap-2 md:flex md:w-auto md:flex-wrap md:items-center">
         <ReportCountdown due={reportDue} />
+        {/* une seule carte : à gauche on ouvre les recommandations, à droite (zone à part,
+            séparée d'un trait) on les actualise — assez loin l'une de l'autre pour ne pas se tromper */}
+        <div className="flex min-h-11 min-w-0 items-stretch rounded-2xl border border-sand bg-white shadow-[0_8px_20px_-14px_rgba(15,42,74,0.4)]">
         <button
           type="button"
           onClick={() => setPanelOpen(true)}
-          className="group inline-flex min-h-11 min-w-0 items-center gap-2 rounded-2xl border border-sand bg-white py-2 pl-1.5 pr-2.5 text-left text-navy-900 shadow-[0_8px_20px_-14px_rgba(15,42,74,0.4)] transition-shadow hover:shadow-[0_12px_26px_-14px_rgba(15,42,74,0.55)] md:gap-3 md:pl-2 md:pr-3.5"
+          className="group inline-flex min-w-0 flex-1 items-center gap-2 rounded-l-2xl py-2 pl-1.5 pr-3 text-left text-navy-900 transition-colors hover:bg-cream/60 md:gap-3 md:pl-2 md:pr-4"
         >
           <JarvisAvatar bare pose="happy" size={34} />
           <span className="flex min-w-0 flex-col leading-tight">
@@ -639,16 +642,11 @@ export function StaffHome({
                 : "Parler à Jarvis"}
             </span>
           </span>
-          <ChevronRight
-            size={16}
-            strokeWidth={2.4}
-            aria-hidden
-            className="hidden shrink-0 transition-transform group-hover:translate-x-0.5 md:block"
-          />
         </button>
         {group && group.id !== NO_GROUP_ID && (
           <RefreshBriefButton groupId={group.id} disabled={!briefConfigured} />
         )}
+        </div>
         </div>
       </header>
 
