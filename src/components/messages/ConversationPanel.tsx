@@ -120,6 +120,18 @@ export function ConversationPanel({
     [activeId, playerId]
   );
 
+  // À l'ouverture, sans fil demandé par un lien : on va droit au premier fil non
+  // lu (le serveur a chargé Global ; s'il n'attend rien, on bascule une fois).
+  const autoOpened = useRef(false);
+  useEffect(() => {
+    if (autoOpened.current || startInChat) return;
+    autoOpened.current = true;
+    const current = channels.find((c) => c.id === activeId);
+    const waiting = channels.find((c) => c.hasUnread);
+    if (waiting && !current?.hasUnread) open(waiting);
+    else if (current?.hasUnread) setShowChat(true);
+  }, [channels, activeId, startInChat, open]);
+
   // Pastilles : la discussion ouverte se marque lue toute seule, on surveille les autres.
   useEffect(() => {
     if (channels.length < 2) return;
