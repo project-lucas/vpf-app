@@ -21,6 +21,7 @@ import {
 import { MESSAGE_MAX_LENGTH, channelKey } from "@/lib/constants";
 import { formatPercent } from "@/lib/discipline";
 import { formatAgoFr } from "@/lib/dates";
+import type { ThreadLine } from "@/lib/recent-thread";
 import { HISTORY_WEEK_CHOICES, type HomeRow } from "@/lib/staff-overview";
 import type { BriefAction, BriefRecommendation } from "@/lib/briefs";
 
@@ -63,6 +64,8 @@ interface RecoView {
   message: string | null;
   action: BriefAction;
   ficheHref: string | null;
+  /** les derniers messages du fil Global, du plus ancien au plus récent */
+  history?: ThreadLine[];
 }
 
 // ---------------------------------------------------------------------------
@@ -112,23 +115,40 @@ const HEALTH_RECENT_MS = 7 * 86_400_000;
 function HealthCell({ row }: { row: HomeRow }) {
   const recentPain =
     row.pain && Date.now() - new Date(row.pain.at).getTime() <= HEALTH_RECENT_MS ? row.pain.score : null;
-  // la dernière note de douleur, toujours visible pour être sûr (tiret si jamais notée)
-  const note = (
-    <span className="font-semibold opacity-80" title={row.pain ? "Dernier check-in douleur" : "Aucun check-in douleur"}>
-      ({row.pain ? `${row.pain.score}/10` : "—"})
-    </span>
-  );
-  if (row.availability === "injured") return <Tag tone="red">Blessé {note}</Tag>;
-  if (row.availability === "vacation") return <Tag tone="grey">Vacances {note}</Tag>;
-  if (recentPain !== null && recentPain >= 5) return <Tag tone="red">Douleur {note}</Tag>;
-  if (row.reviewHealth === "blessure") return <Tag tone="red">Blessure signalée {note}</Tag>;
+  if (row.availability === "injured") return <Tag tone="red">Blessé</Tag>;
+  if (row.availability === "vacation") return <Tag tone="grey">Vacances</Tag>;
+  if (recentPain !== null && recentPain >= 5) return <Tag tone="red">Douleur</Tag>;
+  if (row.reviewHealth === "blessure") return <Tag tone="red">Blessure signalée</Tag>;
   if ((recentPain !== null && recentPain >= 3) || row.reviewHealth === "gene") {
-    return <Tag tone="amber">Gêne {note}</Tag>;
+    return <Tag tone="amber">Gêne</Tag>;
   }
   return (
     <span className="inline-flex items-center gap-1 text-[11.5px] font-semibold text-success">
       <span className="h-1.5 w-1.5 rounded-full bg-success" />
-      OK {note}
+      OK
+    </span>
+  );
+}
+
+/**
+ * La dernière note de douleur, seule dans sa colonne : la note et son âge.
+ * En couleur si elle est récente (7 j), en gris sinon — une vieille note ne
+ * dit plus rien de l'état du jour.
+ */
+function PainCell({ pain }: { pain: HomeRow["pain"] }) {
+  if (!pain) return <span className="text-xs text-navy-300">—</span>;
+  const recent = Date.now() - new Date(pain.at).getTime() <= HEALTH_RECENT_MS;
+  const tone = !recent
+    ? "text-navy-300"
+    : pain.score >= 5
+      ? "text-danger"
+      : pain.score >= 3
+        ? "text-warning"
+        : "text-navy-900";
+  return (
+    <span className="inline-flex items-baseline gap-1.5 whitespace-nowrap">
+      <span className={`text-[13px] font-bold tabular-nums ${tone}`}>{pain.score}/10</span>
+      <span className="text-[11px] text-navy-300">{formatAgoFr(pain.at)}</span>
     </span>
   );
 }
@@ -152,15 +172,8 @@ function DisciplineBar({ value, frozen }: { value: number | null; frozen: boolea
   if (frozen) return <span className="text-xs text-navy-300">gelée</span>;
   if (value === null) return <span className="text-xs text-navy-300">—</span>;
   const pct = Math.round(value * 100);
-  const color = pct < 60 ? "bg-danger" : pct < 80 ? "bg-warning" : "bg-navy-800";
-  return (
-    <span className="inline-flex items-center gap-2">
-      <span className="relative block h-1.5 w-14 overflow-hidden rounded-full bg-navy-100">
-        <span className={`absolute inset-y-0 left-0 rounded-full ${color}`} style={{ width: `${pct}%` }} />
-      </span>
-      <span className="w-9 text-xs font-semibold tabular-nums text-navy-900">{pct} %</span>
-    </span>
-  );
+  const color = pct < 60 ? "text-danger" : pct < 80 ? "text-warning" : "text-navy-900";
+  return <span className={`inline-block w-11 text-[13px] font-bold tabular-nums ${color}`}>{pct} %</span>;
 }
 
 /** L'action principale d'une ligne : la première alerte dit où aller. */
@@ -246,6 +259,44 @@ function ActionLink({ action }: { action: ReturnType<typeof primaryAction> }) {
 // Une recommandation dans le volet Jarvis
 // ---------------------------------------------------------------------------
 
+/**
+ * Les derniers échanges du fil, au-dessus de la suggestion : on relit ce que
+ * le joueur a dit (et ce qu'on lui a répondu) avant d'envoyer. Les messages du
+ * joueur ou d'un parent sont à gauche sur fond crème, ceux du staff à droite.
+ */
+function ThreadPreview({ lines, firstName }: { lines: ThreadLine[]; firstName: string }) {
+  const label = { player: firstName || "Joueur", parent: "Parent", staff: "Staff", system: "VPF" };
+  return (
+    <div className="mt-2.5">
+      <p className="mb-1 text-[10px] font-extrabold uppercase tracking-[0.1em] text-navy-400">Derniers échanges</p>
+      {lines.length === 0 ? (
+        <p className="text-[12px] text-navy-400">Aucun message dans le fil Global.</p>
+      ) : (
+        <ul className="space-y-1">
+          {lines.map((l) => {
+            const family = l.from === "player" || l.from === "parent";
+            return (
+              <li key={`${l.at}-${l.from}`} className={`flex ${family ? "justify-start" : "justify-end"}`}>
+                <span
+                  className={`max-w-[88%] rounded-xl px-2.5 py-1.5 text-[12.5px] leading-snug ${
+                    family ? "bg-cream text-navy-900" : "bg-white text-navy-600 ring-1 ring-navy-100"
+                  }`}
+                >
+                  <span className="mr-1.5 text-[10.5px] font-bold text-navy-400">
+                    {label[l.from]} · {formatAgoFr(l.at)}
+                  </span>
+                  <span className="line-clamp-3">{l.body}</span>
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      <p className="mb-1 mt-2.5 text-[10px] font-extrabold uppercase tracking-[0.1em] text-accent">Suggestion de Jarvis</p>
+    </div>
+  );
+}
+
 function RecoCard({ reco }: { reco: RecoView }) {
   const [draft, setDraft] = useState(reco.message ?? "");
   const [editing, setEditing] = useState(false);
@@ -286,6 +337,10 @@ function RecoCard({ reco }: { reco: RecoView }) {
         {reco.offer && <OfferMark offer={reco.offer} />}
       </div>
       <p className="mt-2 text-[12.5px] leading-snug text-navy-500">{reco.why}</p>
+
+      {reco.playerId && reco.message !== null && !sent && (
+        <ThreadPreview lines={reco.history ?? []} firstName={reco.firstName} />
+      )}
 
       {reco.message !== null && !sent && (
         <div className="mt-2">
@@ -379,6 +434,8 @@ export function StaffHome({
   weeks,
   viewerFirstName,
   initialPanelOpen = false,
+  initialHistoryOpen = false,
+  recentThreads = {},
   reportDue,
 }: {
   groups: HomeGroup[];
@@ -395,6 +452,10 @@ export function StaffHome({
   viewerFirstName: string;
   /** volet Jarvis ouvert à l'arrivée (lien de la barre latérale) */
   initialPanelOpen?: boolean;
+  /** l'historique s'ouvre d'entrée quand une durée est demandée dans l'URL */
+  initialHistoryOpen?: boolean;
+  /** derniers messages du fil Global des joueurs cités par le brief */
+  recentThreads?: Record<string, ThreadLine[]>;
   /** prochain envoi des rapports aux parents (le 28) et rapports prêts */
   reportDue: { days: number; dateLabel: string; pending: number };
 }) {
@@ -404,6 +465,7 @@ export function StaffHome({
   const [scope, setScope] = useState<Scope>("todo");
   const [offer, setOffer] = useState<OfferFilter>("all");
   const [panelOpen, setPanelOpen] = useState(initialPanelOpen);
+  const [showHistory, setShowHistory] = useState(initialHistoryOpen);
   const scrollTable = (dx: number) => scroller.current?.scrollBy({ left: dx, behavior: "smooth" });
 
   useEffect(() => {
@@ -456,6 +518,7 @@ export function StaffHome({
           ficheHref: row
             ? `/coach/joueurs/${row.id}?onglet=${r.action === "assign_session" ? "programme" : "messages"}`
             : null,
+          history: row ? recentThreads[row.id] : undefined,
         };
       })
     : todoRows
@@ -581,29 +644,42 @@ export function StaffHome({
           </Segment>
         </FilterGroup>
         <span className="hidden md:contents">
+          {/* l'historique est masqué d'entrée : un clic sur une durée l'affiche */}
           <FilterGroup label="Historique">
+            <Segment on={!showHistory} onClick={() => setShowHistory(false)}>
+              Masqué
+            </Segment>
             {HISTORY_WEEK_CHOICES.map((n) => (
-              <Segment key={n} on={n === weeks} onClick={() => router.push(`/coach?semaines=${n}`)}>
+              <Segment
+                key={n}
+                on={showHistory && n === weeks}
+                onClick={() => {
+                  setShowHistory(true);
+                  if (n !== weeks) router.push(`/coach?semaines=${n}`);
+                }}
+              >
                 {n === 8 ? "8 semaines" : n === 13 ? "3 mois" : "6 mois"}
               </Segment>
             ))}
           </FilterGroup>
-          <span className="ml-auto inline-flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => scrollTable(-480)}
-              className="inline-flex h-9 items-center gap-1 rounded-xl bg-cream px-3 text-[12px] font-semibold text-navy-600 hover:bg-sand"
-            >
-              <ChevronLeft size={14} /> Aujourd&apos;hui
-            </button>
-            <button
-              type="button"
-              onClick={() => scrollTable(480)}
-              className="inline-flex h-9 items-center gap-1 rounded-xl bg-cream px-3 text-[12px] font-semibold text-navy-600 hover:bg-sand"
-            >
-              Semaines passées <ChevronRight size={14} />
-            </button>
-          </span>
+          {showHistory && (
+            <span className="inline-flex items-end gap-1.5 self-end">
+              <button
+                type="button"
+                onClick={() => scrollTable(-480)}
+                className="inline-flex h-9 items-center gap-1 rounded-xl bg-cream px-3 text-[12px] font-semibold text-navy-600 hover:bg-sand"
+              >
+                <ChevronLeft size={14} /> Aujourd&apos;hui
+              </button>
+              <button
+                type="button"
+                onClick={() => scrollTable(480)}
+                className="inline-flex h-9 items-center gap-1 rounded-xl bg-cream px-3 text-[12px] font-semibold text-navy-600 hover:bg-sand"
+              >
+                Semaines passées <ChevronRight size={14} />
+              </button>
+            </span>
+          )}
         </span>
       </div>
       <div
@@ -618,6 +694,7 @@ export function StaffHome({
                 "Offre",
                 ...(showKickoff ? ["Visio départ"] : []),
                 "Santé",
+                "Douleur",
                 "Discipline",
                 "Semaine",
                 "Bilan",
@@ -636,7 +713,7 @@ export function StaffHome({
                   {h}
                 </th>
               ))}
-              {visible[0]?.history.map((c) => (
+              {showHistory && visible[0]?.history.map((c) => (
                 <th
                   key={c.weekStart}
                   scope="col"
@@ -650,7 +727,7 @@ export function StaffHome({
           <tbody>
             {visible.length === 0 && (
               <tr>
-                <td colSpan={11} className="px-4 py-8 text-center text-sm text-navy-400">
+                <td colSpan={12} className="px-4 py-8 text-center text-sm text-navy-400">
                   {scope === "todo"
                     ? "Rien à traiter : messages lus, bilans répondus, plannings en place."
                     : "Aucun joueur."}
@@ -686,6 +763,9 @@ export function StaffHome({
                   )}
                   <td className="border-b border-navy-50 px-3 py-2 group-hover:bg-navy-50/50">
                     <HealthCell row={r} />
+                  </td>
+                  <td className="border-b border-navy-50 px-3 py-2 group-hover:bg-navy-50/50">
+                    <PainCell pain={r.pain} />
                   </td>
                   <td className="border-b border-navy-50 px-3 py-2 group-hover:bg-navy-50/50">
                     <span className="inline-flex items-center gap-3">
@@ -727,7 +807,7 @@ export function StaffHome({
                   <td className="border-b border-navy-50 px-3 py-2 group-hover:bg-navy-50/50">
                     <CallLinks name={r.firstName} playerUrl={r.playerWhatsapp} parent={r.parentWhatsapp} />
                   </td>
-                  {r.history.map((c) => (
+                  {showHistory && r.history.map((c) => (
                     <td
                       key={c.weekStart}
                       className="border-b border-l border-navy-50 px-3 py-2 group-hover:bg-navy-50/50"
@@ -741,8 +821,8 @@ export function StaffHome({
           </tbody>
         </table>
         <p className="sticky left-0 px-4 py-2 text-[11px] text-navy-300">
-          {visible.length} ligne{visible.length > 1 ? "s" : ""} · urgences d&apos;abord · le nom ouvre la fiche ·
-          à droite, les semaines passées (pointages, point = bilan rendu)
+          {visible.length} ligne{visible.length > 1 ? "s" : ""} · urgences d&apos;abord · le nom ouvre la fiche
+          {showHistory ? " · à droite, les semaines passées (pointages, point = bilan rendu)" : ""}
         </p>
       </div>
 

@@ -6,6 +6,7 @@ import { getBriefsForDate, isMorningBriefConfigured } from "@/lib/briefs";
 import { getRecentJournal } from "@/lib/journal";
 import { parisNow } from "@/lib/dates";
 import { nextReportDate } from "@/lib/jarvis-drafts";
+import { getRecentThreadLines } from "@/lib/recent-thread";
 import { getNavRole } from "@/lib/auth";
 import { StaffHome, NO_GROUP_ID, type HomeBrief, type HomeGroup } from "@/components/coach/StaffHome";
 import { PushPrompt } from "@/components/PushPrompt";
@@ -84,6 +85,15 @@ export default async function CoachDashboardPage({
     groups.find((g) => countOf(g.id === NO_GROUP_ID ? null : g.id) > 0)?.id ??
     groups[0].id;
 
+  // les derniers échanges du fil Global des joueurs cités par le brief : le
+  // staff relit l'historique avant d'envoyer la suggestion de Jarvis (RLS)
+  const recoPlayerIds = [
+    ...new Set(
+      [...briefs.values()].flatMap((b) => b.recommendations.map((r) => r.playerId).filter((x): x is string => !!x))
+    ),
+  ];
+  const recentThreads = await getRecentThreadLines(supabase, recoPlayerIds);
+
   const briefsByGroup: Record<string, HomeBrief> = {};
   for (const [gid, b] of briefs) {
     briefsByGroup[gid] = { summary: b.summary, recommendations: b.recommendations, createdAt: b.created_at };
@@ -124,6 +134,8 @@ export default async function CoachDashboardPage({
         weeks={weeks}
         viewerFirstName={(profile?.first_name as string | undefined) ?? ""}
         initialPanelOpen={jarvis === "1"}
+        recentThreads={recentThreads}
+        initialHistoryOpen={semaines !== undefined}
         reportDue={{
           days: nextReport.days,
           dateLabel: new Date(`${nextReport.date}T12:00:00Z`).toLocaleDateString("fr-FR", {
