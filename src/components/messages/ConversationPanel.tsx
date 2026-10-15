@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Archive, ArrowLeft, Dumbbell, HeartHandshake, Target, UserRound, Users } from "lucide-react";
+import { Archive, ArrowLeft, Dumbbell, HeartHandshake, Search, Target, UserRound, Users } from "lucide-react";
 import { getConversationMessages, getUnreadChannels } from "@/app/actions/messages";
 import { MessageThread } from "./MessageThread";
 import type { ConversationChannel, ConversationMessageWithSender } from "@/lib/types";
@@ -85,6 +85,14 @@ export function ConversationPanel({
   // dernière demande : une réponse en retard n'écrase pas la discussion ouverte
   const requestRef = useRef(activeId);
   const active = channels.find((c) => c.id === activeId) ?? channels[0];
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<"all" | "unread">("all");
+  const needle = query.trim().toLowerCase();
+  const shown = channels.filter(
+    (c) =>
+      (filter === "all" || unread.has(c.id)) &&
+      (!needle || c.label.toLowerCase().includes(needle) || (c.last?.body ?? "").toLowerCase().includes(needle))
+  );
 
   const open = useCallback(
     (channel: ConversationChannel) => {
@@ -129,35 +137,73 @@ export function ConversationPanel({
     <div
       className={`@container flex min-h-0 overflow-hidden rounded-xl border border-[#e9edef] bg-white ${className ?? ""}`}
     >
-      {/* ---- la liste des discussions ---- */}
+      {/* ---- la liste des discussions (colonne étroite, comme WhatsApp Web) ---- */}
       <nav
         aria-label="Discussions"
-        className={`min-h-0 w-full shrink-0 flex-col overflow-y-auto border-r border-[#e9edef] @2xl:flex @2xl:w-[300px] ${
+        className={`min-h-0 w-full shrink-0 flex-col border-r border-[#e9edef] bg-white @lg:flex @lg:w-[38%] @lg:min-w-[230px] @lg:max-w-[340px] ${
           showChat ? "hidden" : "flex"
         }`}
       >
-        <p className="sticky top-0 z-[1] bg-white px-4 pb-2 pt-3 text-[17px] font-bold text-[#111b21]">Discussions</p>
-        <ul className="pb-2">
-          {channels.map((c) => {
+        <div className="shrink-0 px-3 pb-2 pt-3">
+          <p className="px-1 text-[20px] font-bold text-[#111b21]">Discussions</p>
+          <label className="mt-2 flex items-center gap-2 rounded-full bg-[#f0f2f5] px-3 py-1.5 text-[#54656f]">
+            <Search size={15} aria-hidden />
+            <input
+              id={`wa-search-${playerId}`}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Rechercher"
+              aria-label="Rechercher une discussion"
+              className="min-w-0 flex-1 bg-transparent text-[14px] text-[#111b21] placeholder:text-[#667781] focus:outline-none"
+            />
+          </label>
+          <div className="mt-2 flex gap-1.5">
+            {(
+              [
+                { key: "all", label: "Toutes" },
+                { key: "unread", label: `Non lues${unread.size > 0 ? ` ${unread.size}` : ""}` },
+              ] as const
+            ).map((f) => (
+              <button
+                key={f.key}
+                type="button"
+                onClick={() => setFilter(f.key)}
+                aria-pressed={filter === f.key}
+                className={`rounded-full px-3 py-1 text-[13px] font-medium transition-colors ${
+                  filter === f.key ? "bg-[#d9fdd3] text-[#008069]" : "bg-[#f0f2f5] text-[#54656f] hover:bg-[#e9edef]"
+                }`}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <ul className="min-h-0 flex-1 overflow-y-auto pb-2">
+          {shown.length === 0 && (
+            <li className="px-4 py-6 text-center text-[13px] text-[#667781]">
+              {filter === "unread" ? "Aucune discussion non lue." : "Aucune discussion trouvée."}
+            </li>
+          )}
+          {shown.map((c) => {
             const isActive = c.id === activeId;
             const hasDot = unread.has(c.id);
             const preview = c.last
               ? `${c.last.fromMe ? "Toi : " : c.last.fromName ? `${c.last.fromName} : ` : ""}${c.last.body}`
               : c.members;
             return (
-              <li key={c.id}>
+              <li key={c.id} className="px-1.5">
                 <button
                   type="button"
                   onClick={() => open(c)}
                   aria-current={isActive ? "true" : undefined}
-                  className={`flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-[#f5f6f6] ${
-                    isActive ? "@2xl:bg-[#f0f2f5]" : ""
+                  className={`flex w-full items-center gap-3 rounded-lg px-2 py-2.5 text-left transition-colors hover:bg-[#f5f6f6] ${
+                    isActive ? "@lg:bg-[#f0f2f5]" : ""
                   }`}
                 >
-                  <ChannelAvatar kind={c.kind} size={48} />
-                  <span className="min-w-0 flex-1 border-b border-[#f0f2f5] pb-2.5 pt-0.5">
+                  <ChannelAvatar kind={c.kind} size={46} />
+                  <span className="min-w-0 flex-1">
                     <span className="flex items-baseline justify-between gap-2">
-                      <span className={`truncate text-[16px] text-[#111b21] ${hasDot ? "font-bold" : "font-medium"}`}>
+                      <span className={`truncate text-[15.5px] text-[#111b21] ${hasDot ? "font-bold" : "font-normal"}`}>
                         {c.label}
                       </span>
                       {c.last && (
@@ -171,7 +217,7 @@ export function ConversationPanel({
                         {preview}
                       </span>
                       {hasDot && (
-                        <span className="h-5 min-w-5 shrink-0 rounded-full bg-[#25d366] px-1.5 text-center text-[11px] font-bold leading-5 text-white">
+                        <span className="h-[18px] min-w-[18px] shrink-0 rounded-full bg-[#25d366] px-1 text-center text-[10px] font-bold leading-[18px] text-white">
                           •<span className="sr-only">nouveaux messages</span>
                         </span>
                       )}
@@ -187,15 +233,15 @@ export function ConversationPanel({
       {/* ---- la discussion ouverte ---- */}
       <section
         aria-label={active?.label ?? "Discussion"}
-        className={`min-h-0 min-w-0 flex-1 flex-col @2xl:flex ${showChat ? "flex" : "hidden"}`}
+        className={`min-h-0 min-w-0 flex-1 flex-col @lg:flex ${showChat ? "flex" : "hidden"}`}
       >
         {active && (
-          <header className="flex shrink-0 items-center gap-3 bg-[#f0f2f5] px-3 py-2">
+          <header className="flex shrink-0 items-center gap-3 border-b border-[#e9edef] bg-white px-3 py-2">
             <button
               type="button"
               onClick={() => setShowChat(false)}
               aria-label="Retour aux discussions"
-              className="-ml-1 rounded-full p-1.5 text-[#54656f] hover:bg-black/5 @2xl:hidden"
+              className="-ml-1 rounded-full p-1.5 text-[#54656f] hover:bg-black/5 @lg:hidden"
             >
               <ArrowLeft size={20} />
             </button>

@@ -133,7 +133,7 @@ export function MessageComposer({
 
   return (
     <div
-      className={`shrink-0 ${ed ? "mt-3 border-t-2 border-ink pt-3" : "bg-[#f0f2f5] px-2 py-2"}`}
+      className={`shrink-0 ${ed ? "mt-3 border-t-2 border-ink pt-3" : "px-2.5 pb-2.5 pt-1"}`}
     >
       {message && (
         <p
@@ -247,7 +247,11 @@ export function MessageComposer({
             </div>
           )}
 
-          <div className="flex items-end gap-1.5">
+          <div
+            className={
+              ed ? "flex items-end gap-1.5" : "flex items-end gap-0.5 rounded-[26px] bg-white py-1 pl-1 pr-1 shadow-[0_1px_1px_rgba(11,20,26,0.08)]"
+            }
+          >
             <input
               ref={fileInputRef}
               type="file"
@@ -264,8 +268,8 @@ export function MessageComposer({
               onClick={() => fileInputRef.current?.click()}
               disabled={busy}
               aria-label="Joindre une photo, une vidéo ou un fichier"
-              className={`flex h-11 w-10 shrink-0 items-center justify-center rounded-xl transition-colors disabled:opacity-40 ${
-                ed ? "text-meta hover:text-ink" : "text-[#54656f] hover:text-[#111b21]"
+              className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-colors disabled:opacity-40 ${
+                ed ? "text-meta hover:text-ink" : "text-[#54656f] hover:bg-[#f0f2f5] hover:text-[#111b21]"
               }`}
             >
               <Paperclip size={21} />
@@ -285,11 +289,11 @@ export function MessageComposer({
                 }
               }}
               enterKeyHint={enterSends ? "send" : "enter"}
-              placeholder="Écris ton message…"
+              placeholder="Écris un message"
               className={
                 ed
                   ? "ed-field max-h-[140px] w-full flex-1 resize-none overflow-y-auto"
-                  : "max-h-[140px] w-full flex-1 resize-none overflow-y-auto rounded-[22px] border-0 bg-white px-4 py-2.5 text-[15px] text-[#111b21] placeholder:text-[#8696a0] focus:outline-none focus:ring-0"
+                  : "max-h-[140px] w-full flex-1 resize-none overflow-y-auto border-0 bg-transparent px-2 py-2 text-[15px] text-[#111b21] placeholder:text-[#8696a0] focus:outline-none focus:ring-0"
               }
             />
 
@@ -304,7 +308,7 @@ export function MessageComposer({
                 className={
                   ed
                     ? "flex h-11 w-11 shrink-0 items-center justify-center rounded-md border-2 border-ink bg-ink text-paper transition-transform hover:scale-105 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
-                    : "flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#00a884] text-white transition-colors hover:bg-[#008f72] disabled:cursor-not-allowed disabled:opacity-40"
+                    : "flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#00a884] text-white transition-colors hover:bg-[#008f72] disabled:cursor-not-allowed disabled:opacity-40"
                 }
               >
                 <SendHorizontal size={18} />
@@ -319,7 +323,7 @@ export function MessageComposer({
                   className={
                     ed
                       ? "flex h-11 w-11 shrink-0 items-center justify-center rounded-md border-2 border-ink bg-card text-ink transition-transform hover:scale-105 active:scale-95 disabled:opacity-40"
-                      : "flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#00a884] text-white transition-colors hover:bg-[#008f72] disabled:opacity-40"
+                      : "flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[#54656f] transition-colors hover:bg-[#f0f2f5] hover:text-[#111b21] disabled:opacity-40"
                   }
                 >
                   <Mic size={18} />
