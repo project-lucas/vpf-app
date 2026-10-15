@@ -150,6 +150,7 @@ export default async function CoachDashboardPage({
         notificationsEnabled={profile?.notifications_enabled ?? true}
         title="Active tes notifications"
         description="Messages des joueurs et des parents, alertes douleur."
+        staff
       />
     </>
   );

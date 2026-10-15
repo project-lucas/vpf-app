@@ -57,10 +57,13 @@ export function PushPrompt({
   notificationsEnabled,
   title = "Active tes rappels",
   description = "Reçois un rappel avant chaque événement.",
+  staff = false,
 }: {
   notificationsEnabled: boolean;
   title?: string;
   description?: string;
+  /** espace coach / admin : « Plus tard » retenu 7 jours, bandeau au-dessus du bouton Jarvis */
+  staff?: boolean;
 }) {
   const [visible, setVisible] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -69,11 +72,11 @@ export function PushPrompt({
     if (!notificationsEnabled) return;
     if (!("Notification" in window) || !("serviceWorker" in navigator)) return;
     if (Notification.permission === "default") {
-      if (!snoozed()) setVisible(true);
+      if (!staff || !snoozed()) setVisible(true);
     } else if (Notification.permission === "granted") {
       subscribeToPush().catch(() => {});
     }
-  }, [notificationsEnabled]);
+  }, [notificationsEnabled, staff]);
 
   async function enable() {
     setLoading(true);
@@ -88,7 +91,13 @@ export function PushPrompt({
   if (!visible) return null;
 
   return (
-    <div className="bottom-above-nav fixed inset-x-0 z-[45] mx-auto max-w-lg px-3 lg:bottom-6">
+    <div
+      className={
+        staff
+          ? "bottom-above-nav fixed inset-x-0 z-[45] mx-auto max-w-lg px-3 lg:bottom-6"
+          : "fixed inset-x-0 bottom-16 z-30 mx-auto max-w-lg px-4 pb-2"
+      }
+    >
       <div className="flex items-center gap-3 rounded-2xl border border-navy-100 bg-white p-3.5 shadow-lg">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-navy-800 text-white">
           <BellIcon size={20} />
@@ -103,10 +112,12 @@ export function PushPrompt({
           </Button>
           <button
             onClick={() => {
-              try {
-                localStorage.setItem(LATER_KEY, String(Date.now()));
-              } catch {
-                // stockage indisponible : le bandeau reviendra, rien de grave
+              if (staff) {
+                try {
+                  localStorage.setItem(LATER_KEY, String(Date.now()));
+                } catch {
+                  // stockage indisponible : le bandeau reviendra, rien de grave
+                }
               }
               setVisible(false);
             }}
