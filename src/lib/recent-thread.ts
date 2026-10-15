@@ -17,7 +17,9 @@ const PER_PLAYER = 3;
 
 export async function getRecentThreadLines(
   supabase: SupabaseClient,
-  playerIds: string[]
+  playerIds: string[],
+  /** le fil à lire par joueur (Global par défaut) et le nombre de messages */
+  options: { channelOf?: Record<string, string>; perPlayer?: number } = {}
 ): Promise<Record<string, ThreadLine[]>> {
   const out: Record<string, ThreadLine[]> = {};
   if (playerIds.length === 0) return out;
@@ -28,9 +30,9 @@ export async function getRecentThreadLines(
         .from("conversation_messages")
         .select("player_id, sender_id, body, is_system, attachment_kind, created_at")
         .eq("player_id", id)
-        .eq("channel", "global")
+        .eq("channel", options.channelOf?.[id] ?? "global")
         .order("created_at", { ascending: false })
-        .limit(PER_PLAYER)
+        .limit(options.perPlayer ?? PER_PLAYER)
     ),
   ]);
   const parents = new Set((links ?? []).map((l) => `${l.player_id}|${l.parent_id}`));

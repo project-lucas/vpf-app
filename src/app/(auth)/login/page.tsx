@@ -2,7 +2,12 @@ import { LoginForm } from "./LoginForm";
 
 export const metadata = { title: "Connexion — VPF" };
 
-export default function LoginPage() {
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ lien?: string }>;
+}) {
+  const { lien } = await searchParams;
   return (
     <main className="flex min-h-dvh flex-col items-center justify-center px-6 py-10">
       <div className="w-full max-w-sm">
@@ -19,7 +24,7 @@ export default function LoginPage() {
           <span aria-hidden className="mt-2 block h-1 w-9 -skew-x-12 rounded-sm bg-gold" />
           <p className="mt-2 text-sm text-navy-400">Dirigé dans la bonne direction.</p>
         </div>
-        <LoginForm />
+        <LoginForm expiredLink={lien === "expire"} />
       </div>
     </main>
   );

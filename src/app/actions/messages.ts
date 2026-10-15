@@ -169,6 +169,46 @@ export async function getConversationMessages(
 }
 
 /**
+ * Accusé de lecture, côté staff seulement : jusqu'où la famille (le joueur,
+ * ses parents) a lu ce fil. Sert le « Vu par Théo » sous mon dernier message.
+ * La lecture RLS du joueur prouve que l'appelant le suit ; les marqueurs de
+ * lecture et les prénoms passent ensuite par le service_role (un coach ne lit
+ * pas les marqueurs des autres sous RLS).
+ */
+export async function getChannelSeen(
+  playerId: string,
+  channel: string = "global"
+): Promise<{ name: string; at: string }[]> {
+  const role = await getNavRole();
+  if (role !== "coach" && role !== "admin") return [];
+  const ref = parseChannelId(channel);
+  if (ref.kind === "legacy") return [];
+  const supabase = await createClient();
+  const { data: player } = await supabase.from("players").select("id").eq("id", playerId).maybeSingle();
+  if (!player) return [];
+  const admin = createAdminClient();
+  // qui, dans la famille, lit ce fil : le joueur (sauf Parents), les parents (Global, Parents)
+  const readers: string[] = ref.kind === "parents" ? [] : [playerId];
+  if (ref.kind === "global" || ref.kind === "parents") {
+    const { data: links } = await admin.from("parent_links").select("parent_id").eq("player_id", playerId);
+    readers.push(...(links ?? []).map((l) => l.parent_id as string));
+  }
+  if (readers.length === 0) return [];
+  const [{ data: reads }, { data: names }] = await Promise.all([
+    admin
+      .from("conversation_reads")
+      .select("user_id, last_read_at")
+      .eq("player_id", playerId)
+      .eq("channel", ref.kind)
+      .is("channel_admin_id", null)
+      .in("user_id", readers),
+    admin.from("profiles").select("id, first_name").in("id", readers),
+  ]);
+  const nameOf = new Map((names ?? []).map((p) => [p.id as string, (p.first_name as string) || "Parent"]));
+  return (reads ?? []).map((r) => ({ name: nameOf.get(r.user_id as string) ?? "", at: r.last_read_at as string }));
+}
+
+/**
  * Avance le marqueur de lecture d'un canal pour l'utilisateur courant.
  *
  * Pas d'upsert PostgREST : la table n'a plus de clé primaire depuis 0034 (le

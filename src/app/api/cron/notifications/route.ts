@@ -17,6 +17,13 @@ import {
   reviewExpectedFor,
 } from "@/lib/player-gates";
 import { logStaffAction } from "@/lib/journal";
+import { getAwaitingThreads } from "@/lib/jarvis-replies";
+import { getChannelHolders } from "@/lib/conversations";
+import { CHANNEL_NAMES } from "@/lib/channels";
+
+/** Un message sans réponse du staff prévient le titulaire du fil après 24 h, les admins après 48 h. */
+const SLA_FIRST_HOURS = 24;
+const SLA_ESCALATE_HOURS = 48;
 import type { EventType } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -72,6 +79,8 @@ export async function GET(request: NextRequest) {
     recaps: 0,
     hygieneReminders: 0,
     matchSheetReminders: 0,
+    eveningReminders: 0,
+    slaAlerts: 0,
   };
 
   // Joueurs actifs + préférence notifications. Les joueurs blessés / en
@@ -340,6 +349,131 @@ export async function GET(request: NextRequest) {
           kind: "reminder",
         });
         results.recaps++;
+      }
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // 5 bis. Relance du soir — 20h : ce qui était prévu aujourd'hui et n'est
+  //    pas encore pointé (la discipline se joue là). Push seulement : un
+  //    message quotidien dans le fil Global (lu par les parents) serait du
+  //    bruit. Un joueur de l'offre formation qui n'a pas noté son hygiène
+  //    reçoit les deux en un seul push (le rappel hygiène du bloc 6 saute).
+  // -------------------------------------------------------------------------
+  if (now.minutesOfDay >= 20 * 60 && now.minutesOfDay < 22 * 60 && notifiablePlayerIds.size > 0) {
+    const ids = [...notifiablePlayerIds];
+    const [{ data: todayEvents }, { data: pointed }, { data: hygieneToday }] = await Promise.all([
+      admin
+        .from("planned_events")
+        .select("id, player_id, event_type, custom_name, created_at")
+        .eq("weekday", now.isoWeekday)
+        .neq("event_type", "match")
+        .in("player_id", ids),
+      admin
+        .from("event_completions")
+        .select("planned_event_id")
+        .eq("week_start", weekStart)
+        .eq("weekday", now.isoWeekday)
+        .in("player_id", ids),
+      admin.from("hygiene_logs").select("player_id").eq("log_date", now.date).in("player_id", ids),
+    ]);
+    const done = new Set((pointed ?? []).map((c) => c.planned_event_id as string));
+    const hygieneNoted = new Set((hygieneToday ?? []).map((h) => h.player_id as string));
+    const pending = new Map<string, string[]>();
+    for (const e of todayEvents ?? []) {
+      if (done.has(e.id as string)) continue;
+      // un événement ajouté aujourd'hui n'a pas encore eu sa chance
+      if (e.created_at && parisNow(new Date(e.created_at as string)).date === now.date) continue;
+      const label =
+        (e.event_type === "autre" && e.custom_name) || EVENT_TYPE_LABELS[e.event_type as EventType] || "Séance";
+      pending.set(e.player_id as string, [...(pending.get(e.player_id as string) ?? []), label]);
+    }
+    const refKey = `soir:${now.date}`;
+    const sent = await alreadySent(
+      "evening_checkin",
+      [...pending.keys()].map((playerId) => ({ playerId, refKey }))
+    );
+    for (const [playerId, labels] of pending) {
+      if (sent.has(`${playerId}|${refKey}`)) continue;
+      const { data: logged } = await admin
+        .from("notification_log")
+        .upsert(
+          { user_id: playerId, kind: "evening_checkin", ref_key: refKey },
+          { onConflict: "user_id,kind,ref_key", ignoreDuplicates: true }
+        )
+        .select("id");
+      if (!logged || logged.length === 0) continue;
+      const player = players.find((p) => p.id === playerId);
+      const withHygiene = player && canUseHygiene(player.offer) && !hygieneNoted.has(playerId);
+      if (withHygiene) {
+        // le rappel hygiène part dans ce push : on le marque envoyé
+        await admin
+          .from("notification_log")
+          .upsert(
+            { user_id: playerId, kind: "hygiene_mission", ref_key: `hygiene:${now.date}` },
+            { onConflict: "user_id,kind,ref_key", ignoreDuplicates: true }
+          );
+      }
+      const list = labels.slice(0, 3).join(", ");
+      await sendPushToUser(playerId, {
+        title: "Tu as fait ta séance ? ✅",
+        body: `Encore à pointer aujourd'hui : ${list}${labels.length > 3 ? "…" : ""}.${
+          withHygiene ? " Et note ton hygiène du jour." : ""
+        } Un tap dans l'app.`,
+        url: "/planning",
+        kind: "reminder",
+      });
+      results.eveningReminders++;
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // 5 ter. Garde-fou du service : un message de la famille sans réponse du
+  //    staff depuis 24 h prévient le titulaire du fil (le référent pour
+  //    Global et Parents) ; depuis 48 h, les admins. Une fois par message,
+  //    et jamais la nuit (8h-21h).
+  // -------------------------------------------------------------------------
+  if (now.minutesOfDay >= 8 * 60 && now.minutesOfDay < 21 * 60) {
+    const waiting = (await getAwaitingThreads(admin, 7)).filter(
+      (t) => Date.now() - new Date(t.at).getTime() >= SLA_FIRST_HOURS * 3_600_000
+    );
+    if (waiting.length > 0) {
+      const ids = [...new Set(waiting.map((t) => t.playerId))];
+      const [holders, { data: names }, { data: admins }] = await Promise.all([
+        getChannelHolders(ids),
+        admin.from("profiles").select("id, first_name, last_name").in("id", ids),
+        admin.from("profiles").select("id").eq("role", "admin"),
+      ]);
+      const nameOf = new Map(
+        (names ?? []).map((p) => [p.id as string, `${p.first_name ?? ""} ${p.last_name ?? ""}`.trim()])
+      );
+      for (const t of waiting) {
+        const hours = Math.floor((Date.now() - new Date(t.at).getTime()) / 3_600_000);
+        const late = hours >= SLA_ESCALATE_HOURS;
+        const h = holders.get(t.playerId);
+        const holder =
+          t.channel === "technique" ? h?.technique : t.channel === "physique" ? h?.physique : h?.coachId;
+        const recipients = late ? (admins ?? []).map((a) => a.id as string) : holder ? [holder] : [];
+        const kind = late ? "sla_48" : "sla_24";
+        for (const recipient of recipients) {
+          const { data: logged } = await admin
+            .from("notification_log")
+            .upsert(
+              { user_id: recipient, kind, ref_key: t.messageId },
+              { onConflict: "user_id,kind,ref_key", ignoreDuplicates: true }
+            )
+            .select("id");
+          if (!logged || logged.length === 0) continue;
+          await sendPushToUser(recipient, {
+            title: late ? `Sans réponse depuis ${hours} h ⚠️` : "Un message attend depuis hier",
+            body: `${nameOf.get(t.playerId) || "Un joueur"} · ${CHANNEL_NAMES[t.channel]} : ${
+              t.senderRole === "parent" ? "un parent" : "le joueur"
+            } attend une réponse.`,
+            url: `/coach/joueurs/${t.playerId}?onglet=messages&canal=${t.channel}`,
+            kind: "alert",
+          });
+          results.slaAlerts++;
+        }
       }
     }
   }

@@ -74,6 +74,8 @@ export interface HomeRow {
   unread: boolean;
   /** porteur du fil qui attend (null = Global) */
   unreadChannel: string | null;
+  /** id du message qui attend une réponse (brouillon de Jarvis) */
+  unreadMessageId: string | null;
   lastMessagePreview: string | null;
   coverage: SessionCoverage | null;
   pain: { score: number; at: string } | null;
@@ -231,7 +233,8 @@ export async function getHomeRows(
       ? Promise.resolve({ data: [] })
       : createAdminClient().from("profiles").select("id, first_name").in("id", coachIds),
   ]);
-  const unreadIds = new Set(threads.filter((t) => t.hasUnread).map((t) => t.playerId));
+  // « message en attente » : personne du staff n'a répondu (pas « je ne l'ai pas lu »)
+  const unreadIds = new Set(threads.filter((t) => t.awaiting).map((t) => t.playerId));
   const summaryKey = new Map(
     (summaries ?? []).map((s) => [`${s.player_id}|${s.week_start}`, s])
   );
@@ -258,14 +261,17 @@ export async function getHomeRows(
 
   // fils : le plus récent par joueur, et celui qui attend
   const lastByPlayer = new Map<string, { at: string; body: string | null }>();
-  const unreadThread = new Map<string, { channel: string | null; body: string | null; at: string | null }>();
+  const unreadThread = new Map<
+    string,
+    { channel: string | null; body: string | null; at: string | null; id: string | null }
+  >();
   for (const t of threads) {
     if (t.lastAt) {
       const cur = lastByPlayer.get(t.playerId);
       if (!cur || t.lastAt > cur.at) lastByPlayer.set(t.playerId, { at: t.lastAt, body: t.lastBody });
     }
-    if (t.hasUnread && !unreadThread.has(t.playerId)) {
-      unreadThread.set(t.playerId, { channel: t.channel, body: t.lastBody, at: t.lastAt });
+    if (t.awaiting && !unreadThread.has(t.playerId)) {
+      unreadThread.set(t.playerId, { channel: t.channel, body: t.lastBody, at: t.lastAt, id: t.lastMessageId });
     }
   }
 
@@ -370,6 +376,7 @@ export async function getHomeRows(
       lastExchangeAt: last?.at ?? null,
       unread: unreadIds.has(p.id),
       unreadChannel: unread?.channel ?? null,
+      unreadMessageId: unread?.id ?? null,
       lastMessagePreview: (unread?.body ?? last?.body ?? null)?.slice(0, 160) ?? null,
       coverage: coverage.get(p.id) ?? null,
       pain: h?.pain ?? null,

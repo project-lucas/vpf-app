@@ -2,14 +2,14 @@
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
-import { MessageCircle, Sparkles } from "lucide-react";
+import { Sparkles } from "lucide-react";
 import { runJarvisNow } from "@/app/actions/jarvis-queue";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Section } from "@/components/ui/Section";
 import { Button } from "@/components/ui/Button";
-import { formatAgoFr } from "@/lib/dates";
 import { REPORT_DAY } from "@/lib/jarvis-drafts";
 import { ProgramBatch, ReportCard, ReviewCard, VisioCard } from "./QueueCards";
+import { BulkApprove, DebriefPanel, MatchCard, MessageCard } from "./ReplyCards";
 import type { QueueData } from "./types";
 
 /**
@@ -39,13 +39,24 @@ export function TodayQueue({
   reportMonthLabel: string;
 }) {
   const sections = [
+    { id: "debrief", label: "Debrief du week-end", count: data.debriefs.length },
     { id: "messages", label: "Messages", count: data.messages.length },
+    { id: "matchs", label: "Matchs", count: data.matches.length },
     { id: "bilans", label: "Bilans", count: data.reviews.length },
     { id: "decrochage", label: "Décrochage", count: data.visios.length },
     { id: "programmes", label: "Programmes", count: data.programs.length },
     { id: "rapports", label: "Rapports parents", count: data.reports.length },
   ];
-  const total = sections.reduce((s, x) => s + x.count, 0);
+  // le debrief se lit, il ne se traite pas : il ne compte pas dans les actions
+  const total = sections.reduce((s, x) => s + (x.id === "debrief" ? 0 : x.count), 0);
+  // brouillons envoyés d'un coup par « Tout valider »
+  const [bulkSent, setBulkSent] = useState<Set<string>>(new Set());
+  const markSent = (ids: string[]) => setBulkSent((prev) => new Set([...prev, ...ids]));
+  const open = (id: string | null | undefined) => !!id && !bulkSent.has(id);
+  const messageDrafts = data.messages.map((m) => m.draft?.id).filter(open) as string[];
+  const matchDrafts = data.matches.map((m) => m.draft.id).filter(open);
+  const reviewDrafts = data.reviews.map((r) => r.draft?.id).filter(open) as string[];
+  const reportDrafts = data.reports.filter((r) => r.parentCount > 0).map((r) => r.draftId).filter(open);
   // une section à la fois quand on filtre ; null = tout
   const [picked, setFilter] = useState<string | null>(initialFilter);
   // une section vidée (tout validé) rend la main à « Tout »
@@ -88,7 +99,7 @@ export function TodayQueue({
         </div>
       )}
 
-      {total > 0 && (
+      {(total > 0 || data.debriefs.length > 0) && (
         <div role="tablist" aria-label="Filtrer la file" className="mb-6 flex flex-wrap gap-1.5">
           {[{ id: null, label: "Tout", count: total }, ...sections.filter((s) => s.count > 0)].map((s) => {
             const active = filter === s.id;
@@ -113,37 +124,42 @@ export function TodayQueue({
       )}
 
       <div className="space-y-8">
+        {show("debrief") && data.debriefs.length > 0 && (
+          <Section title="Debrief du week-end">
+            <div id="debrief" className="scroll-mt-20">
+              <DebriefPanel debriefs={data.debriefs} />
+            </div>
+          </Section>
+        )}
+
         {show("messages") && data.messages.length > 0 && (
-          <Section title={`Messages en attente · ${data.messages.length}`} className="scroll-mt-20" >
-            <ul id="messages" className="divide-y divide-navy-100 rounded-2xl border border-navy-100 bg-white">
+          <Section title={`Messages en attente · ${data.messages.length}`}>
+            <div id="messages" className="scroll-mt-20 space-y-4">
+              <BulkApprove kind="message_reply" draftIds={messageDrafts} label="réponses" onSent={markSent} />
               {data.messages.map((m) => (
-                <li key={m.id} className="flex items-center gap-3 px-4 py-3">
-                  <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-accent" aria-label="Non lu" />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[14px] font-bold text-navy-900">
-                      {m.name}
-                      {m.coach && <span className="font-normal text-navy-400"> · suivi par {m.coach}</span>}
-                    </p>
-                    {m.preview && <p className="truncate text-[12.5px] text-navy-500">{m.preview}</p>}
-                  </div>
-                  {m.at && <span className="shrink-0 text-[11.5px] text-navy-400">{formatAgoFr(m.at)}</span>}
-                  <Link
-                    href={m.href}
-                    className="inline-flex shrink-0 items-center gap-1 rounded-full bg-accent px-3 py-1 text-[12px] font-bold text-white"
-                  >
-                    <MessageCircle size={12} /> Répondre
-                  </Link>
-                </li>
+                <MessageCard key={`${m.id}-${m.channel}`} item={m} sent={!!m.draft && bulkSent.has(m.draft.id)} />
               ))}
-            </ul>
+            </div>
+          </Section>
+        )}
+
+        {show("matchs") && data.matches.length > 0 && (
+          <Section title={`Retours de match · ${data.matches.length}`}>
+            <div id="matchs" className="scroll-mt-20 space-y-4">
+              <BulkApprove kind="match_reply" draftIds={matchDrafts} label="retours" onSent={markSent} />
+              {data.matches.map((m) => (
+                <MatchCard key={m.draft.id} item={m} sent={bulkSent.has(m.draft.id)} />
+              ))}
+            </div>
           </Section>
         )}
 
         {show("bilans") && data.reviews.length > 0 && (
           <Section title={`Bilans à valider · ${data.reviews.length}`}>
             <div id="bilans" className="scroll-mt-20 space-y-4">
+              <BulkApprove kind="review_reply" draftIds={reviewDrafts} label="réponses" onSent={markSent} />
               {data.reviews.map((r) => (
-                <ReviewCard key={r.reviewId} item={r} />
+                <ReviewCard key={r.reviewId} item={r} sent={!!r.draft && bulkSent.has(r.draft.id)} />
               ))}
             </div>
           </Section>
@@ -170,8 +186,9 @@ export function TodayQueue({
         {show("rapports") && data.reports.length > 0 && (
           <Section title={`Rapports aux parents · ${data.reports.length}`}>
             <div id="rapports" className="scroll-mt-20 space-y-4">
+              <BulkApprove kind="parent_report" draftIds={reportDrafts} label="rapports" onSent={markSent} />
               {data.reports.map((r) => (
-                <ReportCard key={r.draftId} item={r} />
+                <ReportCard key={r.draftId} item={r} sent={bulkSent.has(r.draftId)} />
               ))}
             </div>
           </Section>

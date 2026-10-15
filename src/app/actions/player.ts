@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient, getCachedUser } from "@/lib/supabase/server";
 import { sendPushToUser } from "@/lib/push";
+import { acknowledgePain } from "@/lib/automations";
 import { addDays, currentWeekStart, parisNow } from "@/lib/dates";
 import {
   PAIN_PUSH_THRESHOLD,
@@ -159,6 +160,13 @@ export async function submitWeeklyReview(
     { onConflict: "player_id,week_start" }
   );
   if (error) return { ok: false, error: "Enregistrement impossible." };
+  // une blessure déclarée : le coach le sait tout de suite, le joueur aussi
+  if (health_status === "blessure") {
+    await Promise.all([
+      alertCoachOfPain(user.id, "déclare une blessure dans son bilan."),
+      reassurePlayer(user.id, "une blessure, d'après ton bilan"),
+    ]);
+  }
   revalidatePath("/dashboard");
   // le bilan se remplit depuis le planning (pastille + rappel week-end)
   revalidatePath("/planning");
@@ -183,7 +191,10 @@ export async function submitCheckin(
   if (error) return { ok: false, error: "Enregistrement impossible." };
 
   if (question === "pain" && score >= PAIN_PUSH_THRESHOLD) {
-    await alertCoachOfPain(user.id, score);
+    await Promise.all([
+      alertCoachOfPain(user.id, `se note ${score}/10 en douleur au check-in.`),
+      reassurePlayer(user.id, `${score}/10`),
+    ]);
   }
 
   // le check-in vit dans le layout joueur (toutes les pages) : purge globale
@@ -202,7 +213,7 @@ export async function submitCheckin(
  * prouvé que ce check-in est bien le sien, et rien d'autre n'est exposé.
  * Best-effort : un push qui échoue ne doit pas faire échouer le check-in.
  */
-async function alertCoachOfPain(playerId: string, score: number): Promise<void> {
+async function alertCoachOfPain(playerId: string, what: string): Promise<void> {
   try {
     const admin = createAdminClient();
     const { data: player } = await admin
@@ -226,12 +237,34 @@ async function alertCoachOfPain(playerId: string, score: number): Promise<void> 
       `${playerProfile?.first_name ?? ""} ${playerProfile?.last_name ?? ""}`.trim() || "Un joueur";
     await sendPushToUser(player.coach_id, {
       title: "Alerte douleur 🩹",
-      body: `${name} se note ${score}/10 en douleur au check-in.`,
+      body: `${name} ${what}`,
       url: `/coach/joueurs/${playerId}`,
       kind: "alert",
     });
   } catch {
     // le check-in du joueur est enregistré : l'alerte est un bonus, pas un dû
+  }
+}
+
+/**
+ * Le message « VPF » qui rassure le joueur tout de suite (cf. acknowledgePain).
+ * Best-effort, comme l'alerte au coach : la saisie du joueur est enregistrée.
+ */
+async function reassurePlayer(playerId: string, detail: string): Promise<void> {
+  try {
+    const { data: profile } = await createAdminClient()
+      .from("profiles")
+      .select("first_name")
+      .eq("id", playerId)
+      .maybeSingle();
+    await acknowledgePain({
+      playerId,
+      firstName: (profile?.first_name as string | undefined) ?? "",
+      detail,
+      date: parisNow().date,
+    });
+  } catch {
+    // le message est un plus : il ne doit jamais faire échouer la saisie
   }
 }
 

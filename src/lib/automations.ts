@@ -85,3 +85,27 @@ export function matchWeekendBody(firstName: string): string {
   const prenom = firstName.trim() || "toi";
   return `Salut ${prenom} ! C'est le week-end : si tu as joué, remplis ta feuille de match dans l'app (minutes, tirs, lancers francs), ça nourrit tes records et ton suivi 🏀 Match demain ou pas de match ? Dis-le-nous dans l'app, c'est un tap.`;
 }
+
+/**
+ * Douleur forte au check-in ou blessure au bilan : le joueur reçoit tout de
+ * suite un message « VPF » dans son fil Global (une fois par jour), pour
+ * qu'il sache qu'on a vu et qu'on adapte — sans attendre que le staff ouvre
+ * l'app. Le coach, lui, est prévenu par push (`alertCoachOfPain`), et Jarvis
+ * propose dans sa file le remplacement des séances qui chargent la zone.
+ */
+export async function acknowledgePain(input: {
+  playerId: string;
+  firstName: string;
+  /** « 7/10 au check-in » ou « blessure au bilan » */
+  detail: string;
+  date: string;
+}): Promise<boolean> {
+  const prenom = input.firstName.trim() || "toi";
+  return postSystemMessage({
+    playerId: input.playerId,
+    kind: "pain_ack",
+    refKey: `pain:${input.date}`,
+    body: `${prenom}, on a bien vu que tu as mal (${input.detail}). Ton coach est prévenu et on adapte ton programme : ne force pas sur la zone en attendant. Dis-nous ici où ça fait mal et depuis quand 🙏`,
+    push: null,
+  });
+}

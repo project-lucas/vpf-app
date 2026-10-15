@@ -10,10 +10,39 @@ export interface QueuePlayer {
   coach: string | null;
 }
 
+export interface QueueThreadLine {
+  from: "player" | "parent" | "staff" | "system";
+  body: string;
+  at: string;
+}
+
 export interface QueueMessage extends QueuePlayer {
   preview: string | null;
   at: string | null;
   href: string;
+  /** fil où part la réponse : `global`, `technique`… */
+  channel: string;
+  channelName: string;
+  /** le message qui attend (sa décision « pas besoin de répondre ») */
+  messageId: string | null;
+  /** les derniers échanges du fil, pour répondre en connaissance de cause */
+  lines: QueueThreadLine[];
+  draft: { id: string; body: string; reason: string } | null;
+  draftFailed: boolean;
+}
+
+export interface QueueMatch extends QueuePlayer {
+  matchLabel: string;
+  stats: string;
+  draft: { id: string; body: string; reason: string };
+}
+
+export interface QueueDebrief {
+  groupName: string;
+  summary: string;
+  matches: { playerId: string | null; name: string | null; text: string }[];
+  watch: { playerId: string | null; name: string | null; text: string }[];
+  actions: string[];
 }
 
 export interface QueueReview extends QueuePlayer {
@@ -63,7 +92,9 @@ export interface QueueReport extends QueuePlayer {
 }
 
 export interface QueueData {
+  debriefs: QueueDebrief[];
   messages: QueueMessage[];
+  matches: QueueMatch[];
   reviews: QueueReview[];
   visios: QueueVisio[];
   programs: QueueProgram[];

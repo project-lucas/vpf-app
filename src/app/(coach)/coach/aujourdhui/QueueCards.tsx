@@ -19,7 +19,7 @@ import type { QueuePlayer, QueueProgram, QueueReport, QueueReview, QueueVisio } 
 type Result = { ok: true } | { ok: false; error: string };
 
 /** Valider · Modifier · Passer : le geste commun des brouillons. */
-function useDecision() {
+export function useDecision() {
   const [state, setState] = useState<"open" | "sent" | "dismissed">("open");
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -33,7 +33,7 @@ function useDecision() {
   return { state, error, pending, run };
 }
 
-function PlayerLine({ p, extra }: { p: QueuePlayer; extra?: string }) {
+export function PlayerLine({ p, extra }: { p: QueuePlayer; extra?: string }) {
   return (
     <div className="flex flex-wrap items-baseline gap-x-2">
       <Link href={`/coach/joueurs/${p.id}`} className="text-[15px] font-bold text-navy-900 hover:underline">
@@ -45,7 +45,7 @@ function PlayerLine({ p, extra }: { p: QueuePlayer; extra?: string }) {
   );
 }
 
-function Done({ p, text }: { p: QueuePlayer; text: string }) {
+export function Done({ p, text }: { p: QueuePlayer; text: string }) {
   return (
     <p className="flex items-center gap-2 rounded-xl bg-cream px-3 py-2 text-[13px] text-navy-500">
       <Check size={14} className="text-success" />
@@ -55,7 +55,7 @@ function Done({ p, text }: { p: QueuePlayer; text: string }) {
 }
 
 /** Le petit titre d'une partie de carte : on lit la carte par blocs, pas d'une traite. */
-function Part({ label, children }: { label: string; children: React.ReactNode }) {
+export function Part({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="space-y-1.5">
       <p className="text-[10.5px] font-extrabold uppercase tracking-[0.12em] text-navy-400">{label}</p>
@@ -64,7 +64,7 @@ function Part({ label, children }: { label: string; children: React.ReactNode })
   );
 }
 
-function JarvisNote({ text }: { text: string }) {
+export function JarvisNote({ text }: { text: string }) {
   if (!text) return null;
   return (
     <p className="flex gap-2 rounded-xl bg-cream/70 px-3 py-2.5 text-[13px] leading-relaxed text-navy-700">
@@ -74,7 +74,7 @@ function JarvisNote({ text }: { text: string }) {
   );
 }
 
-function DraftEditor({
+export function DraftEditor({
   value,
   onChange,
   max,
@@ -97,13 +97,14 @@ function DraftEditor({
   );
 }
 
-function Actions({
+export function Actions({
   pending,
   error,
   onSend,
   onSkip,
   sendLabel,
   disabled,
+  skipLabel = "Passer",
 }: {
   pending: boolean;
   error: string | null;
@@ -111,6 +112,7 @@ function Actions({
   onSkip: () => void;
   sendLabel: string;
   disabled?: boolean;
+  skipLabel?: string;
 }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -118,7 +120,7 @@ function Actions({
         {sendLabel}
       </Button>
       <Button size="sm" variant="ghost" onClick={onSkip} disabled={pending}>
-        Passer
+        {skipLabel}
       </Button>
       {error && <span className="text-[12px] font-semibold text-danger">{error}</span>}
     </div>
@@ -127,9 +129,10 @@ function Actions({
 
 // ---------------------------------------------------------------------------
 
-export function ReviewCard({ item }: { item: QueueReview }) {
+export function ReviewCard({ item, sent = false }: { item: QueueReview; sent?: boolean }) {
   const [body, setBody] = useState(item.draft?.body ?? "");
   const d = useDecision();
+  if (sent) return <Done p={item} text="réponse envoyée" />;
   if (d.state !== "open") return <Done p={item} text={d.state === "sent" ? "réponse envoyée" : "passé"} />;
   const health = item.health ? (REVIEW_HEALTH_LABELS[item.health] ?? item.health) : null;
   return (
@@ -271,9 +274,10 @@ export function VisioCard({ item }: { item: QueueVisio }) {
   );
 }
 
-export function ReportCard({ item }: { item: QueueReport }) {
+export function ReportCard({ item, sent = false }: { item: QueueReport; sent?: boolean }) {
   const [body, setBody] = useState(item.body);
   const d = useDecision();
+  if (sent) return <Done p={item} text="rapport envoyé" />;
   if (d.state !== "open") return <Done p={item} text={d.state === "sent" ? "rapport envoyé" : "passé"} />;
   return (
     <article className="space-y-5 rounded-2xl border border-navy-100 bg-white p-4 sm:p-5">

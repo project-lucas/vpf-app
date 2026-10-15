@@ -146,6 +146,164 @@ export async function decideVisio(
   return { ok: true };
 }
 
+const CHANNELS = new Set(["global", "referent", "technique", "physique", "parents"]);
+
+/**
+ * Répond à un message qui attend, depuis la file : avec le brouillon de
+ * Jarvis (éventuellement corrigé) ou sans brouillon. L'envoi passe par
+ * `sendConversationMessage` (RLS du fil, notifications, journal) ; le
+ * brouillon est pris avant pour ne jamais partir deux fois.
+ */
+export async function replyToWaitingMessage(input: {
+  playerId: string;
+  channel: string;
+  body: string;
+  draftId: string | null;
+}): Promise<ActionResult> {
+  if (!UUID.test(input.playerId) || !CHANNELS.has(input.channel)) return { ok: false, error: "Fil invalide." };
+  if (!input.body.trim()) return { ok: false, error: "La réponse est vide." };
+  if (input.draftId) {
+    const { guard, draft } = await readDraft(input.draftId);
+    if (!guard.ok) return guard;
+    if (!draft || draft.kind !== "message_reply" || draft.player_id !== input.playerId) {
+      return { ok: false, error: "Brouillon introuvable." };
+    }
+    if (!(await claimDraft(input.draftId, guard.userId, "sent", input.body.trim()))) {
+      return { ok: false, error: ALREADY_DONE };
+    }
+    const result = await sendConversationMessage(input.playerId, input.body, input.channel);
+    if (!result.ok) {
+      await releaseDraft(input.draftId);
+      return result;
+    }
+  } else {
+    const guard = await requireStaffProfile();
+    if (!guard.ok) return guard;
+    const result = await sendConversationMessage(input.playerId, input.body, input.channel);
+    if (!result.ok) return result;
+  }
+  revalidatePath(QUEUE_PATH);
+  revalidatePath("/coach");
+  return { ok: true };
+}
+
+/**
+ * « Pas besoin de répondre » (un merci, un pouce) : le message n'attend plus
+ * personne — ni la file, ni la pastille, ni le garde-fou des 24 h. La
+ * décision se pose sur le brouillon de ce message (créé s'il n'existe pas).
+ */
+export async function skipWaitingMessage(input: {
+  playerId: string;
+  messageId: string;
+  channel: string;
+}): Promise<ActionResult> {
+  const guard = await requireStaffProfile();
+  if (!guard.ok) return guard;
+  if (!UUID.test(input.playerId) || !UUID.test(input.messageId) || !CHANNELS.has(input.channel)) {
+    return { ok: false, error: "Message invalide." };
+  }
+  // la lecture RLS du message prouve que l'appelant suit ce fil
+  const supabase = await createClient();
+  const { data: message } = await supabase
+    .from("conversation_messages")
+    .select("id")
+    .eq("id", input.messageId)
+    .eq("player_id", input.playerId)
+    .maybeSingle();
+  if (!message) return { ok: false, error: "Message introuvable." };
+  const { error } = await createAdminClient()
+    .from("jarvis_drafts")
+    .upsert(
+      {
+        kind: "message_reply",
+        player_id: input.playerId,
+        period: input.messageId,
+        channel: input.channel,
+        status: "dismissed",
+        decided_by: guard.userId,
+        decided_at: new Date().toISOString(),
+      },
+      { onConflict: "kind,player_id,period" }
+    );
+  if (error) return { ok: false, error: "Impossible d'enregistrer la décision." };
+  revalidatePath(QUEUE_PATH);
+  revalidatePath("/coach");
+  revalidatePath("/coach/joueurs");
+  return { ok: true };
+}
+
+/** Valide le retour de Jarvis sur une feuille de match : il part dans le fil Global. */
+export async function approveMatchDraft(draftId: string, body: string): Promise<ActionResult> {
+  const { guard, draft } = await readDraft(draftId);
+  if (!guard.ok) return guard;
+  if (!draft || draft.kind !== "match_reply") return { ok: false, error: "Brouillon introuvable." };
+  if (!body.trim()) return { ok: false, error: "Le message est vide." };
+  if (!(await claimDraft(draftId, guard.userId, "sent", body.trim()))) return { ok: false, error: ALREADY_DONE };
+  const result = await sendConversationMessage(draft.player_id, body, "global");
+  if (!result.ok) {
+    await releaseDraft(draftId);
+    return result;
+  }
+  revalidatePath(QUEUE_PATH);
+  return { ok: true };
+}
+
+type BulkKind = "review_reply" | "parent_report" | "message_reply" | "match_reply";
+
+/**
+ * « Tout valider » : envoie tels quels les brouillons choisis, un par un, par
+ * les mêmes actions que la validation à l'unité (mêmes contrôles, même
+ * journal). Un rapport sans parent inscrit n'est pas envoyé (personne ne le
+ * lirait). Rend la liste de ce qui est parti.
+ */
+export async function approveDraftsInBulk(
+  kind: BulkKind,
+  draftIds: string[]
+): Promise<ActionResult & { sent?: string[]; failed?: number }> {
+  const guard = await requireStaffProfile();
+  if (!guard.ok) return guard;
+  const ids = draftIds.filter((id) => UUID.test(id)).slice(0, 200);
+  if (ids.length === 0) return { ok: true, sent: [], failed: 0 };
+  const supabase = await createClient();
+  const { data: drafts } = await supabase
+    .from("jarvis_drafts")
+    .select("id, player_id, body, channel")
+    .eq("kind", kind)
+    .eq("status", "pending")
+    .in("id", ids);
+  let withParents: Set<string> | null = null;
+  if (kind === "parent_report") {
+    const { data: links } = await supabase
+      .from("parent_links")
+      .select("player_id")
+      .in("player_id", (drafts ?? []).map((d) => d.player_id as string));
+    withParents = new Set((links ?? []).map((l) => l.player_id as string));
+  }
+  const sent: string[] = [];
+  let failed = 0;
+  for (const d of drafts ?? []) {
+    const body = (d.body as string).trim();
+    if (!body || (withParents && !withParents.has(d.player_id as string))) continue;
+    const r =
+      kind === "review_reply"
+        ? await approveReviewDraft(d.id as string, body)
+        : kind === "parent_report"
+          ? await approveReportDraft(d.id as string, body)
+          : kind === "match_reply"
+            ? await approveMatchDraft(d.id as string, body)
+            : await replyToWaitingMessage({
+                playerId: d.player_id as string,
+                channel: d.channel as string,
+                body,
+                draftId: d.id as string,
+              });
+    if (r.ok) sent.push(d.id as string);
+    else failed += 1;
+  }
+  revalidatePath(QUEUE_PATH);
+  return { ok: true, sent, failed };
+}
+
 /** Passe un brouillon : il quitte la file, rien n'est envoyé. */
 export async function dismissDraft(draftId: string): Promise<ActionResult> {
   const { guard, draft } = await readDraft(draftId);
@@ -257,7 +415,7 @@ export async function runJarvisNow(
   revalidatePath("/coach");
   if (!result.ok && result.error) return { ok: false, error: result.error };
   const p = result.prepared;
-  const detail = `${p.reviews} bilan(s) · ${p.visios} visio(s) · ${p.memories} fiche(s) mémoire · ${p.reports} rapport(s)${
+  const detail = `${p.messages} message(s) · ${p.reviews} bilan(s) · ${p.matches} match(s) · ${p.debriefs} debrief(s) · ${p.visios} visio(s) · ${p.memories} fiche(s) mémoire · ${p.reports} rapport(s)${
     result.failed > 0 ? ` · ${result.failed} en échec` : ""
   }`;
   return { ok: true, detail, more: result.more };

@@ -3,11 +3,13 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import {
+  AlarmClock,
   BellRing,
   ChevronRight,
+  HeartPulse,
   ListChecks,
   MessageCircle,
-  NotebookPen,
+  MessagesSquare,
   RefreshCw,
   ShieldCheck,
   Sunrise,
@@ -147,34 +149,64 @@ const JARVIS_SUMMARY: { title: string; icon: React.ReactNode; lines: SummaryLine
     icon: <Sunrise size={18} />,
     lines: [
       { when: "6h", text: "Repère les joueurs qui décrochent." },
-      { when: "7h", text: "Écrit le brief de chaque groupe, avec des messages prêts." },
+      { when: "7h", text: "Écrit le brief de chaque groupe." },
+      { when: "Lun. 7h", text: "Debrief du week-end par groupe, notification au staff." },
     ],
   },
   {
-    title: "En continu",
+    title: "Il prépare",
     icon: <RefreshCw size={18} />,
     lines: [
-      { text: "Rédige la réponse à chaque bilan reçu." },
-      { text: "Propose une visio aux joueurs qui décrochent." },
-      { text: "Met à jour la fiche mémoire de chaque joueur, chaque semaine." },
-      { when: "Le 27", text: "Rédige le rapport du mois aux parents, à envoyer le 28." },
+      { text: "La réponse à chaque message en attente." },
+      { text: "La réponse à chaque bilan." },
+      { text: "Un retour sur chaque feuille de match." },
+      { text: "Une visio pour ceux qui décrochent." },
+      { text: "La fiche mémoire de chaque joueur, chaque semaine." },
+      { when: "Le 27", text: "Les rapports aux parents, envoyés le 28." },
+    ],
+  },
+  {
+    title: "Douleur",
+    icon: <HeartPulse size={18} />,
+    lines: [
+      { text: "Chaque texte de Jarvis en tient compte en premier." },
+      { text: "Douleur ≥ 6 ou blessure : message immédiat au joueur, alerte au coach." },
+      { text: "Les séances qui chargent la zone sont remplacées en un clic." },
     ],
   },
   {
     title: "L'onglet Jarvis",
     icon: <ListChecks size={18} />,
     lines: [
-      { text: "Tout ce qui attend, en une liste, avec le temps estimé." },
-      { text: "Chaque brouillon : Valider, Modifier ou Passer." },
-      { text: "Les programmes à compléter s'appliquent d'un coup." },
+      { text: "Tout ce qui attend, avec le temps estimé." },
+      { text: "Valider, modifier ou passer — ou « Tout valider »." },
+      { text: "« Pas besoin de répondre » pour un simple merci." },
     ],
   },
   {
-    title: "Fiche mémoire",
-    icon: <NotebookPen size={18} />,
+    title: "Messagerie",
+    icon: <MessagesSquare size={18} />,
     lines: [
-      { text: "En tête de chaque fiche joueur : reprendre un joueur en 30 secondes." },
-      { text: "Lue par le staff seulement." },
+      { text: "En attente = personne du staff n'a répondu." },
+      { text: "« Vu par… » sous ton dernier message." },
+      { text: "Réponses rapides : l'éclair dans la saisie." },
+    ],
+  },
+  {
+    title: "Alertes du staff",
+    icon: <AlarmClock size={18} />,
+    lines: [
+      { when: "24 h", text: "Sans réponse : le coach du fil est prévenu." },
+      { when: "48 h", text: "Toujours rien : les admins sont prévenus." },
+    ],
+  },
+  {
+    title: "Rappels aux joueurs",
+    icon: <BellRing size={18} />,
+    lines: [
+      { when: "20h", text: "Séance du jour pas encore pointée." },
+      { when: "Sam. 18h", text: "Feuille de match." },
+      { when: "Dim. 18h", text: "Bilan de la semaine, bloquant tant qu'il manque." },
     ],
   },
   {
@@ -186,19 +218,12 @@ const JARVIS_SUMMARY: { title: string; icon: React.ReactNode; lines: SummaryLine
     ],
   },
   {
-    title: "Rappels automatiques",
-    icon: <BellRing size={18} />,
-    lines: [
-      { when: "Sam. 18h", text: "Feuille de match." },
-      { when: "Dim. 18h", text: "Bilan de la semaine, bloquant tant qu'il manque." },
-    ],
-  },
-  {
     title: "Garde-fous",
     icon: <ShieldCheck size={18} />,
     lines: [
-      { text: "Les infos privées de la fiche mémoire ne sortent jamais vers les parents." },
-      { text: "Chaque geste de Jarvis et du staff est inscrit au journal." },
+      { text: "Rien ne part sans un clic du staff." },
+      { text: "La fiche mémoire reste interne au staff." },
+      { text: "Chaque geste est inscrit au journal." },
     ],
   },
 ];

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Mic, Paperclip, SendHorizontal, Trash2, X } from "lucide-react";
+import { Mic, Paperclip, SendHorizontal, Trash2, X, Zap } from "lucide-react";
 import { ATTACHMENT_ACCEPT, formatBytes, formatDuration } from "@/lib/attachments";
 import { MESSAGE_MAX_LENGTH } from "@/lib/constants";
 import type { MessageAttachmentInput } from "@/lib/types";
@@ -35,7 +35,10 @@ export function MessageComposer({
   disabled,
   onSend,
   onDiscardAttachment,
+  quickReplies = [],
 }: {
+  /** réponses toutes faites (staff) : un tap les pose dans la zone de saisie */
+  quickReplies?: readonly string[];
   playerId: string;
   variant: "editorial" | "coach";
   disabled: boolean;
@@ -55,6 +58,7 @@ export function MessageComposer({
   const [error, setError] = useState<string | null>(null);
   // Entrée envoie-t-elle ? Au doigt, non : elle saute une ligne.
   const [enterSends, setEnterSends] = useState(false);
+  const [showQuick, setShowQuick] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -247,11 +251,45 @@ export function MessageComposer({
             </div>
           )}
 
+          {/* ---- Réponses rapides (staff) : un tap pose le texte, on peut le retoucher ---- */}
+          {showQuick && quickReplies.length > 0 && (
+            <div className="scrollbar-none mb-2 flex gap-1.5 overflow-x-auto pb-0.5">
+              {quickReplies.map((q) => (
+                <button
+                  key={q}
+                  type="button"
+                  onClick={() => {
+                    setDraft((d) => (d.trim() ? `${d.trimEnd()} ${q}` : q));
+                    setShowQuick(false);
+                    textareaRef.current?.focus();
+                  }}
+                  className="shrink-0 rounded-full bg-white px-3 py-1.5 text-[12.5px] text-[#111b21] shadow-[0_1px_1px_rgba(11,20,26,0.08)] hover:bg-[#f5f6f6]"
+                >
+                  {q}
+                </button>
+              ))}
+            </div>
+          )}
+
           <div
             className={
               ed ? "flex items-end gap-1.5" : "flex items-end gap-0.5 rounded-[26px] bg-white py-1 pl-1 pr-1 shadow-[0_1px_1px_rgba(11,20,26,0.08)]"
             }
           >
+            {quickReplies.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setShowQuick((v) => !v)}
+                disabled={busy}
+                aria-label="Réponses rapides"
+                aria-pressed={showQuick}
+                className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-colors disabled:opacity-40 ${
+                  showQuick ? "text-[#00a884]" : "text-[#54656f] hover:bg-[#f0f2f5] hover:text-[#111b21]"
+                }`}
+              >
+                <Zap size={20} />
+              </button>
+            )}
             <input
               ref={fileInputRef}
               type="file"

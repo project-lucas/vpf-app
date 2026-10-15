@@ -26,6 +26,7 @@ export async function GET(request: NextRequest) {
     budgetMs: 50_000,
     scanDropout: request.nextUrl.searchParams.get("decrochage") === "1",
     reports: request.nextUrl.searchParams.get("rapports") === "1",
+    debrief: request.nextUrl.searchParams.get("debrief") === "1",
   });
   return NextResponse.json(
     { ...result, parisTime: `${now.date} ${now.time}` },

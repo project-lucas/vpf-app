@@ -145,6 +145,7 @@ export default async function CoachMessagesPage({
               </Link>
             </header>
             <MessageThread
+              staff
               key={`${joueur}:${openChannel.id}`}
               playerId={joueur}
               currentUserId={profile.id}

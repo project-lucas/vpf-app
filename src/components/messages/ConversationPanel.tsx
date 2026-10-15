@@ -76,7 +76,10 @@ export function ConversationPanel({
   startInChat = false,
   initialMessages,
   className,
+  staff = false,
 }: {
+  /** lecteur du staff : réponses rapides et « Vu par… » dans la discussion */
+  staff?: boolean;
   playerId: string;
   currentUserId: string;
   channels: ConversationChannel[];
@@ -297,6 +300,7 @@ export function ConversationPanel({
             channel={activeId}
             canWrite={active?.canWrite ?? true}
             initialMessages={messages}
+            staff={staff}
             variant="coach"
             className="min-h-0 flex-1"
           />

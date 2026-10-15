@@ -296,6 +296,17 @@ export const REVIEW_HEALTH_LABELS = {
 } as const;
 export const REVIEW_HEALTH_NOTE_MAX_LENGTH = 500;
 
+/** Réponses rapides du staff dans la messagerie (bouton éclair de la saisie). */
+export const STAFF_QUICK_REPLIES = [
+  "Bien reçu 👍",
+  "Je regarde ça et je reviens vers toi.",
+  "Bravo pour ta semaine, continue comme ça !",
+  "Comment va ta douleur aujourd'hui ?",
+  "On en parle en visio ? Dis-moi tes dispos.",
+  "N'oublie pas de pointer tes séances 💪",
+  "Merci pour ton message, on s'en occupe.",
+] as const;
+
 // Le bilan hebdo est un rendez-vous fixe : dimanche 18 h, pour toutes les offres
 export const REVIEW_DAY = 7;
 export const REVIEW_TIME = "18:00";

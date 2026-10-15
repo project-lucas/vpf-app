@@ -25,6 +25,7 @@ import { formatAgoFr } from "@/lib/dates";
 import type { ThreadLine } from "@/lib/recent-thread";
 import { HISTORY_WEEK_CHOICES, type HomeRow } from "@/lib/staff-overview";
 import type { BriefAction, BriefRecommendation } from "@/lib/briefs";
+import { PlayerSearch } from "./PlayerSearch";
 
 export interface HomeGroup {
   id: string;
@@ -605,14 +606,29 @@ export function StaffHome({
               }
         );
 
+  // la loupe cherche dans tous les joueurs de l'accueil, tous groupes confondus
+  const groupNameOf = new Map(groups.map((g) => [g.id, g.name]));
+  const searchable = rows
+    .map((r) => ({
+      id: r.id,
+      name: `${r.firstName} ${r.lastName}`.trim(),
+      hint: [groupNameOf.get(r.groupId ?? NO_GROUP_ID) ?? null, r.offer === "perf" ? "Perf" : "Formation"]
+        .filter(Boolean)
+        .join(" · "),
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name, "fr"));
+
   return (
     <>
       <header className="mb-5 flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="text-[12px] font-bold uppercase tracking-[0.08em] text-accent">{todayLabel}</p>
-          <h1 className="font-display mt-1 text-[26px] font-extrabold uppercase leading-none tracking-wide text-navy-900 sm:text-[32px] lg:text-[44px]">
-            {viewerFirstName ? `Bonjour ${viewerFirstName}` : (group?.name ?? "Accueil")}
-          </h1>
+          <div className="mt-1 flex items-center gap-3">
+            <h1 className="font-display text-[26px] font-extrabold uppercase leading-none tracking-wide text-navy-900 sm:text-[32px] lg:text-[44px]">
+              {viewerFirstName ? `Bonjour ${viewerFirstName}` : (group?.name ?? "Accueil")}
+            </h1>
+            <PlayerSearch players={searchable} />
+          </div>
           <p className="mt-1.5 text-[12.5px] text-navy-400 sm:text-sm">
             {group?.name ?? "Accueil"}
             {group?.staffNames ? ` · ${group.staffNames}` : ""} · {groupRows.length} joueur

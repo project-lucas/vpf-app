@@ -7,11 +7,15 @@ import { Button } from "@/components/ui/Button";
 import { Field, Input } from "@/components/ui/Field";
 import { FormError } from "@/components/ui/FormError";
 
-export function LoginForm() {
+export function LoginForm({ expiredLink = false }: { expiredLink?: boolean }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState(
+    expiredLink
+      ? "Ce lien a expiré ou a déjà servi. Saisis ton email et redemande un lien (ouvre-le sur le même téléphone)."
+      : ""
+  );
   const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -49,11 +53,15 @@ export function LoginForm() {
       return;
     }
     const supabase = createClient();
+    // le lien revient sur /auth/callback, qui ouvre la session et fait choisir
+    // le nouveau mot de passe (avant : retour à l'accueil, code jamais échangé)
     await supabase.auth.resetPasswordForEmail(trimmed, {
-      redirectTo: window.location.origin,
+      redirectTo: `${window.location.origin}/auth/callback?next=/nouveau-mot-de-passe`,
     });
     // message neutre volontairement (ne révèle pas si le compte existe)
-    setNotice("Si un compte existe pour cet email, un lien de réinitialisation vient d'être envoyé.");
+    setNotice(
+      "Si un compte existe pour cet email, un lien vient de partir. Ouvre-le sur cet appareil pour choisir ton nouveau mot de passe."
+    );
   }
 
   return (

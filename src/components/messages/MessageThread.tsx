@@ -6,12 +6,13 @@ import {
   deleteConversationMessage,
   discardMessageAttachment,
   editConversationMessage,
+  getChannelSeen,
   getConversationMessages,
   markConversationRead,
   sendConversationMessage,
 } from "@/app/actions/messages";
 import { createClient } from "@/lib/supabase/client";
-import { CONVERSATION_PAGE_SIZE } from "@/lib/constants";
+import { CONVERSATION_PAGE_SIZE, STAFF_QUICK_REPLIES } from "@/lib/constants";
 import type { ConversationMessageWithSender, MessageAttachmentInput } from "@/lib/types";
 import { MessageBubble } from "./MessageBubble";
 import { MessageComposer } from "./MessageComposer";
@@ -90,7 +91,10 @@ export function MessageThread({
   channel = "global",
   canWrite = true,
   className = "h-[460px]",
+  staff = false,
 }: {
+  /** lecteur du staff : réponses rapides et accusé de lecture de la famille */
+  staff?: boolean;
   playerId: string;
   currentUserId: string;
   initialMessages: ConversationMessageWithSender[];
@@ -103,6 +107,8 @@ export function MessageThread({
   className?: string;
 }) {
   const [messages, setMessages] = useState(initialMessages);
+  // staff : jusqu'où la famille a lu ce fil (« Vu par Théo »)
+  const [seen, setSeen] = useState<{ name: string; at: string }[]>([]);
   const [visibleCount, setVisibleCount] = useState(CONVERSATION_PAGE_SIZE);
   const [error, setError] = useState<string | null>(null);
   const [hasNewBelow, setHasNewBelow] = useState(false);
@@ -149,7 +155,16 @@ export function MessageThread({
     visibleRef.current = isVisible;
   }, [isVisible]);
 
+  const loadSeen = useCallback(async () => {
+    if (staff) setSeen(await getChannelSeen(playerId, channel));
+  }, [staff, playerId, channel]);
+
+  useEffect(() => {
+    void loadSeen();
+  }, [loadSeen]);
+
   const refresh = useCallback(async () => {
+    void loadSeen();
     const fresh = await getConversationMessages(playerId, channel);
     setMessages(keepSignedUrls(fresh, signedUrlsRef.current));
     // de nouveaux messages sont arrivés pendant que le fil était ouvert : ils
@@ -159,7 +174,7 @@ export function MessageThread({
       lastCountRef.current = fresh.length;
       if (visibleRef.current) await markConversationRead(playerId, channel);
     }
-  }, [playerId, channel]);
+  }, [playerId, channel, loadSeen]);
 
   /**
    * Le fil est-il réellement sous les yeux ?
@@ -343,6 +358,16 @@ export function MessageThread({
   // Rendu WhatsApp pour tout le monde (0048) : le variant ne joue plus sur le fil
   void variant;
 
+  // l'accusé de lecture se pose sous MON dernier message, s'il clôt le fil
+  const lastMessage = messages[messages.length - 1];
+  const receipt =
+    staff && lastMessage && lastMessage.sender_id === currentUserId
+      ? (() => {
+          const readers = seen.filter((r) => r.at >= lastMessage.created_at).map((r) => r.name).filter(Boolean);
+          return readers.length > 0 ? `Vu par ${readers.join(", ")}` : "Pas encore lu";
+        })()
+      : null;
+
   return (
     // hauteur bornée + min-h-0 : le fil défile dans sa boîte, la zone de saisie
     // reste ancrée en bas et la page, elle, ne s'allonge pas d'un pixel
@@ -400,6 +425,11 @@ export function MessageThread({
                     </div>
                   );
                 })}
+                {receipt && (
+                  <p className="px-3 pt-0.5 text-right text-[11.5px] text-[#667781]" aria-live="polite">
+                    {receipt}
+                  </p>
+                )}
               </>
             )}
           </div>
@@ -426,6 +456,7 @@ export function MessageThread({
       {canWrite ? (
         <MessageComposer
           playerId={playerId}
+          quickReplies={staff ? STAFF_QUICK_REPLIES : []}
           variant="coach"
           disabled={isBusy}
           onSend={send}

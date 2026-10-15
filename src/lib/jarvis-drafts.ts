@@ -5,7 +5,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  * dans la file « Aujourd'hui ». Écrits par `jarvis-work.ts` (service_role),
  * lus ici sous RLS (staff du joueur, admins).
  */
-export type DraftKind = "review_reply" | "visio" | "parent_report";
+export type DraftKind = "review_reply" | "visio" | "parent_report" | "message_reply" | "match_reply";
 export type DraftStatus = "pending" | "sent" | "dismissed" | "error";
 
 export interface JarvisDraft {
@@ -17,6 +17,8 @@ export interface JarvisDraft {
   body: string;
   /** seconde version (décrochage : prendre des nouvelles plutôt que la visio) */
   alt_body: string;
+  /** fil où part le brouillon (réponse à un message) */
+  channel: string;
   reason: string;
   status: DraftStatus;
   created_at: string;
@@ -24,7 +26,8 @@ export interface JarvisDraft {
 
 /** Minutes estimées par geste : ce qui donne « 12 actions, ~25 min ». */
 export const TASK_MINUTES = {
-  message: 3,
+  message: 2,
+  match: 1,
   review: 1,
   visio: 3,
   program: 1,
@@ -39,7 +42,7 @@ export async function getDrafts(
   if (input.playerIds.length === 0) return [];
   let q = supabase
     .from("jarvis_drafts")
-    .select("id, kind, player_id, review_id, period, body, alt_body, reason, status, created_at")
+    .select("id, kind, player_id, review_id, period, body, alt_body, channel, reason, status, created_at")
     .in("player_id", input.playerIds)
     .in("kind", input.kinds)
     .order("created_at", { ascending: false })

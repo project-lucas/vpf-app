@@ -8,10 +8,16 @@ import { getDrafts, formatMonthFr, TASK_MINUTES } from "@/lib/jarvis-drafts";
 import { getProgramProposals } from "@/lib/program-proposals";
 import { isMorningBriefConfigured } from "@/lib/briefs";
 import { channelKey } from "@/lib/constants";
+import { CHANNEL_NAMES, type ChannelKind } from "@/lib/channels";
+import { getRecentThreadLines } from "@/lib/recent-thread";
+import { getWeekendDebriefs } from "@/lib/weekend-debrief";
 import { currentWeekStart, formatWeekRangeFr, parisNow } from "@/lib/dates";
 import { currentMonth } from "@/lib/jarvis-drafts";
 import { TodayQueue } from "./TodayQueue";
-import type { QueueData, QueuePlayer } from "./types";
+import type { QueueData, QueueMatch, QueuePlayer } from "./types";
+
+/** Le debrief du lundi reste en tête de la file jusqu'au mercredi. */
+const DEBRIEF_SHOWN_UNTIL_WEEKDAY = 3;
 
 export const metadata = { title: "Jarvis — VPF" };
 export const dynamic = "force-dynamic";
@@ -53,11 +59,12 @@ export default async function TodayPage({
   const ids = players.map((p) => p.id);
   const weekStart = currentWeekStart();
 
-  const [rows, pending, visioDecided, proposals, { data: parentLinks }] = await Promise.all([
+  const now = parisNow();
+  const [rows, pending, visioDecided, proposals, { data: parentLinks }, debriefs] = await Promise.all([
     getHomeRows(supabase, { viewerId: meId, isAdmin, players }),
     getDrafts(supabase, {
       playerIds: ids,
-      kinds: ["review_reply", "parent_report", "visio"],
+      kinds: ["review_reply", "parent_report", "visio", "message_reply", "match_reply"],
       statuses: ["pending", "error"],
     }),
     getDrafts(supabase, { playerIds: ids, kinds: ["visio"], periods: [weekStart], statuses: ["sent", "dismissed"] }),
@@ -65,6 +72,27 @@ export default async function TodayPage({
     ids.length === 0
       ? Promise.resolve({ data: [] as { player_id: string }[] })
       : supabase.from("parent_links").select("player_id").in("player_id", ids),
+    now.isoWeekday <= DEBRIEF_SHOWN_UNTIL_WEEKDAY || section === "debrief"
+      ? getWeekendDebriefs(supabase, weekStart)
+      : Promise.resolve([]),
+  ]);
+
+  // les messages qui attendent : leurs derniers échanges, et la feuille de
+  // chaque retour de match préparé (lectures RLS, en une vague)
+  const waiting = rows.filter((r) => r.unread);
+  const matchDrafts = pending.filter((d) => d.kind === "match_reply" && d.status === "pending");
+  const [threadLines, { data: sheets }] = await Promise.all([
+    getRecentThreadLines(
+      supabase,
+      waiting.map((r) => r.id),
+      { channelOf: Object.fromEntries(waiting.map((r) => [r.id, r.unreadChannel ?? "global"])), perPlayer: 5 }
+    ),
+    matchDrafts.length === 0
+      ? Promise.resolve({ data: [] as Record<string, unknown>[] })
+      : supabase
+          .from("match_stats")
+          .select("id, match_date, points, minutes, threes_made, free_throws_made, fouls")
+          .in("id", matchDrafts.map((d) => d.period)),
   ]);
 
   const byId = new Map(rows.map((r) => [r.id, r]));
@@ -82,15 +110,59 @@ export default async function TodayPage({
     pending.filter((d) => d.kind === "visio" && d.period === weekStart).map((d) => [d.player_id, d])
   );
 
+  const sheetById = new Map((sheets ?? []).map((m) => [m.id as string, m]));
+  const matches: QueueMatch[] = matchDrafts.flatMap((d) => {
+    const m = sheetById.get(d.period);
+    if (!m || !byId.has(d.player_id)) return [];
+    const date = new Date(`${m.match_date as string}T12:00:00Z`).toLocaleDateString("fr-FR", {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+      timeZone: "Europe/Paris",
+    });
+    return [
+      {
+        ...who(d.player_id),
+        matchLabel: `match du ${date}`,
+        stats: [
+          `${m.points} pts`,
+          `${m.minutes} min`,
+          Number(m.threes_made) > 0 ? `${m.threes_made} à 3 pts` : null,
+          `${m.free_throws_made} LF`,
+          `${m.fouls} faute${Number(m.fouls) > 1 ? "s" : ""}`,
+        ]
+          .filter(Boolean)
+          .join(" · "),
+        draft: { id: d.id, body: d.body, reason: d.reason },
+      },
+    ];
+  });
+
   const data: QueueData = {
-    messages: rows
-      .filter((r) => r.unread)
-      .map((r) => ({
+    debriefs: debriefs.map((d) => ({
+      groupName: d.groupName,
+      summary: d.summary,
+      matches: d.matches.map((l) => ({ ...l, name: l.playerId && byId.has(l.playerId) ? who(l.playerId).name : null })),
+      watch: d.watch.map((l) => ({ ...l, name: l.playerId && byId.has(l.playerId) ? who(l.playerId).name : null })),
+      actions: d.actions,
+    })),
+    matches,
+    messages: waiting.map((r) => {
+      const channel = (r.unreadChannel ?? "global") as ChannelKind;
+      const draft = pending.find((x) => x.kind === "message_reply" && x.period === r.unreadMessageId);
+      return {
         ...who(r.id),
         preview: r.lastMessagePreview,
         at: r.lastExchangeAt,
         href: `/coach/joueurs/${r.id}?onglet=messages&canal=${channelKey(r.unreadChannel)}`,
-      })),
+        channel,
+        channelName: CHANNEL_NAMES[channel] ?? "Global",
+        messageId: r.unreadMessageId,
+        lines: threadLines[r.id] ?? [],
+        draft: draft && draft.status === "pending" ? { id: draft.id, body: draft.body, reason: draft.reason } : null,
+        draftFailed: draft?.status === "error",
+      };
+    }),
     reviews: rows
       .filter((r) => r.review === "to-reply" && r.reviewDetail)
       .map((r) => {
@@ -157,6 +229,7 @@ export default async function TodayPage({
 
   const minutes =
     data.messages.length * TASK_MINUTES.message +
+    data.matches.length * TASK_MINUTES.match +
     data.reviews.length * TASK_MINUTES.review +
     data.visios.length * TASK_MINUTES.visio +
     data.programs.length * TASK_MINUTES.program +
@@ -165,14 +238,14 @@ export default async function TodayPage({
   // la part de chaque coach (admin) : combien de gestes attendent chez qui
   const share = new Map<string, number>();
   if (isAdmin && !mineOnly) {
-    const all = [...data.messages, ...data.reviews, ...data.visios, ...data.programs, ...data.reports];
+    const all = [...data.messages, ...data.matches, ...data.reviews, ...data.visios, ...data.programs, ...data.reports];
     for (const item of all) {
       const label = item.coach ?? "Toi";
       share.set(label, (share.get(label) ?? 0) + 1);
     }
   }
 
-  const today = parisNow().date;
+  const today = now.date;
   return (
     <TodayQueue
       data={data}

@@ -96,6 +96,12 @@ export async function middleware(request: NextRequest) {
     return r;
   };
 
+  // retour du lien « mot de passe oublié » : la route ouvre elle-même la
+  // session, aucun routage par rôle ne doit l'intercepter
+  if (path.startsWith("/auth/")) return response;
+  // choix du nouveau mot de passe : tout compte connecté, quel que soit son rôle
+  if (path === "/nouveau-mot-de-passe") return user ? response : redirect("/login");
+
   if (!user) {
     if (isPublic) return response;
     // Jeton non vérifiable alors que les cookies de session sont toujours là :

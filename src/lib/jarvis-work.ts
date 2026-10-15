@@ -10,14 +10,36 @@ import { loadPlayerBundles, type PlayerBundle } from "./jarvis-context";
 import { currentMonth, formatMonthFr, REPORT_DAY } from "./jarvis-drafts";
 import { getPlayerMemories, memoryAsText, MEMORY_REFRESH_DAYS } from "./player-memory";
 import { REVIEW_HEALTH_LABELS, REVIEW_REPLY_MAX_LENGTH } from "./constants";
+import { getPainContext, PAIN_RULE } from "./pain-context";
+import {
+  callTimeout,
+  CONTEXT,
+  markFailed,
+  PRIVATE_RULE,
+  releaseOldErrors,
+  RETRY_AFTER_MS,
+  runChunks,
+  saveDrafts,
+  TONE,
+  WriteError,
+  type Ctx,
+} from "./jarvis-runner";
+import { prepareMatchReplies, prepareMessageReplies } from "./jarvis-replies";
+import { prepareWeekendDebriefs } from "./weekend-debrief";
 
 /**
  * Le passage de Jarvis : il PRÉPARE, le staff valide dans la file
- * « Aujourd'hui ». Quatre chantiers, dans l'ordre d'urgence :
- *  1. une réponse rédigée pour chaque bilan reçu sans réponse ;
- *  2. un message proposant une visio à chaque joueur en décrochage ;
- *  3. la fiche mémoire de chaque joueur, rafraîchie chaque semaine ;
- *  4. le rapport du mois aux parents, la veille de son envoi (le 28).
+ * « Aujourd'hui ». Les chantiers, dans l'ordre d'urgence :
+ *  1. une réponse rédigée pour chaque message de la famille resté sans
+ *     réponse du staff (`jarvis-replies.ts`) ;
+ *  2. une réponse rédigée pour chaque bilan reçu sans réponse ;
+ *  3. un retour sur chaque feuille de match récente (`jarvis-replies.ts`) ;
+ *  4. le lundi, le debrief du week-end par groupe (`weekend-debrief.ts`) ;
+ *  5. un message proposant une visio à chaque joueur en décrochage ;
+ *  6. la fiche mémoire de chaque joueur, rafraîchie chaque semaine ;
+ *  7. le rapport du mois aux parents, la veille de son envoi (le 28).
+ *
+ * Partout, la douleur du joueur (`pain-context.ts`) passe avant le reste.
  *
  * À l'échelle (des centaines de joueurs), le travail se fait par lots : un
  * appel au modèle traite plusieurs joueurs, plusieurs appels partent en
@@ -29,10 +51,6 @@ import { REVIEW_HEALTH_LABELS, REVIEW_REPLY_MAX_LENGTH } from "./constants";
  * Rien ne part vers un joueur ou un parent depuis ce fichier.
  */
 
-const CONCURRENCY = 5;
-/** On ne lance une vague d'appels que s'il reste au moins ce temps. */
-const MIN_WAVE_MS = 30_000;
-const CALL_TIMEOUT_MS = 50_000;
 const SIZES = { review: 6, visio: 8, memory: 5, report: 6 } as const;
 /** Un compte doit avoir au moins deux semaines dans le mois pour un rapport. */
 const REPORT_MIN_DAYS = 14;
@@ -40,6 +58,8 @@ const REPORT_MIN_DAYS = 14;
 const REPORT_PREP_DAY = REPORT_DAY - 1;
 /** Le repérage du décrochage tourne une fois par matin, avant le brief de 7h. */
 const DROPOUT_SCAN_HOUR = 6;
+/** Le debrief du week-end s'écrit le lundi à partir de 7h (avant la journée du staff). */
+const DEBRIEF_HOUR = 7;
 
 export interface JarvisWorkOptions {
   /** temps total dont dispose le passage */
@@ -48,76 +68,26 @@ export interface JarvisWorkOptions {
   scanDropout?: boolean;
   /** forcer les rapports du mois en cours avant la veille de l'envoi */
   reports?: boolean;
+  /** forcer le debrief du week-end hors du lundi */
+  debrief?: boolean;
 }
 
 export interface JarvisWorkResult {
   ok: boolean;
   error?: string;
-  prepared: { reviews: number; visios: number; memories: number; reports: number };
+  prepared: {
+    messages: number;
+    reviews: number;
+    matches: number;
+    debriefs: number;
+    visios: number;
+    memories: number;
+    reports: number;
+  };
   failed: number;
   /** il reste du travail : le passage suivant le reprendra */
   more: boolean;
 }
-
-const TONE = `Ton : celui d'un coach qui connaît le joueur. Tutoiement, son prénom, chaleureux, concret, en français. Jamais de diagnostic médical, jamais de reproche humiliant, jamais d'information qu'on ne t'a pas donnée. Texte brut : pas de Markdown, pas d'astérisques, emojis avec parcimonie (un au plus).`;
-
-const CONTEXT = `Tu es Jarvis, l'assistant du staff de VPF, un centre de performance pour jeunes basketteurs (10-18 ans) en France. Chaque joueur a une semaine type, des séances par pôle (technique, physique, routine), un bilan le dimanche soir auquel le coach répond, des check-ins énergie / douleur, des feuilles de match et un fil « Global » lu par le joueur, ses parents et le staff. Deux offres : Perf et Formation (Perf + hygiène de vie).`;
-
-type Ctx = {
-  admin: ReturnType<typeof createAdminClient>;
-  timeLeft: () => number;
-  failed: number;
-  more: boolean;
-};
-
-/** Traite des lots en vagues parallèles tant que le temps le permet. */
-async function runChunks<T>(ctx: Ctx, items: T[], size: number, work: (chunk: T[]) => Promise<number>): Promise<number> {
-  const chunks: T[][] = [];
-  for (let i = 0; i < items.length; i += size) chunks.push(items.slice(i, i + size));
-  let done = 0;
-  while (chunks.length > 0) {
-    if (ctx.timeLeft() < MIN_WAVE_MS) {
-      ctx.more = true;
-      break;
-    }
-    const wave = chunks.splice(0, CONCURRENCY);
-    const counts = await Promise.all(wave.map((c) => work(c)));
-    done += counts.reduce((s, n) => s + n, 0);
-  }
-  return done;
-}
-
-const callTimeout = (ctx: Ctx) => Math.max(10_000, Math.min(CALL_TIMEOUT_MS, ctx.timeLeft() - 3_000));
-
-/** Un lot en échec est retenté au bout de ce délai (jamais en boucle). */
-const RETRY_AFTER_MS = 6 * 3_600_000;
-
-type DraftKind = "review_reply" | "visio" | "parent_report";
-
-/**
- * Enregistre des brouillons. Une écriture refusée arrête le passage : sans
- * ça, le modèle serait rappelé à chaque passage pour rien (et payé).
- */
-async function saveDrafts(ctx: Ctx, rows: Record<string, unknown>[]): Promise<void> {
-  const { error } = await ctx.admin
-    .from("jarvis_drafts")
-    .upsert(rows, { onConflict: "kind,player_id,period", ignoreDuplicates: true });
-  if (error) throw new WriteError(`brouillons non enregistrés : ${error.message}`);
-}
-
-class WriteError extends Error {}
-
-/** Les lots en échec depuis plus de 6 h redeviennent à faire. */
-async function releaseOldErrors(ctx: Ctx, kind: DraftKind): Promise<void> {
-  await ctx.admin
-    .from("jarvis_drafts")
-    .delete()
-    .eq("kind", kind)
-    .eq("status", "error")
-    .lt("created_at", new Date(Date.now() - RETRY_AFTER_MS).toISOString());
-}
-
-const PRIVATE_RULE = `La fiche mémoire est un document INTERNE au staff : sers-t'en pour le ton et la justesse, mais n'en reprends jamais un élément privé (famille, scolarité, notes, santé détaillée, ce que le staff pense du joueur) dans un texte que liront le joueur ou ses parents.`;
 
 // ---------------------------------------------------------------------------
 // 1. Réponses aux bilans
@@ -134,6 +104,8 @@ Tu rédiges la réponse du coach au bilan hebdomadaire de chaque joueur. Le coac
 Une réponse = 2 à 4 phrases, au plus ${REVIEW_REPLY_MAX_LENGTH} signes. Elle reprend ce que le joueur a écrit (cite ses mots quand c'est utile), salue ce qui a marché, donne UNE piste concrète pour ce qu'il veut améliorer, et prend des nouvelles s'il signale une gêne ou une blessure (où, depuis quand, on adapte). Appuie-toi sur sa fiche mémoire et ses dernières réponses du coach pour la continuité, sans les répéter. Si le bilan est vide ou très court, encourage-le à en dire plus la semaine prochaine.
 
 ${TONE}
+
+${PAIN_RULE}
 
 Pour chaque bilan, renvoie reviewId (tel quel), reply, et reason : en une phrase pour le coach, ce sur quoi ta réponse s'appuie.`;
 
@@ -161,7 +133,7 @@ async function prepareReviewReplies(ctx: Ctx): Promise<number> {
   if (todo.length === 0) return 0;
 
   const playerIds = [...new Set(todo.map((r) => r.player_id as string))];
-  const [memories, { data: summaries }, { data: pastReplies }] = await Promise.all([
+  const [memories, { data: summaries }, { data: pastReplies }, pain] = await Promise.all([
     getPlayerMemories(ctx.admin, playerIds),
     ctx.admin
       .from("weekly_summaries")
@@ -177,6 +149,7 @@ async function prepareReviewReplies(ctx: Ctx): Promise<number> {
       // borné par la date (pas par un total global qui priverait certains joueurs)
       .gte("week_start", addDays(weekStart, -42))
       .order("week_start", { ascending: false }),
+    getPainContext(ctx.admin, playerIds),
   ]);
 
   return runChunks(ctx, todo, SIZES.review, async (chunk) => {
@@ -196,6 +169,7 @@ async function prepareReviewReplies(ctx: Ctx): Promise<number> {
           ? (REVIEW_HEALTH_LABELS[r.health_status as keyof typeof REVIEW_HEALTH_LABELS] ?? r.health_status)
           : "non renseignée",
         noteSante: r.health_note ?? "",
+        douleur: pain.get(r.player_id as string)?.text ?? "",
         ficheMemoire: memoryAsText(memories.get(r.player_id as string)),
         dernieresReponsesDuCoach: (pastReplies ?? [])
           .filter((p) => p.player_id === r.player_id)
@@ -255,6 +229,8 @@ ${PRIVATE_RULE}
 
 ${TONE}
 
+${PAIN_RULE}
+
 Écris aussi, pour chaque joueur, une seconde version plus légère (checkin) : sans visio, on prend simplement de ses nouvelles. 2 phrases : on a remarqué que c'était plus calme, on lui demande ce qui se passe de son côté, et on propose d'adapter son programme si besoin. Même ton, mêmes règles.
 
 Pour chaque joueur, renvoie playerId (tel quel), message (la visio), checkin (la version légère), et reason : en une phrase pour le coach, ce qui t'inquiète.`;
@@ -278,13 +254,17 @@ async function prepareVisios(ctx: Ctx): Promise<number> {
   const done = new Set((existing ?? []).map((d) => d.player_id as string));
   const todo = atRisk.filter((r) => !done.has(r.id));
   if (todo.length === 0) return 0;
-  const memories = await getPlayerMemories(ctx.admin, todo.map((r) => r.id));
+  const [memories, pain] = await Promise.all([
+    getPlayerMemories(ctx.admin, todo.map((r) => r.id)),
+    getPainContext(ctx.admin, todo.map((r) => r.id)),
+  ]);
 
   return runChunks(ctx, todo, SIZES.visio, async (chunk) => {
     const input = chunk.map((r) => ({
       playerId: r.id,
       prenom: r.firstName,
       signaux: r.dropout?.reasons ?? [],
+      douleur: pain.get(r.id)?.text ?? "",
       ficheMemoire: memoryAsText(memories.get(r.id)),
       dernierMessage: r.lastMessagePreview ?? "aucun",
     }));
@@ -463,7 +443,7 @@ Puis une phrase de fin chaleureuse. 900 signes au plus.
 
 Tu parles du joueur à la troisième personne, avec bienveillance : les parents peuvent lui montrer. Jamais de diagnostic médical (une gêne se dit « une gêne au genou dont on tient compte »), jamais de reproche, jamais d'information absente des données. S'il y a peu de données, fais court et dis-le simplement. Texte brut, sans Markdown.
 
-${PRIVATE_RULE} Le rapport parle du basket : programme, bilans, matchs, objectifs.
+${PRIVATE_RULE} Le rapport parle du basket : programme, bilans, matchs, objectifs. Si le champ « douleur » signale une gêne, dis simplement qu'on en tient compte et qu'on a adapté son programme, sans détail médical.
 
 Pour chaque joueur, renvoie playerId (tel quel), report, et reason : en une phrase pour le coach, le point qu'il doit vérifier avant d'envoyer.`;
 
@@ -495,7 +475,7 @@ async function prepareReports(ctx: Ctx, period: string): Promise<number> {
   const done = new Set((existing ?? []).map((d) => d.player_id as string));
   const todo = ids.filter((id) => !done.has(id));
   if (todo.length === 0) return 0;
-  const memories = await getPlayerMemories(ctx.admin, todo);
+  const [memories, pain] = await Promise.all([getPlayerMemories(ctx.admin, todo), getPainContext(ctx.admin, todo)]);
   const monthLabel = formatMonthFr(period);
 
   return runChunks(ctx, todo, SIZES.report, async (chunk) => {
@@ -537,6 +517,7 @@ async function prepareReports(ctx: Ctx, period: string): Promise<number> {
         matchs: (matches ?? []).filter((x) => x.player_id === b.id),
         objectifs: b.goals,
         focus: b.focus,
+        douleur: pain.get(b.id)?.text ?? "",
         ficheMemoire: b.memory,
       };
     });
@@ -573,32 +554,8 @@ async function prepareReports(ctx: Ctx, period: string): Promise<number> {
 
 // ---------------------------------------------------------------------------
 
-async function markFailed(
-  ctx: Ctx,
-  kind: DraftKind,
-  items: { playerId: string; period: string; reviewId: string | null }[],
-  err: unknown
-): Promise<void> {
-  ctx.failed += items.length;
-  const message = err instanceof Error ? err.message : "erreur inconnue";
-  console.error("[jarvis-work] lot en échec", { kind, count: items.length, message });
-  // marqué en échec : retenté dans 6 h (releaseOldErrors), pas au passage suivant
-  await saveDrafts(
-    ctx,
-    items.map((i) => ({
-      kind,
-      player_id: i.playerId,
-      review_id: i.reviewId,
-      period: i.period,
-      body: "",
-      reason: `Brouillon impossible : ${message}`.slice(0, 300),
-      status: "error",
-    }))
-  );
-}
-
 export async function runJarvisWork(options: JarvisWorkOptions = {}): Promise<JarvisWorkResult> {
-  const prepared = { reviews: 0, visios: 0, memories: 0, reports: 0 };
+  const prepared = { messages: 0, reviews: 0, matches: 0, debriefs: 0, visios: 0, memories: 0, reports: 0 };
   if (!isMorningBriefConfigured()) {
     return { ok: false, error: "ANTHROPIC_API_KEY absente : Jarvis ne peut rien préparer.", prepared, failed: 0, more: false };
   }
@@ -613,8 +570,13 @@ export async function runJarvisWork(options: JarvisWorkOptions = {}): Promise<Ja
   const now = parisNow();
 
   try {
-    prepared.reviews = await prepareReviewReplies(ctx);
+    prepared.messages = await prepareMessageReplies(ctx);
+    if (!ctx.more) prepared.reviews = await prepareReviewReplies(ctx);
+    if (!ctx.more) prepared.matches = await prepareMatchReplies(ctx);
     const hour = Math.floor(now.minutesOfDay / 60);
+    if (!ctx.more && (options.debrief || (now.isoWeekday === 1 && hour >= DEBRIEF_HOUR && hour < DEBRIEF_HOUR + 6))) {
+      prepared.debriefs = await prepareWeekendDebriefs(ctx);
+    }
     if (!ctx.more && (options.scanDropout || hour === DROPOUT_SCAN_HOUR)) {
       prepared.visios = await prepareVisios(ctx);
     }
@@ -630,6 +592,9 @@ export async function runJarvisWork(options: JarvisWorkOptions = {}): Promise<Ja
   }
 
   const parts = [
+    prepared.messages && `${prepared.messages} réponse${prepared.messages > 1 ? "s" : ""} à des messages`,
+    prepared.matches && `${prepared.matches} retour${prepared.matches > 1 ? "s" : ""} de match`,
+    prepared.debriefs && `${prepared.debriefs} debrief${prepared.debriefs > 1 ? "s" : ""} du week-end`,
     prepared.reviews && `${prepared.reviews} réponse${prepared.reviews > 1 ? "s" : ""} de bilan`,
     prepared.visios && `${prepared.visios} proposition${prepared.visios > 1 ? "s" : ""} de visio`,
     prepared.memories && `${prepared.memories} fiche${prepared.memories > 1 ? "s" : ""} mémoire`,

@@ -610,6 +610,7 @@ export default async function PlayerDetailPage({
                 {/* la messagerie seule, sans cadre ni titre : tout l'espace aux discussions */}
                 <div className="min-w-0">
                   <ConversationPanel
+                    staff
                     playerId={id}
                     currentUserId={user?.id ?? ""}
                     channels={conversationChannels}

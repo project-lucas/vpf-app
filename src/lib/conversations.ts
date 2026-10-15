@@ -286,29 +286,69 @@ function myKinds(viewerId: string, holders: ChannelHolders | undefined): Set<Cha
 }
 
 /**
- * Parmi ces joueurs, ceux dont un de MES fils porte un message que je n'ai
+ * Les auteurs « famille » (joueur, parent) parmi ces ids : un fil dont le
+ * dernier message vient d'eux ATTEND le staff. Un message du staff — le mien
+ * ou celui d'un collègue — y répond pour tout le monde (service_role : la RLS
+ * de profiles ne donne pas le rôle des parents au staff).
+ */
+export async function familySenderIds(ids: (string | null)[]): Promise<Set<string>> {
+  const unique = [...new Set(ids.filter((x): x is string => !!x))];
+  if (unique.length === 0) return new Set();
+  const { data } = await createAdminClient()
+    .from("profiles")
+    .select("id")
+    .in("id", unique)
+    .in("role", ["player", "parent"]);
+  return new Set((data ?? []).map((p) => p.id as string));
+}
+
+/**
+ * Les messages que le staff a choisi de ne pas relancer (« Pas besoin de
+ * répondre » dans la file Jarvis) : ils n'attendent plus personne.
+ */
+async function dismissedMessageIds(supabase: SupabaseClient, messageIds: string[]): Promise<Set<string>> {
+  if (messageIds.length === 0) return new Set();
+  const { data } = await supabase
+    .from("jarvis_drafts")
+    .select("period")
+    .eq("kind", "message_reply")
+    .eq("status", "dismissed")
+    .in("period", messageIds);
+  return new Set((data ?? []).map((d) => d.period as string));
+}
+
+/**
+ * Parmi ces joueurs, ceux dont un de MES fils porte du nouveau que je n'ai
  * pas lu. Même périmètre que `getStaffInbox` : la pastille, la liste et la
  * boîte disent la même chose.
+ *
+ * Côté staff (`staff: true`), un fil n'attend que si son dernier message
+ * vient de la famille : dès qu'un membre du staff a répondu, la pastille
+ * s'éteint pour tous — deux coachs ne répondent plus au même message. Côté
+ * parent, tout message non lu d'un autre compte compte.
  */
 export async function getStaffUnreadPlayerIds(
   supabase: SupabaseClient,
   viewerId: string,
-  playerIds: string[]
+  playerIds: string[],
+  { staff = false }: { staff?: boolean } = {}
 ): Promise<Set<string>> {
   if (playerIds.length === 0) return new Set();
 
+  let query = supabase
+    .from("conversation_messages")
+    .select("id, player_id, channel, channel_admin_id, sender_id, created_at")
+    .in("player_id", playerIds)
+    // un compte supprimé (sender null) ne compte pas ; ni les rappels
+    // automatiques « VPF », adressés au joueur
+    .not("sender_id", "is", null)
+    .eq("is_system", false)
+    .neq("channel", "legacy");
+  // côté parent, les siens ne comptent pas ; côté staff il faut les voir pour
+  // savoir qui a écrit en dernier
+  if (!staff) query = query.neq("sender_id", viewerId);
   const [{ data: messages }, { data: reads }, holders] = await Promise.all([
-    supabase
-      .from("conversation_messages")
-      .select("player_id, channel, channel_admin_id, created_at")
-      .in("player_id", playerIds)
-      // les siens ne comptent pas ; un compte supprimé (sender null) non plus ;
-      // ni les rappels automatiques « VPF », adressés au joueur
-      .neq("sender_id", viewerId)
-      .eq("is_system", false)
-      .neq("channel", "legacy")
-      .order("created_at", { ascending: false })
-      .limit(STAFF_UNREAD_SCAN_LIMIT),
+    query.order("created_at", { ascending: false }).limit(STAFF_UNREAD_SCAN_LIMIT),
     supabase
       .from("conversation_reads")
       .select("player_id, channel, channel_admin_id, last_read_at")
@@ -320,14 +360,32 @@ export async function getStaffUnreadPlayerIds(
   const lastRead = new Map(
     (reads ?? []).map((r) => [`${r.player_id}:${channelId(refOfRow(r))}`, r.last_read_at as string])
   );
-  const unread = new Set<string>();
+  // le dernier message de chaque fil (tri décroissant : le premier vu)
+  const latest = new Map<string, NonNullable<typeof messages>[number]>();
   for (const m of messages ?? []) {
     const ref = refOfRow(m);
     if (!myKinds(viewerId, holders.get(m.player_id as string)).has(ref.kind)) continue;
-    const seen = lastRead.get(`${m.player_id}:${channelId(ref)}`);
-    if (!seen || (m.created_at as string) > seen) unread.add(m.player_id as string);
+    const key = `${m.player_id}:${channelId(ref)}`;
+    if (!latest.has(key)) latest.set(key, m);
   }
-  return unread;
+  const unseen = [...latest.entries()].filter(([key, m]) => {
+    const seen = lastRead.get(key);
+    return !seen || (m.created_at as string) > seen;
+  });
+  if (!staff) return new Set(unseen.map(([, m]) => m.player_id as string));
+
+  const [family, dismissed] = await Promise.all([
+    familySenderIds(unseen.map(([, m]) => m.sender_id as string)),
+    dismissedMessageIds(
+      supabase,
+      unseen.map(([, m]) => m.id as string)
+    ),
+  ]);
+  return new Set(
+    unseen
+      .filter(([, m]) => family.has(m.sender_id as string) && !dismissed.has(m.id as string))
+      .map(([, m]) => m.player_id as string)
+  );
 }
 
 /**
@@ -351,7 +409,9 @@ export async function getMyPlayerIds(supabase: SupabaseClient, staffId: string):
 
 /** Le staff a-t-il du non-lu chez l'un de ses joueurs actifs ? */
 export async function hasStaffUnread(supabase: SupabaseClient, staffId: string): Promise<boolean> {
-  const unread = await getStaffUnreadPlayerIds(supabase, staffId, await getMyPlayerIds(supabase, staffId));
+  const unread = await getStaffUnreadPlayerIds(supabase, staffId, await getMyPlayerIds(supabase, staffId), {
+    staff: true,
+  });
   return unread.size > 0;
 }
 
@@ -366,6 +426,11 @@ export interface InboxThread {
   lastBody: string | null;
   lastAt: string | null;
   lastFromMe: boolean;
+  /** id du dernier message (la file Jarvis y accroche son brouillon de réponse) */
+  lastMessageId: string | null;
+  /** le dernier message vient de la famille et personne du staff n'y a répondu */
+  awaiting: boolean;
+  /** il attend ET je ne l'ai pas encore lu : c'est la pastille */
   hasUnread: boolean;
 }
 
@@ -402,7 +467,7 @@ export async function getStaffInbox(
     supabase.from("profiles").select("id, first_name, last_name").in("id", playerIds),
     supabase
       .from("conversation_messages")
-      .select("player_id, channel, channel_admin_id, sender_id, body, created_at, attachment_kind")
+      .select("id, player_id, channel, channel_admin_id, sender_id, body, created_at, attachment_kind")
       .in("player_id", playerIds)
       .neq("channel", "legacy")
       // la boîte du staff parle des échanges humains : un rappel automatique
@@ -424,12 +489,22 @@ export async function getStaffInbox(
   );
   const lastByKey = new Map<
     string,
-    { body: string; created_at: string; sender_id: string | null; attachment_kind: AttachmentKind | null }
+    { id: string; body: string; created_at: string; sender_id: string | null; attachment_kind: AttachmentKind | null }
   >();
   for (const m of messages ?? []) {
     const key = `${m.player_id}:${channelId(refOfRow(m))}`;
     if (!lastByKey.has(key)) lastByKey.set(key, m);
   }
+  // « en attente » = le dernier message vient de la famille, sans réponse du
+  // staff (de qui que ce soit) et sans décision « pas besoin de répondre »
+  const lasts = [...lastByKey.values()];
+  const [family, dismissed] = await Promise.all([
+    familySenderIds(lasts.map((m) => m.sender_id)),
+    dismissedMessageIds(
+      supabase,
+      lasts.filter((m) => m.sender_id && m.sender_id !== viewerId).map((m) => m.id)
+    ),
+  ]);
 
   const threads: InboxThread[] = [];
   for (const playerId of playerIds) {
@@ -439,6 +514,7 @@ export async function getStaffInbox(
       // Parents : un fil sans message n'a pas besoin d'encombrer la liste
       if (kind !== "global" && !last) continue;
       const seen = lastRead.get(key) ?? null;
+      const awaiting = Boolean(last?.sender_id && family.has(last.sender_id) && !dismissed.has(last.id));
       threads.push({
         playerId,
         playerName: nameById.get(playerId) ?? "Joueur",
@@ -447,7 +523,9 @@ export async function getStaffInbox(
         lastBody: last ? messagePreview(last) : null,
         lastAt: last?.created_at ?? null,
         lastFromMe: last?.sender_id === viewerId,
-        hasUnread: Boolean(last && last.sender_id !== viewerId && (!seen || last.created_at > seen)),
+        lastMessageId: last?.id ?? null,
+        awaiting,
+        hasUnread: Boolean(awaiting && last && (!seen || last.created_at > seen)),
       });
     }
   }
