@@ -217,6 +217,8 @@ export async function getConversationChannels(
       };
     })
     .sort((a, b) => {
+      // non lus en tête : ce qui attend une réponse se voit d'abord
+      if (a.hasUnread !== b.hasUnread) return a.hasUnread ? -1 : 1;
       if (a.last && b.last && a.last.at !== b.last.at) return a.last.at < b.last.at ? 1 : -1;
       if (a.last && !b.last) return -1;
       if (!a.last && b.last) return 1;
@@ -372,8 +374,9 @@ export interface InboxThread {
   hasUnread: boolean;
 }
 
-/** Fils animés d'abord (du plus récent), fils muets en fin de liste. */
+/** Non lus d'abord, puis du plus récent au plus ancien, fils muets en fin de liste. */
 function byLastMessage(a: InboxThread, b: InboxThread): number {
+  if (a.hasUnread !== b.hasUnread) return a.hasUnread ? -1 : 1;
   if (a.lastAt && b.lastAt) return a.lastAt < b.lastAt ? 1 : -1;
   if (a.lastAt) return -1;
   if (b.lastAt) return 1;

@@ -88,11 +88,15 @@ export function ConversationPanel({
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<"all" | "unread">("all");
   const needle = query.trim().toLowerCase();
-  const shown = channels.filter(
-    (c) =>
-      (filter === "all" || unread.has(c.id)) &&
-      (!needle || c.label.toLowerCase().includes(needle) || (c.last?.body ?? "").toLowerCase().includes(needle))
-  );
+  // les discussions non lues d'abord (en haut, comme WhatsApp met en avant ce qui
+  // attend), puis l'ordre du serveur : la plus récente en tête
+  const shown = channels
+    .filter(
+      (c) =>
+        (filter === "all" || unread.has(c.id)) &&
+        (!needle || c.label.toLowerCase().includes(needle) || (c.last?.body ?? "").toLowerCase().includes(needle))
+    )
+    .sort((a, b) => Number(unread.has(b.id)) - Number(unread.has(a.id)));
 
   const open = useCallback(
     (channel: ConversationChannel) => {
