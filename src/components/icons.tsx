@@ -79,6 +79,14 @@ export const LibraryIcon = (p: IconProps) => (
   </Svg>
 );
 
+/** Jarvis : une étincelle à quatre branches, et sa petite sœur */
+export const SparkIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M10 3.5 11.6 8.4a2 2 0 0 0 1.3 1.3l4.9 1.6-4.9 1.6a2 2 0 0 0-1.3 1.3L10 19.1l-1.6-4.9a2 2 0 0 0-1.3-1.3L2.2 11.3l4.9-1.6a2 2 0 0 0 1.3-1.3z" />
+    <path d="M18.5 3v4M16.5 5h4" />
+  </Svg>
+);
+
 export const HomeIcon = (p: IconProps) => (
   <Svg {...p}>
     <path d="m3 11 9-8 9 8" />

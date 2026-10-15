@@ -7,7 +7,7 @@ import { isMorningBriefConfigured } from "./briefs";
 import { logStaffAction } from "./journal";
 import { askJarvisStructured } from "./jarvis-model";
 import { loadPlayerBundles, type PlayerBundle } from "./jarvis-context";
-import { previousMonth, formatMonthFr } from "./jarvis-drafts";
+import { currentMonth, formatMonthFr, REPORT_DAY } from "./jarvis-drafts";
 import { getPlayerMemories, memoryAsText, MEMORY_REFRESH_DAYS } from "./player-memory";
 import { REVIEW_HEALTH_LABELS, REVIEW_REPLY_MAX_LENGTH } from "./constants";
 
@@ -17,7 +17,7 @@ import { REVIEW_HEALTH_LABELS, REVIEW_REPLY_MAX_LENGTH } from "./constants";
  *  1. une réponse rédigée pour chaque bilan reçu sans réponse ;
  *  2. un message proposant une visio à chaque joueur en décrochage ;
  *  3. la fiche mémoire de chaque joueur, rafraîchie chaque semaine ;
- *  4. le rapport du mois aux parents, la première semaine du mois.
+ *  4. le rapport du mois aux parents, la veille de son envoi (le 28).
  *
  * À l'échelle (des centaines de joueurs), le travail se fait par lots : un
  * appel au modèle traite plusieurs joueurs, plusieurs appels partent en
@@ -36,8 +36,8 @@ const CALL_TIMEOUT_MS = 50_000;
 const SIZES = { review: 6, visio: 8, memory: 5, report: 6 } as const;
 /** Un compte doit avoir au moins deux semaines dans le mois pour un rapport. */
 const REPORT_MIN_DAYS = 14;
-/** Les rapports se préparent la première semaine du mois. */
-const REPORT_LAST_DAY = 7;
+/** Les rapports du mois se préparent la veille de leur envoi (le 28), et jusqu'à la fin du mois. */
+const REPORT_PREP_DAY = REPORT_DAY - 1;
 /** Le repérage du décrochage tourne une fois par matin, avant le brief de 7h. */
 const DROPOUT_SCAN_HOUR = 6;
 
@@ -46,7 +46,7 @@ export interface JarvisWorkOptions {
   budgetMs?: number;
   /** forcer le repérage du décrochage hors de son créneau */
   scanDropout?: boolean;
-  /** forcer les rapports du mois écoulé hors de la première semaine */
+  /** forcer les rapports du mois en cours avant la veille de l'envoi */
   reports?: boolean;
 }
 
@@ -609,8 +609,8 @@ export async function runJarvisWork(options: JarvisWorkOptions = {}): Promise<Ja
     }
     if (!ctx.more) prepared.memories = await prepareMemories(ctx);
     const dayOfMonth = Number(now.date.slice(8, 10));
-    if (!ctx.more && (options.reports || dayOfMonth <= REPORT_LAST_DAY)) {
-      prepared.reports = await prepareReports(ctx, previousMonth(now.date));
+    if (!ctx.more && (options.reports || dayOfMonth >= REPORT_PREP_DAY)) {
+      prepared.reports = await prepareReports(ctx, currentMonth(now.date));
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : "erreur inconnue";

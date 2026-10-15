@@ -71,7 +71,7 @@ export function MorningBriefPanel({
       >
         <span className="flex items-center gap-2.5 text-[14px] font-bold">
           <ListChecks size={18} className="text-accent" />
-          Ouvrir la file « Aujourd&apos;hui »
+          Ouvrir l&apos;onglet Jarvis
         </span>
         <ChevronRight size={18} />
       </Link>
@@ -157,11 +157,11 @@ const JARVIS_SUMMARY: { title: string; icon: React.ReactNode; lines: SummaryLine
       { text: "Rédige la réponse à chaque bilan reçu." },
       { text: "Propose une visio aux joueurs qui décrochent." },
       { text: "Met à jour la fiche mémoire de chaque joueur, chaque semaine." },
-      { text: "Rédige le rapport mensuel aux parents, début de mois." },
+      { when: "Le 27", text: "Rédige le rapport du mois aux parents, à envoyer le 28." },
     ],
   },
   {
-    title: "La file « Aujourd'hui »",
+    title: "L'onglet Jarvis",
     icon: <ListChecks size={18} />,
     lines: [
       { text: "Tout ce qui attend, en une liste, avec le temps estimé." },

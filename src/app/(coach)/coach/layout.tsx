@@ -1,4 +1,4 @@
-import { ListChecks, MessagesSquare, Settings } from "lucide-react";
+import { MessagesSquare, Settings } from "lucide-react";
 import { BottomNav, type NavItem } from "@/components/BottomNav";
 import { StaffMenu } from "@/components/coach/StaffMenu";
 import { StaffSidebar } from "@/components/coach/StaffSidebar";
@@ -8,7 +8,7 @@ import { isMorningBriefConfigured } from "@/lib/briefs";
 import { getNavRole } from "@/lib/auth";
 import { createClient, getCachedUser } from "@/lib/supabase/server";
 import { hasStaffUnread } from "@/lib/conversations";
-import { CalendarIcon, HomeIcon, LibraryIcon, ShieldIcon, UsersIcon } from "@/components/icons";
+import { CalendarIcon, HomeIcon, LibraryIcon, ShieldIcon, SparkIcon, UsersIcon } from "@/components/icons";
 
 /** Initiales d'un membre du staff pour le bouton du menu (« LP »). */
 function initialsOf(first: string | null | undefined, last: string | null | undefined): string {
@@ -40,6 +40,8 @@ export default async function CoachLayout({ children }: { children: React.ReactN
   const isAdmin = role === "admin";
 
   const items: NavItem[] = [
+    // la file de Jarvis, à gauche de l'Accueil — qui reste la page d'arrivée
+    { href: "/coach/aujourdhui", label: "Jarvis", icon: <SparkIcon /> },
     { href: "/coach", label: "Accueil", icon: <HomeIcon />, exact: true },
     { href: "/coach/joueurs", label: "Joueurs", icon: <UsersIcon />, dot: hasUnreadMessages },
     { href: "/coach/planning", label: "Planning", icon: <CalendarIcon /> },
@@ -47,7 +49,6 @@ export default async function CoachLayout({ children }: { children: React.ReactN
     ...(isAdmin ? [{ href: "/coach/admin", label: "Admin", icon: <ShieldIcon /> }] : []),
   ];
   const secondary = [
-    { href: "/coach/aujourdhui", label: "Aujourd'hui", icon: <ListChecks /> },
     ...(isAdmin
       ? [{ href: "/coach/messages", label: "Relais messages", icon: <MessagesSquare /> }]
       : []),

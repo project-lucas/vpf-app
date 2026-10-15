@@ -9,11 +9,11 @@ import { getProgramProposals } from "@/lib/program-proposals";
 import { isMorningBriefConfigured } from "@/lib/briefs";
 import { channelKey } from "@/lib/constants";
 import { currentWeekStart, formatWeekRangeFr, parisNow } from "@/lib/dates";
-import { previousMonth } from "@/lib/jarvis-drafts";
+import { currentMonth } from "@/lib/jarvis-drafts";
 import { TodayQueue } from "./TodayQueue";
 import type { QueueData, QueuePlayer } from "./types";
 
-export const metadata = { title: "Aujourd'hui — VPF" };
+export const metadata = { title: "Jarvis — VPF" };
 export const dynamic = "force-dynamic";
 // « Préparer maintenant » (server action de cette page) appelle le modèle
 export const maxDuration = 60;
@@ -29,8 +29,12 @@ export const maxDuration = 60;
  * Périmètre : ce que la RLS rend (mes groupes + mes référés) ; tout le club
  * pour un admin, qui peut se limiter à sa part (`?vue=moi`).
  */
-export default async function TodayPage({ searchParams }: { searchParams: Promise<{ vue?: string }> }) {
-  const { vue } = await searchParams;
+export default async function TodayPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ vue?: string; section?: string }>;
+}) {
+  const { vue, section } = await searchParams;
   const role = await getNavRole();
   if (role !== "admin" && role !== "coach") redirect("/");
   const isAdmin = role === "admin";
@@ -170,7 +174,8 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
       mineOnly={mineOnly}
       share={[...share.entries()].sort((a, b) => b[1] - a[1])}
       configured={isMorningBriefConfigured()}
-      reportMonthLabel={formatMonthFr(previousMonth(today))}
+      reportMonthLabel={formatMonthFr(currentMonth(today))}
+      initialFilter={section ?? null}
     />
   );
 }

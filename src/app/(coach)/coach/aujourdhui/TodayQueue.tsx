@@ -8,6 +8,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { Section } from "@/components/ui/Section";
 import { Button } from "@/components/ui/Button";
 import { formatAgoFr } from "@/lib/dates";
+import { REPORT_DAY } from "@/lib/jarvis-drafts";
 import { ProgramBatch, ReportCard, ReviewCard, VisioCard } from "./QueueCards";
 import type { QueueData } from "./types";
 
@@ -25,7 +26,10 @@ export function TodayQueue({
   share,
   configured,
   reportMonthLabel,
+  initialFilter = null,
 }: {
+  /** section ouverte d'entrée (`?section=rapports` depuis l'accueil) */
+  initialFilter?: string | null;
   data: QueueData;
   minutes: number;
   isAdmin: boolean;
@@ -42,15 +46,22 @@ export function TodayQueue({
     { id: "rapports", label: "Rapports parents", count: data.reports.length },
   ];
   const total = sections.reduce((s, x) => s + x.count, 0);
+  // une section à la fois quand on filtre ; null = tout
+  const [picked, setFilter] = useState<string | null>(initialFilter);
+  // une section vidée (tout validé) rend la main à « Tout »
+  // (sauf Rapports : vide, on y montre de quoi les préparer)
+  const filter =
+    picked === "rapports" || sections.some((s) => s.id === picked && s.count > 0) ? picked : null;
+  const show = (id: string) => filter === null || filter === id;
 
   return (
     <div className="mx-auto max-w-3xl pb-16">
       <PageHeader
-        title="Aujourd'hui"
+        title="Jarvis"
         subtitle={
           total === 0
-            ? "Rien n'attend. Jarvis prépare la suite au fil de la journée."
-            : `${total} action${total > 1 ? "s" : ""} · ~${minutes} min`
+            ? "Aujourd'hui · rien n'attend. Jarvis prépare la suite au fil de la journée."
+            : `Aujourd'hui · ${total} action${total > 1 ? "s" : ""} · ~${minutes} min`
         }
         action={isAdmin ? <JarvisNowButton configured={configured} /> : undefined}
       />
@@ -78,23 +89,31 @@ export function TodayQueue({
       )}
 
       {total > 0 && (
-        <nav aria-label="Blocs de la file" className="mb-6 flex flex-wrap gap-1.5">
-          {sections
-            .filter((s) => s.count > 0)
-            .map((s) => (
-              <a
-                key={s.id}
-                href={`#${s.id}`}
-                className="rounded-full bg-white px-3 py-1 text-[12.5px] font-semibold text-navy-700 ring-1 ring-navy-100 hover:ring-navy-300"
+        <div role="tablist" aria-label="Filtrer la file" className="mb-6 flex flex-wrap gap-1.5">
+          {[{ id: null, label: "Tout", count: total }, ...sections.filter((s) => s.count > 0)].map((s) => {
+            const active = filter === s.id;
+            return (
+              <button
+                key={s.id ?? "tout"}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                onClick={() => setFilter(s.id)}
+                className={`rounded-full px-3 py-1 text-[12.5px] font-semibold transition-colors ${
+                  active
+                    ? "bg-navy-800 text-white"
+                    : "bg-white text-navy-700 ring-1 ring-navy-100 hover:ring-navy-300"
+                }`}
               >
-                {s.label} <span className="text-accent">{s.count}</span>
-              </a>
-            ))}
-        </nav>
+                {s.label} <span className={active ? "text-white/70" : "text-accent"}>{s.count}</span>
+              </button>
+            );
+          })}
+        </div>
       )}
 
       <div className="space-y-8">
-        {data.messages.length > 0 && (
+        {show("messages") && data.messages.length > 0 && (
           <Section title={`Messages en attente · ${data.messages.length}`} className="scroll-mt-20" >
             <ul id="messages" className="divide-y divide-navy-100 rounded-2xl border border-navy-100 bg-white">
               {data.messages.map((m) => (
@@ -120,7 +139,7 @@ export function TodayQueue({
           </Section>
         )}
 
-        {data.reviews.length > 0 && (
+        {show("bilans") && data.reviews.length > 0 && (
           <Section title={`Bilans à valider · ${data.reviews.length}`}>
             <div id="bilans" className="scroll-mt-20 space-y-3">
               {data.reviews.map((r) => (
@@ -130,7 +149,7 @@ export function TodayQueue({
           </Section>
         )}
 
-        {data.visios.length > 0 && (
+        {show("decrochage") && data.visios.length > 0 && (
           <Section title={`Décrochage : visio conseillée · ${data.visios.length}`}>
             <div id="decrochage" className="scroll-mt-20 space-y-3">
               {data.visios.map((v) => (
@@ -140,7 +159,7 @@ export function TodayQueue({
           </Section>
         )}
 
-        {data.programs.length > 0 && (
+        {show("programmes") && data.programs.length > 0 && (
           <Section title={`Programmes à compléter · ${data.programs.length}`}>
             <div id="programmes" className="scroll-mt-20">
               <ProgramBatch items={data.programs} />
@@ -148,7 +167,7 @@ export function TodayQueue({
           </Section>
         )}
 
-        {data.reports.length > 0 && (
+        {show("rapports") && data.reports.length > 0 && (
           <Section title={`Rapports aux parents · ${data.reports.length}`}>
             <div id="rapports" className="scroll-mt-20 space-y-3">
               {data.reports.map((r) => (
@@ -158,7 +177,7 @@ export function TodayQueue({
           </Section>
         )}
 
-        {isAdmin && data.reports.length === 0 && (
+        {isAdmin && show("rapports") && data.reports.length === 0 && (
           <ReportsNowButton configured={configured} monthLabel={reportMonthLabel} />
         )}
       </div>
@@ -198,7 +217,8 @@ function ReportsNowButton({ configured, monthLabel }: { configured: boolean; mon
   return (
     <Section title="Rapports aux parents">
       <p className="mb-2 text-[13px] text-navy-500">
-        Jarvis les prépare d&apos;office la première semaine du mois. Pour {monthLabel}, tu peux les lancer maintenant.
+        Ils partent le {REPORT_DAY} de chaque mois ; Jarvis les prépare la veille. Pour {monthLabel}, tu peux
+        les lancer dès maintenant.
       </p>
       <Button
         size="sm"

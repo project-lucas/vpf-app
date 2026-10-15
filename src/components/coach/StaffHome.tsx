@@ -188,6 +188,43 @@ function primaryAction(row: HomeRow): { label: string; href: string; tone: "dang
   }
 }
 
+/**
+ * Le rendez-vous des rapports aux parents (le 28 de chaque mois) : un compte à
+ * rebours en jours, qui ouvre la section Rapports de l'onglet Jarvis. Il passe
+ * à l'orange quand l'envoi approche ou que des rapports attendent.
+ */
+function ReportCountdown({ due }: { due: { days: number; dateLabel: string; pending: number } }) {
+  const urgent = due.pending > 0 || due.days <= 2;
+  const badge = due.days === 0 ? "J" : `J-${due.days}`;
+  const main =
+    due.pending > 0
+      ? `${due.pending} rapport${due.pending > 1 ? "s" : ""} à envoyer`
+      : due.days === 0
+        ? "C'est aujourd'hui"
+        : `Dans ${due.days} jour${due.days > 1 ? "s" : ""}`;
+  return (
+    <Link
+      href="/coach/aujourdhui?section=rapports"
+      className="group inline-flex min-h-11 items-center gap-3 rounded-2xl border border-sand bg-white py-2 pl-2 pr-3.5 text-navy-900 shadow-[0_8px_20px_-14px_rgba(15,42,74,0.4)] transition-shadow hover:shadow-[0_12px_26px_-14px_rgba(15,42,74,0.55)]"
+    >
+      <span
+        className={`flex h-10 min-w-10 items-center justify-center rounded-xl px-1.5 font-display text-[15px] font-extrabold tabular-nums text-white ${
+          urgent ? "bg-accent" : "bg-navy-800"
+        }`}
+      >
+        {badge}
+      </span>
+      <span className="flex flex-col leading-tight">
+        <span className="text-[10px] font-extrabold uppercase tracking-[0.1em] text-accent">
+          Rapports parents · {due.dateLabel}
+        </span>
+        <span className="text-[13px] font-extrabold">{main}</span>
+      </span>
+      <ChevronRight size={16} strokeWidth={2.4} aria-hidden className="transition-transform group-hover:translate-x-0.5" />
+    </Link>
+  );
+}
+
 function ActionLink({ action }: { action: ReturnType<typeof primaryAction> }) {
   if (!action) return <span className="text-xs text-navy-300">à jour</span>;
   const look = {
@@ -342,6 +379,7 @@ export function StaffHome({
   weeks,
   viewerFirstName,
   initialPanelOpen = false,
+  reportDue,
 }: {
   groups: HomeGroup[];
   rows: HomeRow[];
@@ -357,6 +395,8 @@ export function StaffHome({
   viewerFirstName: string;
   /** volet Jarvis ouvert à l'arrivée (lien de la barre latérale) */
   initialPanelOpen?: boolean;
+  /** prochain envoi des rapports aux parents (le 28) et rapports prêts */
+  reportDue: { days: number; dateLabel: string; pending: number };
 }) {
   const router = useRouter();
   const scroller = useRef<HTMLDivElement>(null);
@@ -379,8 +419,6 @@ export function StaffHome({
     [rows, group]
   );
   const todoRows = groupRows.filter((r) => r.alerts.length > 0);
-  // la file « Aujourd'hui » couvre tous les groupes : messages, bilans, décrochage
-  const todoPlayers = rows.filter((r) => r.unread || r.review === "to-reply" || r.dropout).length;
   // la visio de départ ne concerne que les joueurs arrivés après la règle
   const showKickoff = groupRows.some((r) => r.kickoffExpected);
   const visible = (scope === "todo" ? todoRows : groupRows).filter(
@@ -469,19 +507,7 @@ export function StaffHome({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-        {/* la file du jour, tout le périmètre d'un coup (bilans, décrochage, programmes, rapports) */}
-        <Link
-          href="/coach/aujourdhui"
-          className="group inline-flex min-h-11 items-center gap-2.5 rounded-2xl bg-navy-800 py-2 pl-3.5 pr-3 text-white shadow-[0_8px_20px_-14px_rgba(15,42,74,0.6)] hover:bg-navy-700"
-        >
-          <span className="flex flex-col leading-tight">
-            <span className="text-[10px] font-extrabold uppercase tracking-[0.1em] text-accent">Aujourd&apos;hui</span>
-            <span className="text-[13px] font-extrabold">
-              {todoPlayers > 0 ? `${todoPlayers} joueur${todoPlayers > 1 ? "s" : ""} à traiter` : "Ma file du jour"}
-            </span>
-          </span>
-          <ChevronRight size={16} strokeWidth={2.4} aria-hidden className="transition-transform group-hover:translate-x-0.5" />
-        </Link>
+        <ReportCountdown due={reportDue} />
         <button
           type="button"
           onClick={() => setPanelOpen(true)}

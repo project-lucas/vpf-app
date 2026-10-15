@@ -5,6 +5,7 @@ import { getGroupsWithStaff, NO_GROUP_LABEL, staffFirstNames } from "@/lib/group
 import { getBriefsForDate, isMorningBriefConfigured } from "@/lib/briefs";
 import { getRecentJournal } from "@/lib/journal";
 import { parisNow } from "@/lib/dates";
+import { nextReportDate } from "@/lib/jarvis-drafts";
 import { getNavRole } from "@/lib/auth";
 import { StaffHome, NO_GROUP_ID, type HomeBrief, type HomeGroup } from "@/components/coach/StaffHome";
 import { PushPrompt } from "@/components/PushPrompt";
@@ -42,7 +43,7 @@ export default async function CoachDashboardPage({
     getGroupsWithStaff(supabase),
   ]);
 
-  const [rows, briefs, journal, { data: profile }] = await Promise.all([
+  const [rows, briefs, journal, { data: profile }, { count: reportsPending }] = await Promise.all([
     getHomeRows(supabase, { viewerId: meId, isAdmin, players, weeks }),
     getBriefsForDate(
       supabase,
@@ -53,7 +54,14 @@ export default async function CoachDashboardPage({
     user
       ? supabase.from("profiles").select("notifications_enabled, first_name").eq("id", user.id).maybeSingle()
       : Promise.resolve({ data: null }),
+    // rapports aux parents prêts à envoyer (RLS : mes joueurs, tout le club pour un admin)
+    supabase
+      .from("jarvis_drafts")
+      .select("id", { count: "exact", head: true })
+      .eq("kind", "parent_report")
+      .eq("status", "pending"),
   ]);
+  const nextReport = nextReportDate(today);
 
   // ---- les groupes à montrer : les miens d'abord, puis ceux qui ont des joueurs
   const countOf = (gid: string | null) => players.filter((p) => p.group_id === gid).length;
@@ -116,6 +124,15 @@ export default async function CoachDashboardPage({
         weeks={weeks}
         viewerFirstName={(profile?.first_name as string | undefined) ?? ""}
         initialPanelOpen={jarvis === "1"}
+        reportDue={{
+          days: nextReport.days,
+          dateLabel: new Date(`${nextReport.date}T12:00:00Z`).toLocaleDateString("fr-FR", {
+            day: "numeric",
+            month: "short",
+            timeZone: "Europe/Paris",
+          }),
+          pending: reportsPending ?? 0,
+        }}
       />
       <PushPrompt
         notificationsEnabled={profile?.notifications_enabled ?? true}

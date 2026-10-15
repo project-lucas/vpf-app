@@ -48,6 +48,27 @@ export async function getDrafts(
   return (data ?? []) as JarvisDraft[];
 }
 
+/**
+ * Le rapport aux parents part le même jour pour tous, quelques jours avant le
+ * mois suivant : le 28 (il existe dans tous les mois). Jarvis le prépare la
+ * veille ; il couvre le mois en cours.
+ */
+export const REPORT_DAY = 28;
+
+/** Le mois en cours au format AAAA-MM. */
+export function currentMonth(today: string): string {
+  return today.slice(0, 7);
+}
+
+/** Jours avant le prochain envoi des rapports (0 = aujourd'hui) et sa date. */
+export function nextReportDate(today: string): { days: number; date: string } {
+  const [y, m, d] = today.split("-").map(Number);
+  const target =
+    d <= REPORT_DAY ? new Date(Date.UTC(y, m - 1, REPORT_DAY)) : new Date(Date.UTC(y, m, REPORT_DAY));
+  const days = Math.round((target.getTime() - Date.UTC(y, m - 1, d)) / 86_400_000);
+  return { days, date: target.toISOString().slice(0, 10) };
+}
+
 /** Le mois précédent au format AAAA-MM (période des rapports aux parents). */
 export function previousMonth(today: string): string {
   const [y, m] = today.split("-").map(Number);
