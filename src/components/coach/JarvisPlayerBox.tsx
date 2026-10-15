@@ -165,10 +165,11 @@ export function JarvisPlayerButton(props: {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-accent py-1 pl-1.5 pr-4 text-[13px] font-extrabold text-white hover:opacity-90"
+        className="inline-flex min-h-9 items-center gap-1.5 rounded-xl bg-accent py-1 pl-1 pr-3 text-[12.5px] font-extrabold text-white hover:opacity-90 sm:min-h-10 sm:gap-2 sm:pl-1.5 sm:pr-4 sm:text-[13px]"
       >
         <JarvisAvatar size={30} />
-        Demander à Jarvis
+        <span className="sm:hidden">Jarvis</span>
+        <span className="hidden sm:inline">Demander à Jarvis</span>
         {props.recos.length > 0 && (
           <span className="rounded-full bg-white px-1.5 text-[10.5px] font-extrabold text-accent">
             {props.recos.length}

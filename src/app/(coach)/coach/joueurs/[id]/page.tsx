@@ -480,20 +480,21 @@ export default async function PlayerDetailPage({
 
       {/* La tête de fiche (direction « Parquet ») : qui, son état, ses trois
           chiffres, et les gestes — appeler, demander à Jarvis, le menu ⋯. */}
-      <section className="shadow-soft mb-5 flex flex-wrap items-center gap-x-6 gap-y-4 rounded-[20px] bg-white p-5 lg:px-7">
-        <span className="font-display flex h-16 w-16 shrink-0 items-center justify-center rounded-[20px] bg-gradient-to-br from-navy-800 to-navy-600 text-[26px] font-extrabold text-white lg:h-[84px] lg:w-[84px] lg:rounded-[24px] lg:text-[34px]">
+      <section className="shadow-soft mb-3 flex flex-wrap items-center gap-x-3 gap-y-3 rounded-[20px] bg-white p-3.5 sm:mb-5 sm:gap-x-6 sm:gap-y-4 sm:p-5 lg:px-7">
+        {/* téléphone : tête de fiche resserrée pour voir les messages tout de suite */}
+        <span className="font-display flex h-12 w-12 shrink-0 items-center justify-center rounded-[14px] bg-gradient-to-br from-navy-800 to-navy-600 text-[18px] font-extrabold text-white sm:h-16 sm:w-16 sm:rounded-[20px] sm:text-[26px] lg:h-[84px] lg:w-[84px] lg:rounded-[24px] lg:text-[34px]">
           {`${profile?.first_name?.[0] ?? ""}${profile?.last_name?.[0] ?? ""}`.toUpperCase()}
         </span>
         <div className="min-w-0 flex-1">
-          <h1 className="font-display text-[28px] font-extrabold uppercase leading-none tracking-wide text-navy-900 lg:text-[40px]">
+          <h1 className="font-display text-[21px] font-extrabold uppercase leading-none tracking-wide text-navy-900 sm:text-[28px] lg:text-[40px]">
             {profile?.first_name} {profile?.last_name}
           </h1>
-          <p className="mt-1.5 text-sm text-navy-400">
+          <p className="mt-1 truncate text-[12px] text-navy-400 sm:mt-1.5 sm:whitespace-normal sm:text-sm">
             {[playerRaw.position, playerRaw.club, age !== null ? `${age} ans` : null, groupName]
               .filter(Boolean)
               .join(" · ")}
           </p>
-          <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+          <div className="mt-1.5 flex flex-wrap items-center gap-1 sm:mt-2.5 sm:gap-1.5">
             <span
               className={`rounded-full px-2.5 py-1 text-[11.5px] font-bold text-white ${
                 offer === "perf" ? "bg-[#111111]" : "bg-[#2563eb]"
@@ -535,32 +536,32 @@ export default async function PlayerDetailPage({
             )}
           </div>
         </div>
-        <dl className="flex gap-7">
+        <dl className="flex w-full gap-5 sm:w-auto sm:gap-7">
           <div>
-            <dd className="font-display text-[34px] font-extrabold leading-none text-navy-900">
+            <dd className="font-display text-[22px] font-extrabold leading-none text-navy-900 sm:text-[34px]">
               {formatPercent(heroDiscipline)}
             </dd>
-            <dt className="mt-1 text-[12px] text-navy-400">
+            <dt className="mt-1 text-[11px] text-navy-400 sm:text-[12px]">
               discipline{heroTrend === "up" ? " ↗" : heroTrend === "down" ? " ↘" : ""}
             </dt>
           </div>
           <div>
             <dd
-              className={`font-display text-[34px] font-extrabold leading-none ${
+              className={`font-display text-[22px] font-extrabold leading-none sm:text-[34px] ${
                 matchStats[0] ? "text-success" : "text-navy-200"
               }`}
             >
               {matchStats[0] ? matchStats[0].points : "—"}
             </dd>
-            <dt className="mt-1 text-[12px] text-navy-400">pts dernier match</dt>
+            <dt className="mt-1 text-[11px] text-navy-400 sm:text-[12px]">pts dernier match</dt>
           </div>
           <div>
-            <dd className="font-display text-[34px] font-extrabold leading-none text-navy-900">
+            <dd className="font-display text-[22px] font-extrabold leading-none text-navy-900 sm:text-[34px]">
               {weekEvents.length > 0
                 ? `${Math.min(weekDone, weekEvents.length)}/${weekEvents.length}`
                 : "—"}
             </dd>
-            <dt className="mt-1 text-[12px] text-navy-400">cette semaine</dt>
+            <dt className="mt-1 text-[11px] text-navy-400 sm:text-[12px]">cette semaine</dt>
           </div>
         </dl>
         <div className="flex items-center gap-2">
