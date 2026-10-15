@@ -5,15 +5,14 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient, getCachedUser } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
-  fetchNavUnread,
-  getStaffUnreadPlayerIds,
-  getUnreadChannelKeys,
-  hasNavUnread,
+  getChannelHolders,
+  getUnreadChannelIds,
+  hasFamilyUnread,
   hasStaffUnread,
 } from "@/lib/conversations";
+import { CHANNEL_NAMES, onChannel, parseChannelId, type ChannelRef } from "@/lib/channels";
 import { getParentChild } from "@/lib/parent-data";
 import { getNavRole } from "@/lib/auth";
-import { toOffer } from "@/lib/offers";
 import { sendPushToUser, type PushPayload } from "@/lib/push";
 import { messagePreview } from "@/lib/attachments";
 import { logStaffMessage } from "@/lib/journal";
@@ -155,21 +154,16 @@ function cleanAttachment(
  */
 export async function getConversationMessages(
   playerId: string,
-  channelAdminId: string | null = null
+  channel: string = "global"
 ): Promise<ConversationMessageWithSender[]> {
   const supabase = await createClient();
   // les N plus récents = tri décroissant + limite, puis on remet dans l'ordre
-  let query = supabase
-    .from("conversation_messages")
-    .select("*")
-    .eq("player_id", playerId)
+  const { data } = await onChannel(
+    supabase.from("conversation_messages").select("*").eq("player_id", playerId),
+    parseChannelId(channel)
+  )
     .order("created_at", { ascending: false })
     .limit(CONVERSATION_HISTORY_LIMIT);
-  query = channelAdminId
-    ? query.eq("channel_admin_id", channelAdminId)
-    : query.is("channel_admin_id", null);
-
-  const { data } = await query;
   const chronological = [...((data ?? []) as ConversationMessage[])].reverse();
   return withSenders(chronological);
 }
@@ -186,24 +180,28 @@ async function touchRead(
   supabase: SupabaseClient,
   playerId: string,
   userId: string,
-  channelAdminId: string | null
+  ref: ChannelRef
 ): Promise<boolean> {
   const filter = supabase
     .from("conversation_reads")
     .update({ last_read_at: new Date().toISOString() })
     .eq("player_id", playerId)
-    .eq("user_id", userId);
+    .eq("user_id", userId)
+    .eq("channel", ref.kind);
 
-  const { data: updated, error: updateError } = await (channelAdminId
-    ? filter.eq("channel_admin_id", channelAdminId)
+  const { data: updated, error: updateError } = await (ref.kind === "legacy" && ref.ownerId
+    ? filter.eq("channel_admin_id", ref.ownerId)
     : filter.is("channel_admin_id", null)
   ).select("user_id");
   if (updateError) return false;
   if (updated && updated.length > 0) return true;
 
-  const { error } = await supabase
-    .from("conversation_reads")
-    .insert({ player_id: playerId, user_id: userId, channel_admin_id: channelAdminId });
+  const { error } = await supabase.from("conversation_reads").insert({
+    player_id: playerId,
+    user_id: userId,
+    channel: ref.kind,
+    channel_admin_id: ref.kind === "legacy" ? ref.ownerId : null,
+  });
   return !error || error.code === "23505";
 }
 
@@ -221,7 +219,7 @@ async function touchRead(
 export async function sendConversationMessage(
   playerId: string,
   body: string,
-  channelAdminId: string | null = null,
+  channel: string = "global",
   attachment: MessageAttachmentInput | null = null
 ): Promise<ActionResult> {
   const clean = body.trim().slice(0, MESSAGE_MAX_LENGTH);
@@ -229,6 +227,8 @@ export async function sendConversationMessage(
   if (file === "invalid") return { ok: false, error: "Pièce jointe invalide." };
   // une pièce jointe se suffit à elle-même ; du vide, non
   if (!clean && !file) return { ok: false, error: "Le message est vide." };
+  const ref = parseChannelId(channel);
+  if (ref.kind === "legacy") return { ok: false, error: "Ce fil est archivé." };
 
   const supabase = await createClient();
   const user = await getCachedUser();
@@ -236,7 +236,7 @@ export async function sendConversationMessage(
 
   const { error } = await supabase.from("conversation_messages").insert({
     player_id: playerId,
-    channel_admin_id: channelAdminId,
+    channel: ref.kind,
     sender_id: user.id,
     body: clean,
     attachment_path: file?.path ?? null,
@@ -248,52 +248,49 @@ export async function sendConversationMessage(
   if (error) return { ok: false, error: "Envoi impossible." };
 
   // écrire dans un canal vaut lecture de tout ce qui précède
-  await touchRead(supabase, playerId, user.id, channelAdminId);
+  await touchRead(supabase, playerId, user.id, ref);
 
-  // Destinataires du push : les participants du canal moins l'expéditeur.
-  // L'insert RLS a déjà prouvé l'accès ; le service_role ne sert qu'à composer
-  // la notification.
+  // Destinataires du push : les membres du fil moins l'expéditeur. L'insert
+  // RLS a déjà prouvé l'accès ; le service_role ne sert qu'à composer la
+  // notification. Les admins lisent tous les fils mais ne sont prévenus que
+  // d'un message de la famille dans Global ou Parents.
   const admin = createAdminClient();
-  const [{ data: player }, { data: senderProfile }, { data: playerProfile }, { data: parentLinks }] =
-    await Promise.all([
-      admin.from("players").select("coach_id").eq("id", playerId).maybeSingle(),
-      admin.from("profiles").select("first_name, last_name, role").eq("id", user.id).maybeSingle(),
-      admin.from("profiles").select("first_name").eq("id", playerId).maybeSingle(),
-      channelAdminId
-        ? Promise.resolve({ data: [] })
-        : admin.from("parent_links").select("parent_id").eq("player_id", playerId),
-    ]);
+  const [holders, { data: senderProfile }, { data: playerProfile }, { data: parentLinks }] = await Promise.all([
+    getChannelHolders([playerId]).then((m) => m.get(playerId)),
+    admin.from("profiles").select("first_name, last_name, role").eq("id", user.id).maybeSingle(),
+    admin.from("profiles").select("first_name").eq("id", playerId).maybeSingle(),
+    ref.kind === "global" || ref.kind === "parents"
+      ? admin.from("parent_links").select("parent_id").eq("player_id", playerId)
+      : Promise.resolve({ data: [] as { parent_id: string }[] }),
+  ]);
   const senderName =
     `${senderProfile?.first_name ?? ""} ${senderProfile?.last_name ?? ""}`.trim() || "Un membre du staff";
   const playerName = playerProfile?.first_name ?? "un joueur";
+  const staffUrl = `/coach/joueurs/${playerId}?onglet=messages&canal=${ref.kind}`;
 
-  // chaque destinataire ouvre le canal dans SA propre interface
-  const recipients = new Map<string, string>([[playerId, "/parametres"]]);
+  // chaque destinataire ouvre le fil dans SA propre interface
+  const recipients = new Map<string, string>();
   const staffIds = new Set<string>();
+  const addStaff = (id: string | null | undefined) => {
+    if (!id) return;
+    recipients.set(id, staffUrl);
+    staffIds.add(id);
+  };
 
-  if (channelAdminId) {
-    // fil privé : le porteur du fil (admin ou coach référent, 0037), lui seul
-    recipients.set(channelAdminId, `/coach/joueurs/${playerId}?onglet=messages`);
-    staffIds.add(channelAdminId);
-  } else {
-    if (player?.coach_id) {
-      recipients.set(player.coach_id, `/coach/joueurs/${playerId}?onglet=messages`);
-      staffIds.add(player.coach_id);
-    }
-    for (const link of parentLinks ?? []) recipients.set(link.parent_id, "/parent/messages");
+  // le joueur : tous ses fils, sauf celui de ses parents
+  if (ref.kind !== "parents") recipients.set(playerId, `/parametres?canal=${ref.kind}`);
+  for (const link of parentLinks ?? []) recipients.set(link.parent_id, `/parent/messages?canal=${ref.kind}`);
 
-    // Un message venu de la famille (joueur ou parent) remonte AUSSI aux admins,
-    // même s'ils n'encadrent pas ce joueur : c'est le staff qui doit répondre
-    // quand le coach référent est indisponible. Les messages du staff, eux, ne
-    // se re-notifient pas entre eux.
-    const fromFamily = senderProfile?.role === "player" || senderProfile?.role === "parent";
-    if (fromFamily) {
-      const { data: admins } = await admin.from("profiles").select("id").eq("role", "admin");
-      for (const a of admins ?? []) {
-        recipients.set(a.id, `/coach/joueurs/${playerId}?onglet=messages`);
-        staffIds.add(a.id);
-      }
-    }
+  if (ref.kind === "technique") addStaff(holders?.technique);
+  else if (ref.kind === "physique") addStaff(holders?.physique);
+  else addStaff(holders?.coachId);
+
+  // Un message venu de la famille (joueur ou parent) dans Global ou Parents
+  // remonte AUSSI aux admins : le staff répond quand le référent est absent.
+  const fromFamily = senderProfile?.role === "player" || senderProfile?.role === "parent";
+  if (fromFamily && (ref.kind === "global" || ref.kind === "parents")) {
+    const { data: admins } = await admin.from("profiles").select("id").eq("role", "admin");
+    for (const a of admins ?? []) addStaff(a.id);
   }
   recipients.delete(user.id);
 
@@ -303,19 +300,20 @@ export async function sendConversationMessage(
       actorId: user.id,
       playerId,
       playerFirstName: playerName,
-      isPrivate: channelAdminId !== null,
+      isPrivate: ref.kind !== "global",
     });
   }
 
+  const fil = CHANNEL_NAMES[ref.kind];
   await Promise.all(
     [...recipients].map(([recipientId, url]) =>
       pushToUserIfEnabled(recipientId, {
-        // le staff suit plusieurs fils : le prénom du joueur situe la conversation
+        // le staff suit plusieurs fils : le fil et le prénom du joueur situent la conversation
         title: staffIds.has(recipientId)
-          ? `${senderName} · ${channelAdminId ? "fil privé de" : "fil de"} ${playerName}`
+          ? `${senderName} · ${fil} · ${playerName}`
           : recipientId === playerId
-            ? `Message de ${senderName} 💬`
-            : `Message de ${senderName}`,
+            ? `${senderName} · ${fil} 💬`
+            : `${senderName} · ${fil === "Parents" ? `parents de ${playerName}` : fil}`,
         // un vocal ou une photo n'a pas de texte : on annonce sa nature
         body: messagePreview({ body: clean, attachment_kind: file?.kind ?? null }),
         url,
@@ -329,7 +327,7 @@ export async function sendConversationMessage(
   revalidatePath("/coach/messages");
   // l'accueil : l'alerte « silence » tombe, le journal gagne une ligne
   revalidatePath("/coach");
-  if (!channelAdminId) revalidatePath("/parent/messages");
+  revalidatePath("/parent/messages");
   return { ok: true };
 }
 
@@ -438,13 +436,13 @@ export async function discardMessageAttachment(path: string): Promise<ActionResu
 /** Marque un canal comme lu pour l'utilisateur courant (pastille non-lu). */
 export async function markConversationRead(
   playerId: string,
-  channelAdminId: string | null = null
+  channel: string = "global"
 ): Promise<ActionResult> {
   const supabase = await createClient();
   const user = await getCachedUser();
   if (!user) return { ok: false, error: "Session expirée." };
 
-  const ok = await touchRead(supabase, playerId, user.id, channelAdminId);
+  const ok = await touchRead(supabase, playerId, user.id, parseChannelId(channel));
   if (!ok) return { ok: false, error: "Enregistrement impossible." };
 
   // sans ça, revenir sur la boîte de réception dans les 30 s (staleTimes)
@@ -459,14 +457,11 @@ export async function markConversationRead(
  * lui affiche. Rafraîchit les pastilles pendant qu'un fil est ouvert — la RLS
  * fait foi, un canal hors de portée ne renvoie jamais de pastille.
  */
-export async function getUnreadChannels(
-  playerId: string,
-  adminIds: (string | null)[]
-): Promise<string[]> {
+export async function getUnreadChannels(playerId: string, channelIds: string[]): Promise<string[]> {
   const supabase = await createClient();
   const user = await getCachedUser();
   if (!user) return [];
-  return getUnreadChannelKeys(supabase, playerId, user.id, adminIds);
+  return getUnreadChannelIds(supabase, playerId, user.id, channelIds.slice(0, 10));
 }
 
 /**
@@ -488,20 +483,13 @@ export async function getNavUnreadFlag(): Promise<boolean> {
   const role = await getNavRole();
 
   if (role === "coach" || role === "admin") return hasStaffUnread(supabase, user.id);
-  if (role === "player") {
-    const [{ data: playerRow }, navUnread] = await Promise.all([
-      supabase.from("players").select("offer").eq("id", user.id).maybeSingle(),
-      fetchNavUnread(supabase, user.id),
-    ]);
-    return hasNavUnread(navUnread, toOffer(playerRow?.offer));
-  }
+  if (role === "player") return hasFamilyUnread(supabase, user.id, user.id);
   if (role === "parent") {
-    // un parent n'a que le fil coach & parents de son enfant — la RLS ne lui
-    // rendra jamais un fil privé, même en le demandant
+    // un parent a Global et Parents de son enfant — la RLS ne lui rend
+    // jamais un fil Technique, Physique ou Référent
     const child = await getParentChild();
     if (!child) return false;
-    const unread = await getStaffUnreadPlayerIds(supabase, user.id, [child.playerId]);
-    return unread.size > 0;
+    return hasFamilyUnread(supabase, child.playerId, user.id);
   }
   return false;
 }

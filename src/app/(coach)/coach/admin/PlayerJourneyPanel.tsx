@@ -24,7 +24,7 @@ const JOURNEYS: Record<PlayerOffer, { tagline: string; steps: JourneyStep[] }> =
     steps: [],
   },
   formation: {
-    tagline: "Perf + hygiène de vie et fils privés avec le staff.",
+    tagline: "Perf + hygiène de vie.",
     steps: [],
   },
 };

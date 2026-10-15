@@ -71,7 +71,7 @@ function isNearBottom(el: HTMLDivElement): boolean {
  * joueur (variant "editorial", scope .ed) et par le staff dans la fiche joueur
  * (variant "coach", style navy).
  *
- * `channelAdminId` : null = fil coach & parents, sinon fil privé de cet admin.
+ * `channel` : le fil ouvert (global, technique, physique, referent, parents, legacy:<id>).
  * Le composant est monté avec une `key` par canal (cf. ConversationPanel) —
  * changer d'onglet repart donc d'un état propre.
  *
@@ -87,15 +87,18 @@ export function MessageThread({
   currentUserId,
   initialMessages,
   variant,
-  channelAdminId = null,
+  channel = "global",
+  canWrite = true,
   className = "h-[460px]",
 }: {
   playerId: string;
   currentUserId: string;
   initialMessages: ConversationMessageWithSender[];
   variant: "editorial" | "coach";
-  /** null = fil coach & parents ; sinon fil privé de cet admin (0034) */
-  channelAdminId?: string | null;
+  /** fil ouvert (cf. src/lib/channels.ts) */
+  channel?: string;
+  /** false : archive en lecture seule, pas de zone de saisie */
+  canWrite?: boolean;
   /** Hauteur du bloc (toujours bornée) — ex. "h-[60dvh]", "h-full". */
   className?: string;
 }) {
@@ -147,16 +150,16 @@ export function MessageThread({
   }, [isVisible]);
 
   const refresh = useCallback(async () => {
-    const fresh = await getConversationMessages(playerId, channelAdminId);
+    const fresh = await getConversationMessages(playerId, channel);
     setMessages(keepSignedUrls(fresh, signedUrlsRef.current));
     // de nouveaux messages sont arrivés pendant que le fil était ouvert : ils
     // ne sont lus que si le fil est VRAIMENT à l'écran (onglet de la fiche
     // ouvert, onglet du navigateur au premier plan)
     if (fresh.length > lastCountRef.current) {
       lastCountRef.current = fresh.length;
-      if (visibleRef.current) await markConversationRead(playerId, channelAdminId);
+      if (visibleRef.current) await markConversationRead(playerId, channel);
     }
-  }, [playerId, channelAdminId]);
+  }, [playerId, channel]);
 
   /**
    * Le fil est-il réellement sous les yeux ?
@@ -195,8 +198,8 @@ export function MessageThread({
   // ouvrir un canal (et le regarder) = lecture de tout son historique
   useEffect(() => {
     if (!isVisible) return;
-    void markConversationRead(playerId, channelAdminId);
-  }, [playerId, channelAdminId, isVisible]);
+    void markConversationRead(playerId, channel);
+  }, [playerId, channel, isVisible]);
 
   useEffect(() => {
     const id = setInterval(() => void refresh(), REFRESH_INTERVAL_MS);
@@ -213,8 +216,8 @@ export function MessageThread({
   // signée de la pièce jointe. Elle sert de signal, la lecture reste sous RLS.
   useEffect(() => {
     const supabase = createClient();
-    const channel = supabase
-      .channel(`fil-${playerId}-${channelAdminId ?? "staff"}`)
+    const sub = supabase
+      .channel(`fil-${playerId}-${channel}`)
       .on(
         "postgres_changes",
         {
@@ -228,9 +231,9 @@ export function MessageThread({
       .subscribe();
 
     return () => {
-      void supabase.removeChannel(channel);
+      void supabase.removeChannel(sub);
     };
-  }, [playerId, channelAdminId, refresh]);
+  }, [playerId, channel, refresh]);
 
   /**
    * Ouvrir un fil, c'est arriver sur le DERNIER message — jamais avoir à
@@ -305,7 +308,7 @@ export function MessageThread({
     setError(null);
     // envoyer, c'est revenir au bas du fil
     stickToBottomRef.current = true;
-    const result = await sendConversationMessage(playerId, body, channelAdminId, attachment);
+    const result = await sendConversationMessage(playerId, body, channel, attachment);
     if (!result.ok) return result;
 
     // le message envoyé doit rester visible même si on relisait l'historique
@@ -337,55 +340,66 @@ export function MessageThread({
     await refresh();
   }
 
-  const ed = variant === "editorial";
-  const metaColor = ed ? "text-meta" : "text-navy-400";
+  // Rendu WhatsApp pour tout le monde (0048) : le variant ne joue plus sur le fil
+  void variant;
 
   return (
     // hauteur bornée + min-h-0 : le fil défile dans sa boîte, la zone de saisie
     // reste ancrée en bas et la page, elle, ne s'allonge pas d'un pixel
-    <div className={`flex min-h-0 flex-col ${className}`}>
+    <div className={`flex min-h-0 flex-col bg-[#efeae2] ${className}`}>
       <div className="relative min-h-0 flex-1">
         <div
           ref={scrollRef}
           onScroll={handleScroll}
-          className={`h-full overflow-y-auto pr-1 ${ed ? "" : "rounded-xl"}`}
+          className="wa-wallpaper h-full overflow-y-auto py-2"
         >
           {/* enveloppe mesurée par le ResizeObserver : c'est sa hauteur qui dit
               quand l'historique a fini de se dessiner */}
-          <div ref={contentRef} className="space-y-3">
+          <div ref={contentRef} className="space-y-1">
             {messages.length === 0 ? (
-              <p className={`py-8 text-center text-sm ${metaColor}`}>
-                Aucun message pour le moment. Lance la conversation !
+              <p className="mx-auto mt-6 w-fit max-w-[85%] rounded-lg bg-[#ffeecd] px-3 py-2 text-center text-[12.5px] text-[#54656f] shadow-[0_1px_0.5px_rgba(11,20,26,0.13)]">
+                {canWrite ? "Aucun message pour le moment. Écris le premier !" : "Ce fil est vide."}
               </p>
             ) : (
               <>
                 {hasOlder && (
-                  <div className="pt-1 text-center">
+                  <div className="pb-1 text-center">
                     <button
                       type="button"
                       onClick={showOlder}
-                      className={
-                        ed
-                          ? "ed-meta rounded-md border-2 border-ink/15 px-3 py-1.5 text-[10px] text-meta transition-colors hover:border-ink hover:text-ink"
-                          : "rounded-full bg-navy-50 px-3 py-1.5 text-xs font-semibold text-navy-500 transition-colors hover:bg-navy-100"
-                      }
+                      className="rounded-lg bg-white px-3 py-1.5 text-[12.5px] font-medium text-[#54656f] shadow-[0_1px_0.5px_rgba(11,20,26,0.13)] hover:bg-[#f5f6f6]"
                     >
                       Voir les messages précédents
                     </button>
                   </div>
                 )}
 
-                {visible.map((m) => (
-                  <MessageBubble
-                    key={m.id}
-                    message={m}
-                    own={m.sender_id === currentUserId}
-                    variant={variant}
-                    disabled={isBusy}
-                    onEdit={edit}
-                    onDelete={(id) => void remove(id)}
-                  />
-                ))}
+                {visible.map((m, i) => {
+                  const prev = visible[i - 1];
+                  const day = dayLabel(m.created_at);
+                  const newDay = !prev || dayLabel(prev.created_at) !== day;
+                  // même auteur à la suite, même jour : pas de prénom, bulles serrées
+                  const sameAuthor = !newDay && prev?.sender_id === m.sender_id && prev?.is_system === m.is_system;
+                  return (
+                    <div key={m.id} className={sameAuthor ? "" : "pt-1.5"}>
+                      {newDay && (
+                        <div className="sticky top-1 z-[1] my-2 flex justify-center">
+                          <span className="rounded-lg bg-white/95 px-3 py-1 text-[12px] font-medium text-[#54656f] shadow-[0_1px_0.5px_rgba(11,20,26,0.13)]">
+                            {day}
+                          </span>
+                        </div>
+                      )}
+                      <MessageBubble
+                        message={m}
+                        own={m.sender_id === currentUserId}
+                        showName={!sameAuthor}
+                        disabled={isBusy}
+                        onEdit={edit}
+                        onDelete={(id) => void remove(id)}
+                      />
+                    </div>
+                  );
+                })}
               </>
             )}
           </div>
@@ -396,37 +410,48 @@ export function MessageThread({
           <button
             type="button"
             onClick={scrollToBottom}
-            className={
-              ed
-                ? "ed-meta absolute bottom-2 left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-full border-2 border-ink bg-paper px-3 py-1.5 text-[10px] text-ink shadow-lg"
-                : "absolute bottom-2 left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-full bg-navy-800 px-3 py-1.5 text-xs font-semibold text-white shadow-lg"
-            }
+            aria-label="Aller au dernier message"
+            className="absolute bottom-3 right-3 flex h-10 w-10 items-center justify-center rounded-full bg-white text-[#54656f] shadow-[0_2px_6px_rgba(11,20,26,0.25)]"
           >
-            <ArrowDown size={13} />
-            Nouveau message
+            <ArrowDown size={18} />
+            <span className="absolute -right-0.5 -top-0.5 h-3 w-3 rounded-full bg-[#25d366]" />
           </button>
         )}
       </div>
 
       {error && (
-        <p
-          className={
-            ed
-              ? "ed-meta mt-2 text-[11px] text-orange"
-              : "mt-2 rounded-xl bg-danger-soft px-3 py-2 text-sm font-semibold text-danger"
-          }
-        >
-          {error}
-        </p>
+        <p className="bg-[#f0f2f5] px-3 pt-2 text-[12.5px] font-semibold text-[#ea0038]">{error}</p>
       )}
 
-      <MessageComposer
-        playerId={playerId}
-        variant={variant}
-        disabled={isBusy}
-        onSend={send}
-        onDiscardAttachment={(path) => void discardMessageAttachment(path)}
-      />
+      {canWrite ? (
+        <MessageComposer
+          playerId={playerId}
+          variant="coach"
+          disabled={isBusy}
+          onSend={send}
+          onDiscardAttachment={(path) => void discardMessageAttachment(path)}
+        />
+      ) : (
+        <p className="shrink-0 bg-[#f0f2f5] px-4 py-3 text-center text-[13px] text-[#667781]">
+          Archive en lecture seule : écris dans un fil actif.
+        </p>
+      )}
     </div>
   );
+}
+
+/** « Aujourd'hui », « Hier », « lundi 13 octobre », en heure de Paris. */
+function dayLabel(iso: string): string {
+  const fmt = (d: Date) => d.toLocaleDateString("fr-CA", { timeZone: "Europe/Paris" });
+  const day = fmt(new Date(iso));
+  const today = fmt(new Date());
+  const yesterday = fmt(new Date(Date.now() - 86_400_000));
+  if (day === today) return "Aujourd'hui";
+  if (day === yesterday) return "Hier";
+  return new Date(iso).toLocaleDateString("fr-FR", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    timeZone: "Europe/Paris",
+  });
 }

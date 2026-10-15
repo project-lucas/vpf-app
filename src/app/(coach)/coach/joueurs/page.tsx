@@ -25,7 +25,7 @@ function summarize(threads: InboxThread[]): PlayerInboxSummary | null {
   const pick = threads.find((t) => t.hasUnread) ?? threads[0];
   if (!pick) return null;
   return {
-    channelAdminId: pick.channelAdminId,
+    channel: pick.channel,
     lastAt: pick.lastAt,
     hasUnread: threads.some((t) => t.hasUnread),
   };

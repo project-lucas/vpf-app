@@ -1,13 +1,12 @@
 "use client";
 
 import { useLayoutEffect, useRef, useState } from "react";
-import { Check, Pencil, Trash2, X } from "lucide-react";
-import { formatAgoFr } from "@/lib/dates";
+import { Check, ChevronDown, Pencil, Trash2, X } from "lucide-react";
 import { MESSAGE_MAX_LENGTH } from "@/lib/constants";
 import type { ConversationMessageWithSender, UserRole } from "@/lib/types";
 import { MessageAttachment } from "./MessageAttachment";
 
-/** Étiquette de rôle affichée sous le nom de l'expéditeur (rien pour le joueur). */
+/** Étiquette de rôle à côté du nom de l'expéditeur (rien pour le joueur). */
 function roleLabel(role: UserRole | null): string {
   if (role === "coach") return "Coach";
   if (role === "admin") return "Staff VPF";
@@ -16,44 +15,55 @@ function roleLabel(role: UserRole | null): string {
 }
 
 /**
- * Un message du fil : sa bulle, sa pièce jointe éventuelle, et — pour ses
- * propres messages — la modification et la suppression.
+ * Couleur du prénom dans un fil à plusieurs, comme les groupes WhatsApp :
+ * stable pour une même personne, lisible sur la bulle blanche.
+ */
+const NAME_COLORS = ["#d14d72", "#1f8a70", "#7b5ea7", "#c2601a", "#2a6fb0", "#a2384f", "#3b7a2a", "#b5651d"];
+function nameColor(seed: string): string {
+  let h = 0;
+  for (let i = 0; i < seed.length; i += 1) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+  return NAME_COLORS[h % NAME_COLORS.length];
+}
+
+/** « 14:32 », en heure de Paris. */
+function timeOf(iso: string): string {
+  return new Date(iso).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" });
+}
+
+/**
+ * Un message du fil, façon WhatsApp : la bulle (verte à droite pour soi,
+ * blanche à gauche pour les autres, prénom en couleur), sa pièce jointe, et
+ * l'heure dans le coin de la bulle.
  *
- * La modification (0036) réécrit le texte sur place et laisse la mention
- * « modifié » : le fil reste honnête, personne ne réécrit l'histoire en
- * silence. La pièce jointe, elle, ne se remplace jamais — on supprime.
- *
- * Les actions vivent SOUS la bulle, sur la ligne de l'heure : posées à côté
- * de la bulle, elles se faisaient couper sur un téléphone dès que le message
- * était un peu long (la bulle prenait toute la largeur). Sous la bulle, elles
- * ont toujours la place, et restent visibles sans survol — au doigt, il n'y a
- * pas de survol.
+ * Ses propres messages se modifient ou se suppriment depuis le petit menu de
+ * la bulle (toujours visible : au doigt il n'y a pas de survol). La
+ * modification (0036) laisse la mention « modifié » ; la pièce jointe ne se
+ * remplace jamais — on supprime.
  */
 export function MessageBubble({
   message,
   own,
-  variant,
+  showName = true,
   disabled,
   onEdit,
   onDelete,
 }: {
   message: ConversationMessageWithSender;
   own: boolean;
-  variant: "editorial" | "coach";
+  /** prénom au-dessus du texte (masqué quand la même personne enchaîne) */
+  showName?: boolean;
+  variant?: "editorial" | "coach";
   disabled: boolean;
   onEdit: (id: string, body: string) => Promise<{ ok: boolean; error?: string }>;
   onDelete: (id: string) => void;
 }) {
   const [isEditing, setIsEditing] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [isConfirming, setIsConfirming] = useState(false);
   const [draft, setDraft] = useState(message.body);
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const editRef = useRef<HTMLTextAreaElement>(null);
-
-  const ed = variant === "editorial";
-  const metaColor = ed ? "text-meta" : "text-navy-400";
-  const dangerColor = ed ? "text-orange" : "text-danger";
   const label = roleLabel(message.sender_role);
 
   // la zone d'édition suit la hauteur du texte…
@@ -64,8 +74,7 @@ export function MessageBubble({
     el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
   }, [isEditing, draft]);
 
-  // …et ne prend le curseur qu'à l'ouverture : le replacer à chaque frappe
-  // empêcherait de corriger un mot au milieu du message
+  // …et ne prend le curseur qu'à l'ouverture
   useLayoutEffect(() => {
     const el = editRef.current;
     if (!isEditing || !el) return;
@@ -76,6 +85,7 @@ export function MessageBubble({
   function startEdit() {
     setDraft(message.body);
     setError(null);
+    setMenuOpen(false);
     setIsConfirming(false);
     setIsEditing(true);
   }
@@ -96,118 +106,58 @@ export function MessageBubble({
     setIsEditing(false);
   }
 
-  const bubbleOwn = ed ? "bg-ink text-paper" : "bg-navy-800 text-white";
-  const bubbleOther = ed
-    ? "border-2 border-ink/15 bg-card text-ink"
-    : "bg-navy-50 text-navy-800";
-
-  // zone de toucher confortable sans épaissir la ligne : le bouton déborde
-  // verticalement sur ses marges négatives
-  const iconButton = `-my-1.5 rounded-md p-2 transition-opacity hover:opacity-100 ${metaColor} opacity-70`;
+  const meta = (
+    <span className="ml-2 inline-flex translate-y-1 items-center gap-1 whitespace-nowrap align-bottom text-[11px] leading-none text-[#667781]">
+      {message.edited_at && <span>modifié</span>}
+      <span className="tabular-nums">{timeOf(message.created_at)}</span>
+      {own && <Check size={13} strokeWidth={2.5} className="text-[#53bdeb]" aria-label="Envoyé" />}
+    </span>
+  );
 
   return (
-    <div className={`flex ${own ? "justify-end" : "justify-start"}`}>
-      <div className={`min-w-0 max-w-[85%] ${own ? "text-right" : "text-left"}`}>
-        {!own && (
-          <p className={`mb-0.5 text-[11px] font-semibold ${metaColor}`}>
-            {message.sender_name}
-            {label && <span className={ed ? "text-orange" : "text-navy-500"}> · {label}</span>}
-          </p>
+    <div className={`flex px-[6%] ${own ? "justify-end" : "justify-start"}`}>
+      <div
+        className={`group relative min-w-[84px] max-w-[85%] rounded-lg px-2.5 pb-1.5 pt-1.5 text-[14.5px] leading-[1.4] text-[#111b21] shadow-[0_1px_0.5px_rgba(11,20,26,0.13)] sm:max-w-[65%] ${
+          own ? "rounded-tr-none bg-[#d9fdd3]" : "rounded-tl-none bg-white"
+        }`}
+      >
+        {/* le petit menu de ses propres messages */}
+        {own && !isEditing && (
+          <button
+            type="button"
+            onClick={() => {
+              setMenuOpen((v) => !v);
+              setIsConfirming(false);
+            }}
+            aria-label="Options du message"
+            aria-expanded={menuOpen}
+            className="absolute right-1 top-1 rounded-full bg-[#d9fdd3]/90 p-0.5 text-[#667781] opacity-60 transition-opacity hover:opacity-100 group-hover:opacity-100"
+          >
+            <ChevronDown size={15} />
+          </button>
         )}
-
-        <div
-          className={`inline-block max-w-full rounded-lg px-3.5 py-2.5 text-left text-sm leading-relaxed ${
-            own ? bubbleOwn : bubbleOther
-          }`}
-        >
-          {message.attachment_kind && (
-            <div className={message.body ? "mb-2" : ""}>
-              <MessageAttachment
-                url={message.attachment_url}
-                kind={message.attachment_kind}
-                name={message.attachment_name ?? "pièce jointe"}
-                size={message.attachment_size}
-                duration={message.attachment_duration}
-                own={own}
-                variant={variant}
-              />
-            </div>
-          )}
-
-          {isEditing ? (
-            <div className="w-[min(70vw,320px)] max-w-full">
-              <textarea
-                ref={editRef}
-                value={draft}
-                rows={1}
-                onChange={(e) => setDraft(e.target.value.slice(0, MESSAGE_MAX_LENGTH))}
-                onKeyDown={(e) => {
-                  if (e.key === "Escape") setIsEditing(false);
-                }}
-                className={`w-full resize-none rounded-md px-2 py-1.5 text-sm ${
-                  own ? "bg-white/15 text-inherit" : ed ? "bg-paper text-ink" : "bg-white text-navy-800"
-                }`}
-              />
-              <div className="mt-1.5 flex items-center justify-end gap-1">
-                <button
-                  type="button"
-                  onClick={() => setIsEditing(false)}
-                  aria-label="Annuler la modification"
-                  className="rounded-md p-2 opacity-70 transition-opacity hover:opacity-100"
-                >
-                  <X size={15} />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void save()}
-                  disabled={isSaving}
-                  aria-label="Enregistrer la modification"
-                  className="rounded-md p-2 opacity-70 transition-opacity hover:opacity-100 disabled:opacity-30"
-                >
-                  <Check size={16} />
-                </button>
-              </div>
-            </div>
-          ) : (
-            message.body && <p className="whitespace-pre-wrap break-words">{message.body}</p>
-          )}
-        </div>
-
-        {error && <p className={`mt-0.5 text-[10px] ${dangerColor}`}>{error}</p>}
-
-        {/* Heure, mention « modifié », et — pour ses propres messages — les
-            actions. La RLS refuse de toute façon de toucher aux autres. */}
-        <p
-          className={`mt-0.5 flex items-center gap-0.5 text-[10px] ${metaColor} ${
-            own ? "justify-end" : ""
-          }`}
-        >
-          <span>
-            {formatAgoFr(message.created_at)}
-            {message.edited_at && " · modifié"}
-          </span>
-          {own &&
-            !isEditing &&
-            (isConfirming ? (
+        {menuOpen && (
+          <div className="absolute right-1 top-6 z-10 w-40 overflow-hidden rounded-lg bg-white py-1 text-[14px] shadow-[0_2px_10px_rgba(11,20,26,0.2)]">
+            {isConfirming ? (
               <>
-                <span aria-hidden className="mx-0.5">
-                  ·
-                </span>
+                <p className="px-3 py-1.5 text-[12px] text-[#667781]">Supprimer pour tout le monde ?</p>
                 <button
                   type="button"
-                  onClick={() => onDelete(message.id)}
                   disabled={disabled}
-                  className={`-my-1 rounded-md px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wide ${dangerColor} disabled:opacity-40`}
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onDelete(message.id);
+                  }}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left font-semibold text-[#ea0038] hover:bg-[#f5f6f6] disabled:opacity-40"
                 >
-                  Supprimer
+                  <Trash2 size={15} /> Supprimer
                 </button>
                 <button
                   type="button"
                   onClick={() => setIsConfirming(false)}
-                  aria-label="Annuler la suppression"
-                  className={`-my-1 rounded-md px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wide ${metaColor}`}
+                  className="w-full px-3 py-2 text-left hover:bg-[#f5f6f6]"
                 >
-                  Non
+                  Annuler
                 </button>
               </>
             ) : (
@@ -215,22 +165,85 @@ export function MessageBubble({
                 <button
                   type="button"
                   onClick={startEdit}
-                  aria-label="Modifier mon message"
-                  className={`ml-1 ${iconButton}`}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-[#f5f6f6]"
                 >
-                  <Pencil size={13} />
+                  <Pencil size={15} /> Modifier
                 </button>
                 <button
                   type="button"
                   onClick={() => setIsConfirming(true)}
-                  aria-label="Supprimer mon message"
-                  className={iconButton}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-[#f5f6f6]"
                 >
-                  <Trash2 size={13} />
+                  <Trash2 size={15} /> Supprimer
                 </button>
               </>
-            ))}
-        </p>
+            )}
+          </div>
+        )}
+
+        {!own && showName && (
+          <p className="mb-0.5 pr-4 text-[12.5px] font-semibold" style={{ color: nameColor(message.sender_name) }}>
+            {message.sender_name}
+            {label && <span className="font-normal text-[#667781]"> · {label}</span>}
+          </p>
+        )}
+
+        {message.attachment_kind && (
+          <div className={message.body ? "mb-1" : ""}>
+            <MessageAttachment
+              url={message.attachment_url}
+              kind={message.attachment_kind}
+              name={message.attachment_name ?? "pièce jointe"}
+              size={message.attachment_size}
+              duration={message.attachment_duration}
+              own={false}
+              variant="coach"
+            />
+          </div>
+        )}
+
+        {isEditing ? (
+          <div className="w-[min(70vw,320px)] max-w-full">
+            <textarea
+              ref={editRef}
+              value={draft}
+              rows={1}
+              onChange={(e) => setDraft(e.target.value.slice(0, MESSAGE_MAX_LENGTH))}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") setIsEditing(false);
+              }}
+              className="w-full resize-none rounded-md bg-white px-2 py-1.5 text-[14.5px] focus:outline-none"
+            />
+            <div className="mt-1 flex items-center justify-end gap-1">
+              <button
+                type="button"
+                onClick={() => setIsEditing(false)}
+                aria-label="Annuler la modification"
+                className="rounded-full p-1.5 text-[#667781] hover:bg-black/5"
+              >
+                <X size={16} />
+              </button>
+              <button
+                type="button"
+                onClick={() => void save()}
+                disabled={isSaving}
+                aria-label="Enregistrer la modification"
+                className="rounded-full bg-[#00a884] p-1.5 text-white disabled:opacity-40"
+              >
+                <Check size={16} />
+              </button>
+            </div>
+          </div>
+        ) : message.body ? (
+          <p className="whitespace-pre-wrap break-words">
+            {message.body}
+            {meta}
+          </p>
+        ) : (
+          <p className="text-right">{meta}</p>
+        )}
+
+        {error && <p className="mt-1 text-[11px] font-semibold text-[#ea0038]">{error}</p>}
       </div>
     </div>
   );

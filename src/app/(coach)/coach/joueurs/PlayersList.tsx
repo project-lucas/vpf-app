@@ -20,8 +20,8 @@ import type { PlayerAvailability, PlayerOffer } from "@/lib/types";
  * Le fil à ouvrir pour ce joueur : celui qui attend, sinon le plus récent.
  */
 export interface PlayerInboxSummary {
-  /** null = fil global ; sinon le porteur du fil privé */
-  channelAdminId: string | null;
+  /** le fil à ouvrir (global, referent, technique, physique, parents) */
+  channel: string;
   lastAt: string | null;
   hasUnread: boolean;
 }
@@ -137,7 +137,7 @@ export function PlayersList({
 
   const row = (p: PlayerListItem) => {
     const name = `${p.first_name} ${p.last_name}`.trim();
-    const href = `/coach/joueurs/${p.id}?onglet=messages&canal=${channelKey(p.inbox?.channelAdminId ?? null)}`;
+    const href = `/coach/joueurs/${p.id}?onglet=messages&canal=${channelKey(p.inbox?.channel ?? null)}`;
     const isSel = desktop && selected?.id === p.id;
     return (
       <Row
@@ -321,7 +321,7 @@ function PlayerPreview({
         )}
         <div className="mt-3 flex flex-wrap gap-1.5">
           {[
-            { label: "Messages", href: `${fiche}?onglet=messages&canal=${channelKey(p.inbox?.channelAdminId ?? null)}` },
+            { label: "Messages", href: `${fiche}?onglet=messages&canal=${channelKey(p.inbox?.channel ?? null)}` },
             { label: "Semaine", href: `${fiche}?onglet=semaine` },
             { label: "Programme", href: `${fiche}?onglet=programme` },
             { label: "Fiche complète", href: fiche },

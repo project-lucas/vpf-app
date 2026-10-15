@@ -15,6 +15,8 @@ export interface JarvisDraft {
   review_id: string | null;
   period: string;
   body: string;
+  /** seconde version (décrochage : prendre des nouvelles plutôt que la visio) */
+  alt_body: string;
   reason: string;
   status: DraftStatus;
   created_at: string;
@@ -37,7 +39,7 @@ export async function getDrafts(
   if (input.playerIds.length === 0) return [];
   let q = supabase
     .from("jarvis_drafts")
-    .select("id, kind, player_id, review_id, period, body, reason, status, created_at")
+    .select("id, kind, player_id, review_id, period, body, alt_body, reason, status, created_at")
     .in("player_id", input.playerIds)
     .in("kind", input.kinds)
     .order("created_at", { ascending: false })

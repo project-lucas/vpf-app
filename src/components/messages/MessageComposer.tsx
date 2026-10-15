@@ -133,7 +133,7 @@ export function MessageComposer({
 
   return (
     <div
-      className={`mt-3 shrink-0 ${ed ? "border-t-2 border-ink pt-3" : "border-t border-navy-100 pt-3"}`}
+      className={`shrink-0 ${ed ? "mt-3 border-t-2 border-ink pt-3" : "bg-[#f0f2f5] px-2 py-2"}`}
     >
       {message && (
         <p
@@ -176,7 +176,7 @@ export function MessageComposer({
             onClick={recorder.stop}
             aria-label="Terminer le vocal"
             className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white transition-transform active:scale-95 ${
-              ed ? "bg-ink" : "bg-navy-800"
+              ed ? "bg-ink" : "bg-[#00a884]"
             }`}
           >
             <SendHorizontal size={17} />
@@ -188,7 +188,7 @@ export function MessageComposer({
           {(isUploading || attachment) && (
             <div
               className={`mb-2 flex items-center gap-2.5 rounded-xl px-2.5 py-2 ${
-                ed ? "border-2 border-ink/15 bg-card" : "bg-navy-50"
+                ed ? "border-2 border-ink/15 bg-card" : "bg-white"
               }`}
             >
               {isUploading ? (
@@ -265,10 +265,10 @@ export function MessageComposer({
               disabled={busy}
               aria-label="Joindre une photo, une vidéo ou un fichier"
               className={`flex h-11 w-10 shrink-0 items-center justify-center rounded-xl transition-colors disabled:opacity-40 ${
-                ed ? "text-meta hover:text-ink" : "text-navy-400 hover:text-navy-800"
+                ed ? "text-meta hover:text-ink" : "text-[#54656f] hover:text-[#111b21]"
               }`}
             >
-              <Paperclip size={19} />
+              <Paperclip size={21} />
             </button>
 
             <textarea
@@ -289,7 +289,7 @@ export function MessageComposer({
               className={
                 ed
                   ? "ed-field max-h-[140px] w-full flex-1 resize-none overflow-y-auto"
-                  : "max-h-[140px] w-full flex-1 resize-none overflow-y-auto rounded-xl border border-navy-200 px-3.5 py-2.5 text-sm focus:border-navy-600 focus:outline-none"
+                  : "max-h-[140px] w-full flex-1 resize-none overflow-y-auto rounded-[22px] border-0 bg-white px-4 py-2.5 text-[15px] text-[#111b21] placeholder:text-[#8696a0] focus:outline-none focus:ring-0"
               }
             />
 
@@ -304,7 +304,7 @@ export function MessageComposer({
                 className={
                   ed
                     ? "flex h-11 w-11 shrink-0 items-center justify-center rounded-md border-2 border-ink bg-ink text-paper transition-transform hover:scale-105 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
-                    : "flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-navy-800 text-white transition-colors hover:bg-navy-700 disabled:cursor-not-allowed disabled:opacity-40"
+                    : "flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#00a884] text-white transition-colors hover:bg-[#008f72] disabled:cursor-not-allowed disabled:opacity-40"
                 }
               >
                 <SendHorizontal size={18} />
@@ -319,7 +319,7 @@ export function MessageComposer({
                   className={
                     ed
                       ? "flex h-11 w-11 shrink-0 items-center justify-center rounded-md border-2 border-ink bg-card text-ink transition-transform hover:scale-105 active:scale-95 disabled:opacity-40"
-                      : "flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-navy-200 bg-white text-navy-600 transition-colors hover:bg-navy-50 disabled:opacity-40"
+                      : "flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#00a884] text-white transition-colors hover:bg-[#008f72] disabled:opacity-40"
                   }
                 >
                   <Mic size={18} />

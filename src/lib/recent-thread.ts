@@ -28,7 +28,7 @@ export async function getRecentThreadLines(
         .from("conversation_messages")
         .select("player_id, sender_id, body, is_system, attachment_kind, created_at")
         .eq("player_id", id)
-        .is("channel_admin_id", null)
+        .eq("channel", "global")
         .order("created_at", { ascending: false })
         .limit(PER_PLAYER)
     ),

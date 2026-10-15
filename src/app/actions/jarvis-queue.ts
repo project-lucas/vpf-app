@@ -97,7 +97,8 @@ export async function approveReportDraft(draftId: string, body: string): Promise
   }
   if (!body.trim()) return { ok: false, error: "Le rapport est vide." };
   if (!(await claimDraft(draftId, guard.userId, "sent", body.trim()))) return { ok: false, error: ALREADY_DONE };
-  const result = await sendConversationMessage(draft.player_id, body, null);
+  // le rapport du mois part dans le fil Parents (sans le joueur, 0048)
+  const result = await sendConversationMessage(draft.player_id, body, "parents");
   if (!result.ok) {
     await releaseDraft(draftId);
     return result;
@@ -124,7 +125,7 @@ export async function decideVisio(
   const { data: player } = await supabase.from("players").select("id").eq("id", playerId).maybeSingle();
   if (!player) return { ok: false, error: "Joueur introuvable." };
   if (decision === "send") {
-    const result = await sendConversationMessage(playerId, body, null);
+    const result = await sendConversationMessage(playerId, body, "global");
     if (!result.ok) return result;
   }
   await createAdminClient()
@@ -156,8 +157,10 @@ export async function dismissDraft(draftId: string): Promise<ActionResult> {
 }
 
 export interface ProgramChoice {
-  kind: "add" | "pause";
+  kind: "add" | "pause" | "replace";
   playerId: string;
+  /** pôle de la séance ajoutée : sert à vérifier qu'il est toujours vide */
+  pole?: "basket" | "physique" | "routine";
   sessionId?: string;
   weekdays?: number[];
   assignmentIds?: string[];
@@ -165,25 +168,69 @@ export interface ProgramChoice {
 
 const UUID = /^[0-9a-f-]{36}$/i;
 
-/** Applique d'un coup les propositions de programme cochées. */
+/** Les séances actives du joueur (lecture RLS) : pôle et id de séance. */
+async function activeSessions(playerId: string) {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("session_assignments")
+    .select("session_id, session:library_sessions!inner(pole)")
+    .eq("player_id", playerId)
+    .is("removed_at", null);
+  return (data ?? []).map((a) => {
+    const s = Array.isArray(a.session) ? a.session[0] : a.session;
+    return { sessionId: a.session_id as string, pole: s?.pole as string | undefined };
+  });
+}
+
+/**
+ * Applique d'un coup les propositions de programme cochées, en revérifiant
+ * chaque cas au moment du clic (la page a pu vieillir, un collègue a pu agir) :
+ *  - « Ajouter » n'ajoute que si le pôle est TOUJOURS vide (technique,
+ *    physique) ou si la séance n'est pas déjà là (routine) — jamais en double ;
+ *  - « Remplacer » ajoute la routine de soin PUIS met en pause les séances qui
+ *    chargent la zone : l'ancien et le nouveau ne coexistent pas ;
+ *  - « Mettre en pause » retire les affectations (historique gardé).
+ */
 export async function applyProgramChoices(
   choices: ProgramChoice[]
-): Promise<ActionResult & { applied?: number; failed?: string[] }> {
+): Promise<ActionResult & { applied?: number; skipped?: number; failed?: string[] }> {
   const guard = await requireStaffProfile();
   if (!guard.ok) return guard;
   const failed: string[] = [];
   let applied = 0;
+  let skipped = 0;
+
+  const pause = async (c: ProgramChoice) => {
+    const ids = (c.assignmentIds ?? []).filter((id) => UUID.test(id));
+    const results = await Promise.all(ids.map((id) => removeAssignment(id, c.playerId)));
+    return results.find((r) => !r.ok);
+  };
+
   for (const c of choices.slice(0, 500)) {
     if (!UUID.test(c.playerId)) continue;
-    if (c.kind === "add" && c.sessionId && UUID.test(c.sessionId)) {
+    if ((c.kind === "add" || c.kind === "replace") && c.sessionId && UUID.test(c.sessionId)) {
+      const current = await activeSessions(c.playerId);
+      const already = current.some((s) => s.sessionId === c.sessionId);
+      const poleTaken = c.pole !== "routine" && current.some((s) => s.pole === c.pole);
+      if (already || (c.kind === "add" && poleTaken)) {
+        skipped += 1;
+        // déjà en place : pour un remplacement, il reste à mettre l'ancien en pause
+        if (c.kind === "replace") await pause(c);
+        continue;
+      }
       const r = await assignSession(c.sessionId, [c.playerId], c.weekdays ?? []);
-      if (r.ok) applied += 1;
-      else failed.push(r.error);
+      if (!r.ok) {
+        failed.push(r.error);
+        continue;
+      }
+      if (c.kind === "replace") {
+        const bad = await pause(c);
+        if (bad && !bad.ok) failed.push(bad.error);
+      }
+      applied += 1;
     } else if (c.kind === "pause") {
-      const ids = (c.assignmentIds ?? []).filter((id) => UUID.test(id));
-      if (ids.length === 0) continue;
-      const results = await Promise.all(ids.map((id) => removeAssignment(id, c.playerId)));
-      const bad = results.find((r) => !r.ok);
+      if ((c.assignmentIds ?? []).length === 0) continue;
+      const bad = await pause(c);
       if (bad && !bad.ok) failed.push(bad.error);
       else applied += 1;
     }
@@ -191,7 +238,7 @@ export async function applyProgramChoices(
   revalidatePath(QUEUE_PATH);
   return failed.length > 0 && applied === 0
     ? { ok: false, error: failed[0] }
-    : { ok: true, applied, failed };
+    : { ok: true, applied, skipped, failed };
 }
 
 /**

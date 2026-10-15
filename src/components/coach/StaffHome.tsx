@@ -358,7 +358,7 @@ function RecoCard({ reco }: { reco: RecoView }) {
     if (!reco.playerId) return;
     setError(null);
     startTransition(async () => {
-      const result = await sendConversationMessage(reco.playerId!, draft, null);
+      const result = await sendConversationMessage(reco.playerId!, draft, "global");
       if (!result.ok) {
         setError(result.error);
         return;

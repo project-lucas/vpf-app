@@ -8,6 +8,40 @@ import { JarvisChat } from "@/components/coach/JarvisChat";
 import { MESSAGE_MAX_LENGTH } from "@/lib/constants";
 import type { BriefRecommendation } from "@/lib/briefs";
 
+/**
+ * Sous la conversation de la fiche : les messages que Jarvis propose ce matin
+ * pour ce joueur, prêts à envoyer ou à modifier. Rien si Jarvis n'a rien à
+ * proposer — l'espace reste au fil.
+ */
+export function JarvisConversationSuggestions({
+  playerId,
+  recos,
+}: {
+  playerId: string;
+  recos: BriefRecommendation[];
+}) {
+  const withMessage = recos.filter((r) => r.message !== null);
+  return (
+    <div className="mt-4 border-t border-navy-100 pt-4">
+      <p className="mb-2 flex items-center gap-2 text-[10.5px] font-extrabold uppercase tracking-[0.12em] text-accent">
+        <JarvisAvatar size={20} />
+        Suggestion de Jarvis
+      </p>
+      {withMessage.length === 0 ? (
+        <p className="text-[12.5px] text-navy-400">
+          Pas de message proposé pour ce joueur aujourd&apos;hui. Tu peux actualiser les recommandations depuis l&apos;accueil.
+        </p>
+      ) : (
+        <div className="space-y-2.5">
+          {withMessage.map((r, i) => (
+            <PlayerReco key={i} playerId={playerId} reco={r} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** Une recommandation de Jarvis pour ce joueur, avec son message prêt à partir. */
 function PlayerReco({ playerId, reco }: { playerId: string; reco: BriefRecommendation }) {
   const [draft, setDraft] = useState(reco.message ?? "");
@@ -48,7 +82,7 @@ function PlayerReco({ playerId, reco }: { playerId: string; reco: BriefRecommend
                 disabled={isPending || !draft.trim()}
                 onClick={() =>
                   startTransition(async () => {
-                    const r = await sendConversationMessage(playerId, draft, null);
+                    const r = await sendConversationMessage(playerId, draft, "global");
                     if (r.ok) setSent(true);
                     else setError(r.error);
                   })

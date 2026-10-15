@@ -46,13 +46,3 @@ export function canUseHygiene(offer: PlayerOffer): boolean {
   return offer === "formation";
 }
 
-/**
- * Fils privés avec les admins (0034) : offre formation. Un joueur perf n'a
- * qu'un seul fil, celui de son coach (et de ses parents).
- *
- * L'historique n'est jamais perdu : repasser en perf masque les fils privés,
- * repasser en formation les retrouve intacts.
- */
-export function canUsePrivateChannels(offer: PlayerOffer): boolean {
-  return offer === "formation";
-}

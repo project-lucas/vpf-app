@@ -389,10 +389,9 @@ export interface ConversationMessage {
   id: string;
   /** joueur dont c'est le fil */
   player_id: string;
-  /**
-   * Canal (0034) : null = fil coach & parents, sinon fil privé avec cet admin
-   * (offre formation uniquement).
-   */
+  /** Fil (0048) : global, technique, physique, referent, parents, legacy. */
+  channel: "global" | "technique" | "physique" | "referent" | "parents" | "legacy";
+  /** Porteur d'un ancien fil privé (`legacy`) ; historique avant 0048. */
   channel_admin_id: string | null;
   sender_id: string | null;
   /** Message automatique « VPF » (rappel de bilan, de feuille de match…), sans auteur (0043). */
@@ -417,15 +416,31 @@ export interface ConversationMessage {
 export type AttachmentKind = "image" | "video" | "audio" | "file";
 
 /**
- * Canal ouvert dans le fil d'un joueur, tel que le voit celui qui regarde :
- * l'étiquette (nom de l'admin) et le drapeau « du nouveau à lire ».
+ * Un fil de la conversation d'un joueur (0048), tel que le voit celui qui
+ * regarde : nom, membres, dernier message, non-lu — une ligne de liste
+ * WhatsApp.
  */
 export interface ConversationChannel {
-  /** null = fil coach & parents ; sinon fil privé de cet admin */
-  adminId: string | null;
-  /** prénom de l'admin porteur du fil privé (null pour le fil coach) */
-  adminName: string | null;
+  /** identifiant (cf. src/lib/channels.ts) : `global`, `technique`, `legacy:<id>`… */
+  id: string;
+  kind: "global" | "technique" | "physique" | "referent" | "parents" | "legacy";
+  /** porteur d'un ancien fil privé (`legacy`), null sinon */
+  ownerId: string | null;
+  /** « Global », « Technique · Karim », « Référent · Lucas »… */
+  label: string;
+  /** qui est dans le fil, en une ligne */
+  members: string;
+  canWrite: boolean;
   hasUnread: boolean;
+  last: {
+    body: string;
+    at: string;
+    fromMe: boolean;
+    senderId: string | null;
+    isSystem: boolean;
+    /** « Toi », « VPF », un prénom — null si inconnu */
+    fromName: string | null;
+  } | null;
 }
 
 /**
@@ -462,6 +477,8 @@ export interface Group {
 export interface GroupStaffMember {
   id: string;
   first_name: string;
+  /** rôle dans le groupe (0048) : coach technique ou physique */
+  staff_role?: "technique" | "physique" | null;
 }
 
 /** Un membre du staff du club, pour composer le staff d'un groupe (admin). */

@@ -97,6 +97,7 @@ export default async function AdminPage() {
     id: g.id,
     name: g.name,
     staffIds: g.staff.map((m) => m.id),
+    roles: Object.fromEntries(g.staff.filter((m) => m.staff_role).map((m) => [m.id, m.staff_role as "technique" | "physique"])),
     referentIds: [
       ...new Set(
         players

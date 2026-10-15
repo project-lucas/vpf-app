@@ -249,7 +249,7 @@ export async function askJarvis(
       inputSchema: z.object({ playerId: z.string(), body: z.string().min(1).max(1500) }),
       run: async ({ playerId, body }) => {
         ensure(playerId);
-        const r = await sendConversationMessage(playerId, body, null);
+        const r = await sendConversationMessage(playerId, body, "global");
         if (!r.ok) return `Échec : ${r.error}`;
         return done(`message envoyé à ${who(playerId)}`);
       },

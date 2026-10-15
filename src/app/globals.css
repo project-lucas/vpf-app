@@ -852,3 +852,13 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     animation: none;
   }
 }
+
+/* Fond des conversations façon WhatsApp (0048) : beige, motif discret */
+.wa-wallpaper {
+  background-color: #efeae2;
+  background-image:
+    radial-gradient(rgba(84, 101, 111, 0.07) 1.2px, transparent 1.3px),
+    radial-gradient(rgba(84, 101, 111, 0.05) 1px, transparent 1.1px);
+  background-size: 22px 22px, 22px 22px;
+  background-position: 0 0, 11px 11px;
+}

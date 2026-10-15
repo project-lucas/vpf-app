@@ -65,25 +65,33 @@ La sécurité repose sur la RLS (migration `0002`) : un joueur ne voit que ses d
 
 Chaque fiche joueur porte une `offer` (`players.offer`, migration 0026) choisie par le **coach** — à l'invitation puis modifiable dans la fiche. Stripe est hors application : rien n'est dérivé d'un paiement.
 
-- `formation` (offre 2) est le **défaut** : tout est développé en mode formation, c'est `perf` qui retire. Deux différences à ce jour : l'**onglet Hygiène de vie** et les **fils privés avec les admins** (cf. Messagerie). Tout le reste (planning, dashboard, objectifs mesurables, séances, bilans) est identique.
+- `formation` (offre 2) est le **défaut** : tout est développé en mode formation, c'est `perf` qui retire. Une seule différence depuis 0048 : l'**onglet Hygiène de vie** (les fils de discussion par rôle sont ouverts à toutes les offres). Tout le reste (planning, dashboard, objectifs mesurables, séances, bilans) est identique.
 - La liste de ce que chaque offre débloque vit dans `src/lib/offers.ts` — ajouter une restriction = ajouter un helper là, jamais un `=== "perf"` disséminé dans les pages.
 - Changer d'offre ne touche **aucune donnée** : l'onglet disparaît/réapparaît, l'historique (hygiène, objectifs, progression) reste intact dans les deux sens. Côté coach, tout reste visible quelle que soit l'offre.
 - Aucun grant client sur la colonne : l'écriture passe par le service_role après lecture RLS (`setPlayerOffer`), comme `availability`. La saisie d'hygiène est aussi verrouillée en RLS (`is_formation()`).
 
-### Messagerie : des canaux, pas un fil unique
+### Messagerie : des fils par rôle, rendu WhatsApp (0048 — 15/10/2026)
 
-Un joueur porte **un fil par canal** (`conversation_messages.channel_admin_id`, migration 0034) :
+Un joueur a **un fil par rôle** (`conversation_messages.channel`), pour **toutes les offres** — comme des groupes WhatsApp :
 
-- `channel_admin_id = null` — le fil coach & parents : joueur, coach référent, parents, admins en supervision. C'est le seul fil d'un joueur **perf**.
-- `channel_admin_id = <staff>` — un fil privé par **porteur** : chaque admin, **et le coach référent du joueur** (0037). **Offre formation uniquement.** Le lisent : le joueur, le porteur, et tous les admins (supervision assumée — un coach référent sait que Lucas et Maxime voient son fil). Les parents ne voient jamais un fil privé. Le nom de colonne date de 0034 ; sa sémantique est « staff porteur », pas « admin ».
+| Fil | Le lisent |
+|---|---|
+| `global` « Global » | joueur, parents, tout le staff du joueur, admins |
+| `referent` « Référent · prénom » | joueur, son coach référent (`players.coach_id`), admins |
+| `technique` « Technique · prénom » | joueur, le coach **technique** de son groupe, admins |
+| `physique` « Physique · prénom » | joueur, le coach **physique** de son groupe, admins |
+| `parents` « Parents » | parents + tout le staff du joueur + admins — **jamais le joueur**. Les rapports du 28 partent ici. |
+| `legacy` « Ancien fil · prénom » | archives des anciens fils privés (avant 0048) : joueur, admins, ancien porteur — **lecture seule** |
 
 Points structurants :
 
-- La RLS (0034, élargie en 0037 via `is_private_channel_owner`) est seule juge de l'audience d'un canal ; `src/lib/conversations.ts` est la seule source du « qui a quels fils » — `listPrivateChannelOwners(playerId)` = coach référent puis admins. `getConversationChannels` prend `includePrivate: true | "own" | false` (admin / coach référent / parent). Les prénoms passent par le service_role : la RLS de `profiles` ne les donne pas à un joueur.
-- **Libellés** : le fil `null` s'appelle **« Global »** partout (joueur, fiche, boîte) ; un fil privé porte le **prénom** de son porteur. Ne pas réintroduire « Coach & parents » / « Fil X ».
-- Les **notifications suivent le canal** : un message d'un fil privé ne prévient que le joueur et l'admin porteur — jamais le coach, les parents ni l'autre admin.
-- `conversation_reads` porte un marqueur **par canal** et n'a plus de clé primaire (index uniques partiels : le canal coach est un NULL). Ne jamais y remettre un upsert PostgREST — passer par `touchRead` (update puis insert, doublon 23505 toléré).
-- Côté joueur, les canaux s'affichent en onglets (`ConversationPanel`) avec pastille rouge sur le non-lu, reprise sur l'onglet Messages de la barre du bas. Côté admin, `/coach/messages` liste tous les fils privés.
+- **Un fil appartient au rôle, pas à la personne** : quand le coach technique d'un groupe change, le nouveau reprend le fil et son historique. Le rôle se pose dans l'onglet Admin, menu ⋯ d'un membre du staff (`group_staff.role`, un seul titulaire par rôle et par groupe, `setStaffRole`). Pas de titulaire = pas de fil (on ne peut pas y écrire).
+- La RLS (`can_read_channel`, `can_write_channel`, 0048) est seule juge ; `src/lib/channels.ts` nomme et filtre les fils (identifiant `?canal=` : `global`, `technique`… ou `legacy:<id>`), `src/lib/conversations.ts` dit qui voit quoi (`getConversationChannels(…, { viewer: "player" | "parent" | "coach" | "admin" })`, `getChannelHolders`). `channel_admin_id` ne sert plus qu'aux archives `legacy`.
+- **Rendu WhatsApp partout** (joueur, parent, fiche joueur, `/coach/messages`) : `ConversationPanel` = liste des discussions (avatar par rôle, dernier message, heure, pastille verte) + discussion ouverte, côte à côte quand le conteneur est large (container query `@2xl`), l'une puis l'autre sinon ; bulles vertes à droite pour soi, blanches à gauche avec le prénom en couleur, heure dans la bulle, séparateurs de jour, fond `.wa-wallpaper`, barre de saisie grise et bouton rond vert.
+- **Notifications** : le joueur pour ses fils (pas Parents), les parents pour Global et Parents, le titulaire du rôle pour son fil (le référent pour Global et Parents) ; un message de la famille dans Global ou Parents prévient aussi les admins. Titre « Prénom · Fil · joueur ».
+- **Pastilles** : un admin LIT tout mais ne s'allume que sur SES fils (Global, Parents, et ceux dont il tient le rôle) — `myKinds` dans conversations.ts, même périmètre pour la pastille, la liste et `/coach/messages`.
+- `conversation_reads` porte un marqueur **par fil** (index unique sur joueur, lecteur, fil). Ne jamais y remettre un upsert PostgREST — passer par `touchRead` (update puis insert, doublon 23505 toléré).
+- `/coach/messages` est la **boîte de réception WhatsApp du staff** (entrée « Messages » du menu) : toutes mes discussions, tous joueurs confondus, liste à gauche, discussion à droite.
 
 ### Messages riches : pièces jointes, vocaux, édition (0036)
 
@@ -169,7 +177,7 @@ Pour tenir des centaines de joueurs, Jarvis **prépare le travail** et le staff 
 - **Tables (0046)** : `jarvis_drafts` (`review_reply` | `visio` | `parent_report`, statut `pending/sent/dismissed/error`) et `player_memories` (cinq rubriques : situation, works, blocks, promised, watch). Écrites en service_role, lues sous RLS (`is_admin` ou `is_coach_of`) — jamais par le joueur ni les parents.
 - **La file** (`/coach/aujourdhui`, `TodayQueue` + `QueueCards`) : messages en attente, bilans à valider, décrochage (visio), programmes à compléter, rapports aux parents, avec le temps estimé (`TASK_MINUTES`). Valider passe **par l'action existante** (`setReviewReply`, `sendConversationMessage`, `assignSession`, `removeAssignment`) via `src/app/actions/jarvis-queue.ts` : mêmes contrôles, même journal. Admin : tout le club (ou `?vue=moi`), la part de chaque coach, « Préparer maintenant ». Entrée : l'onglet **« Jarvis »** (icône étincelle), premier de la navigation staff, à gauche d'Accueil — qui reste la page d'arrivée. L'URL reste `/coach/aujourdhui`.
 - **Décrochage** (`src/lib/dropout.ts`, `detectDropout`) : des PENTES, pas des seuils — discipline qui baisse 3 semaines de suite (≥ 20 pts), énergie qui glisse (−2), bilans qui raccourcissent ou 2 manqués sur 3, aucun échange depuis 14 j. Deux signaux = décrochage en cours → alerte `dropout` (« Décrochage : visio conseillée ») dans `buildPlayerAlerts`, `HomeRow.dropout`. Sans brouillon, la file propose un message type ; une décision (envoyée / passée) vaut pour la semaine.
-- **Programmes** (`src/lib/program-proposals.ts`) : séance technique / physique manquante, routine qui soigne une douleur, séances à mettre en pause — tirées de `suggestSessions`, jours par défaut `DEFAULT_DAYS`, rien de stocké.
+- **Programmes** (`src/lib/program-proposals.ts`) : « Ajouter » seulement si le pôle (technique / physique) est vide ; une douleur = UNE ligne « Remplacer » (séances qui chargent la zone en pause + routine de soin), jamais l'ancien et le nouveau ensemble. `applyProgramChoices` revérifie tout au clic (pôle toujours vide, séance pas déjà là) et compte les « déjà en place ». Tirées de `suggestSessions`, jours par défaut `DEFAULT_DAYS`, rien de stocké.
 - **Fiche mémoire** : en tête de la fiche joueur (`PlayerMemoryCard`), lue par le brief du matin, les réponses aux bilans, les rapports et `get_player_details` de Jarvis.
 
 ### Messages automatiques « VPF » et portes bloquantes (0043 — 14/10/2026)

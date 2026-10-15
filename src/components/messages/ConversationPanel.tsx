@@ -1,101 +1,121 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Archive, ArrowLeft, Dumbbell, HeartHandshake, Target, UserRound, Users } from "lucide-react";
 import { getConversationMessages, getUnreadChannels } from "@/app/actions/messages";
 import { MessageThread } from "./MessageThread";
-import type { ConversationMessageWithSender } from "@/lib/types";
+import type { ConversationChannel, ConversationMessageWithSender } from "@/lib/types";
 
 /** Rythme de rafraîchissement des pastilles — calé sur celui du fil ouvert. */
 const UNREAD_REFRESH_MS = 30_000;
 
-export interface ChannelTab {
-  /** clé stable de l'onglet (cf. channelKey) */
-  key: string;
-  /** null = fil coach & parents ; sinon fil privé de cet admin */
-  adminId: string | null;
-  label: string;
-  hasUnread: boolean;
+/** L'avatar d'un fil : une icône et une couleur par rôle, comme une photo de groupe. */
+const CHANNEL_LOOK: Record<ConversationChannel["kind"], { icon: React.ReactNode; bg: string }> = {
+  global: { icon: <Users size={20} />, bg: "#0f2a4a" },
+  referent: { icon: <UserRound size={20} />, bg: "#e2622d" },
+  technique: { icon: <Target size={20} />, bg: "#2a6fb0" },
+  physique: { icon: <Dumbbell size={20} />, bg: "#b4232c" },
+  parents: { icon: <HeartHandshake size={20} />, bg: "#1f7a4d" },
+  legacy: { icon: <Archive size={20} />, bg: "#8696a0" },
+};
+
+function ChannelAvatar({ kind, size = 44 }: { kind: ConversationChannel["kind"]; size?: number }) {
+  const look = CHANNEL_LOOK[kind];
+  return (
+    <span
+      aria-hidden
+      className="flex shrink-0 items-center justify-center rounded-full text-white"
+      style={{ width: size, height: size, backgroundColor: look.bg }}
+    >
+      {look.icon}
+    </span>
+  );
+}
+
+/** « 14:32 » aujourd'hui, « Hier », sinon « 13/10 ». */
+function listTime(iso: string): string {
+  const fmt = (d: Date) => d.toLocaleDateString("fr-CA", { timeZone: "Europe/Paris" });
+  const day = fmt(new Date(iso));
+  if (day === fmt(new Date())) {
+    return new Date(iso).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" });
+  }
+  if (day === fmt(new Date(Date.now() - 86_400_000))) return "Hier";
+  return new Date(iso).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", timeZone: "Europe/Paris" });
 }
 
 /**
- * Fil d'un joueur avec ses canaux (migration 0034) : un onglet par canal, une
- * pastille rouge sur ceux qui portent un message non lu, et le fil du canal
- * actif en dessous.
+ * La messagerie d'un joueur, façon WhatsApp (0048) : à gauche la liste des
+ * discussions (Global, Référent, Technique, Physique, Parents — selon ce que
+ * le lecteur a le droit de voir), à droite la discussion ouverte. Sur un écran
+ * étroit, l'une puis l'autre, avec la flèche de retour.
  *
- * Un seul onglet (offre perf, coach référent, parent) : la barre disparaît et
- * l'écran redevient exactement celui d'avant.
- *
- * Seul le canal ouvert au chargement est rendu par le serveur ; changer
- * d'onglet va chercher son historique. On ne garde pas de cache : revenir sur
- * un onglet doit montrer l'état réel du fil, pas ce qu'on y avait laissé.
+ * Seule la discussion ouverte au chargement est rendue par le serveur ; en
+ * changer va chercher son historique.
  */
 export function ConversationPanel({
   playerId,
   currentUserId,
   channels,
-  initialChannelKey,
+  initialChannelKey = "global",
+  startInChat = false,
   initialMessages,
-  variant,
   className,
 }: {
   playerId: string;
   currentUserId: string;
-  channels: ChannelTab[];
-  /** canal rendu par le serveur (défaut : le premier) */
+  channels: ConversationChannel[];
+  /** discussion dont le serveur a chargé `initialMessages` (défaut : Global) */
   initialChannelKey?: string;
+  /** téléphone : ouvrir directement la discussion (lien `?canal=`) plutôt que la liste */
+  startInChat?: boolean;
   initialMessages: ConversationMessageWithSender[];
-  variant: "editorial" | "coach";
+  variant?: "editorial" | "coach";
   className?: string;
 }) {
-  const firstKey = initialChannelKey ?? channels[0]?.key ?? "";
-  const [activeKey, setActiveKey] = useState(firstKey);
+  const known = channels.some((c) => c.id === initialChannelKey);
+  const firstId = known ? initialChannelKey : (channels[0]?.id ?? "global");
+  const [activeId, setActiveId] = useState(firstId);
+  // téléphone : on montre la liste d'abord, sauf si un lien vise une discussion
+  const [showChat, setShowChat] = useState(startInChat && known);
   const [messages, setMessages] = useState(initialMessages);
   const [isLoading, setIsLoading] = useState(false);
   const [unread, setUnread] = useState(
-    () => new Set(channels.filter((c) => c.hasUnread && c.key !== firstKey).map((c) => c.key))
+    () => new Set(channels.filter((c) => c.hasUnread && c.id !== firstId).map((c) => c.id))
   );
+  // dernière demande : une réponse en retard n'écrase pas la discussion ouverte
+  const requestRef = useRef(activeId);
+  const active = channels.find((c) => c.id === activeId) ?? channels[0];
 
-  // dernière demande d'onglet : une réponse en retard ne doit pas écraser le
-  // fil qu'on regarde maintenant
-  const requestRef = useRef(activeKey);
-
-  const active = channels.find((c) => c.key === activeKey) ?? channels[0];
-  const ed = variant === "editorial";
-
-  const openChannel = useCallback(
-    (tab: ChannelTab) => {
+  const open = useCallback(
+    (channel: ConversationChannel) => {
+      setShowChat(true);
       setUnread((current) => {
-        if (!current.has(tab.key)) return current;
+        if (!current.has(channel.id)) return current;
         const next = new Set(current);
-        next.delete(tab.key);
+        next.delete(channel.id);
         return next;
       });
-      if (tab.key === activeKey) return;
-
-      setActiveKey(tab.key);
+      if (channel.id === activeId) return;
+      setActiveId(channel.id);
       setIsLoading(true);
-      requestRef.current = tab.key;
-      void getConversationMessages(playerId, tab.adminId).then((fresh) => {
-        if (requestRef.current !== tab.key) return;
+      requestRef.current = channel.id;
+      void getConversationMessages(playerId, channel.id).then((fresh) => {
+        if (requestRef.current !== channel.id) return;
         setMessages(fresh);
         setIsLoading(false);
       });
     },
-    [activeKey, playerId]
+    [activeId, playerId]
   );
 
-  // Pastilles : le fil ouvert se marque lu tout seul, on ne surveille donc que
-  // les autres canaux. Même cadence que le fil, plus un passage au retour sur
-  // l'onglet du navigateur.
+  // Pastilles : la discussion ouverte se marque lue toute seule, on surveille les autres.
   useEffect(() => {
     if (channels.length < 2) return;
-    const adminIds = channels.map((c) => c.adminId);
-
+    const ids = channels.map((c) => c.id);
     const check = async () => {
-      const keys = await getUnreadChannels(playerId, adminIds);
+      const keys = await getUnreadChannels(playerId, ids);
       setUnread(new Set(keys.filter((k) => k !== requestRef.current)));
     };
-
     const id = setInterval(() => void check(), UNREAD_REFRESH_MS);
     const onFocus = () => void check();
     window.addEventListener("focus", onFocus);
@@ -106,75 +126,104 @@ export function ConversationPanel({
   }, [channels, playerId]);
 
   return (
-    <div className={`flex min-h-0 flex-col ${className ?? ""}`}>
-      {channels.length > 1 && (
-        // au doigt : bande qui défile bord à bord ; à la souris : retour à la
-        // ligne, sinon les derniers onglets deviennent inatteignables
-        <div
-          role="tablist"
-          aria-label="Conversations"
-          className="scrollbar-none -mx-1 mb-3 flex shrink-0 gap-1.5 overflow-x-auto px-1 pb-1 pointer-fine:mx-0 pointer-fine:flex-wrap pointer-fine:overflow-x-visible pointer-fine:px-0"
-        >
-          {channels.map((tab) => {
-            const isActive = tab.key === activeKey;
-            const hasDot = unread.has(tab.key);
+    <div
+      className={`@container flex min-h-0 overflow-hidden rounded-xl border border-[#e9edef] bg-white ${className ?? ""}`}
+    >
+      {/* ---- la liste des discussions ---- */}
+      <nav
+        aria-label="Discussions"
+        className={`min-h-0 w-full shrink-0 flex-col overflow-y-auto border-r border-[#e9edef] @2xl:flex @2xl:w-[300px] ${
+          showChat ? "hidden" : "flex"
+        }`}
+      >
+        <p className="sticky top-0 z-[1] bg-white px-4 pb-2 pt-3 text-[17px] font-bold text-[#111b21]">Discussions</p>
+        <ul className="pb-2">
+          {channels.map((c) => {
+            const isActive = c.id === activeId;
+            const hasDot = unread.has(c.id);
+            const preview = c.last
+              ? `${c.last.fromMe ? "Toi : " : c.last.fromName ? `${c.last.fromName} : ` : ""}${c.last.body}`
+              : c.members;
             return (
-              <button
-                key={tab.key}
-                type="button"
-                role="tab"
-                aria-selected={isActive}
-                onClick={() => openChannel(tab)}
-                className={
-                  ed
-                    ? `ed-meta relative shrink-0 rounded-md border-2 px-3 py-1.5 text-[10px] transition-colors ${
-                        isActive
-                          ? "border-ink bg-ink text-paper"
-                          : "border-ink/15 bg-card text-meta hover:border-ink hover:text-ink"
-                      }`
-                    : `relative shrink-0 rounded-full px-3.5 py-1.5 text-sm font-semibold transition-colors ${
-                        isActive
-                          ? "bg-navy-800 text-white"
-                          : "border border-navy-200 bg-white text-navy-500"
-                      }`
-                }
-              >
-                {tab.label}
-                {hasDot && (
-                  <>
-                    <span
-                      aria-hidden
-                      className={`absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full ${
-                        ed ? "border-2 border-paper bg-orange" : "border-2 border-white bg-danger"
-                      }`}
-                    />
-                    <span className="sr-only"> — nouveaux messages</span>
-                  </>
-                )}
-              </button>
+              <li key={c.id}>
+                <button
+                  type="button"
+                  onClick={() => open(c)}
+                  aria-current={isActive ? "true" : undefined}
+                  className={`flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-[#f5f6f6] ${
+                    isActive ? "@2xl:bg-[#f0f2f5]" : ""
+                  }`}
+                >
+                  <ChannelAvatar kind={c.kind} size={48} />
+                  <span className="min-w-0 flex-1 border-b border-[#f0f2f5] pb-2.5 pt-0.5">
+                    <span className="flex items-baseline justify-between gap-2">
+                      <span className={`truncate text-[16px] text-[#111b21] ${hasDot ? "font-bold" : "font-medium"}`}>
+                        {c.label}
+                      </span>
+                      {c.last && (
+                        <span className={`shrink-0 text-[12px] ${hasDot ? "font-semibold text-[#25d366]" : "text-[#667781]"}`}>
+                          {listTime(c.last.at)}
+                        </span>
+                      )}
+                    </span>
+                    <span className="mt-0.5 flex items-center gap-2">
+                      <span className={`min-w-0 flex-1 truncate text-[13.5px] ${hasDot ? "text-[#111b21]" : "text-[#667781]"}`}>
+                        {preview}
+                      </span>
+                      {hasDot && (
+                        <span className="h-5 min-w-5 shrink-0 rounded-full bg-[#25d366] px-1.5 text-center text-[11px] font-bold leading-5 text-white">
+                          •<span className="sr-only">nouveaux messages</span>
+                        </span>
+                      )}
+                    </span>
+                  </span>
+                </button>
+              </li>
             );
           })}
-        </div>
-      )}
+        </ul>
+      </nav>
 
-      {isLoading ? (
-        <p
-          className={`flex-1 py-8 text-center text-sm ${ed ? "text-meta" : "text-navy-400"}`}
-        >
-          Chargement de la conversation…
-        </p>
-      ) : (
-        // key : changer de canal repart d'un fil propre (défilement, brouillon)
-        <MessageThread
-          key={activeKey}
-          playerId={playerId}
-          currentUserId={currentUserId}
-          channelAdminId={active?.adminId ?? null}
-          initialMessages={messages}
-          variant={variant}
-          className="min-h-0 flex-1"
-        />
-      )}
+      {/* ---- la discussion ouverte ---- */}
+      <section
+        aria-label={active?.label ?? "Discussion"}
+        className={`min-h-0 min-w-0 flex-1 flex-col @2xl:flex ${showChat ? "flex" : "hidden"}`}
+      >
+        {active && (
+          <header className="flex shrink-0 items-center gap-3 bg-[#f0f2f5] px-3 py-2">
+            <button
+              type="button"
+              onClick={() => setShowChat(false)}
+              aria-label="Retour aux discussions"
+              className="-ml-1 rounded-full p-1.5 text-[#54656f] hover:bg-black/5 @2xl:hidden"
+            >
+              <ArrowLeft size={20} />
+            </button>
+            <ChannelAvatar kind={active.kind} size={40} />
+            <span className="min-w-0">
+              <span className="block truncate text-[16px] font-medium text-[#111b21]">{active.label}</span>
+              <span className="block truncate text-[12.5px] text-[#667781]">{active.members}</span>
+            </span>
+          </header>
+        )}
+        {isLoading ? (
+          <p className="wa-wallpaper flex flex-1 items-center justify-center text-[13px] text-[#667781]">
+            Chargement…
+          </p>
+        ) : (
+          // key : changer de discussion repart d'un fil propre (défilement, brouillon)
+          <MessageThread
+            key={activeId}
+            playerId={playerId}
+            currentUserId={currentUserId}
+            channel={activeId}
+            canWrite={active?.canWrite ?? true}
+            initialMessages={messages}
+            variant="coach"
+            className="min-h-0 flex-1"
+          />
+        )}
+      </section>
     </div>
   );
 }

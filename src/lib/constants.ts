@@ -328,10 +328,12 @@ export const STAFF_UNREAD_SCAN_LIMIT = 500;
  * porteur, les fils privés sont identifiés par l'id de leur admin. Sert de clé
  * d'onglet et de pastille non-lue, côté serveur comme côté client.
  */
-export const STAFF_CHANNEL_KEY = "staff";
+/** Le fil Global (0048) : la valeur par défaut de `?canal=`. */
+export const STAFF_CHANNEL_KEY = "global";
 
-export function channelKey(adminId: string | null): string {
-  return adminId ?? STAFF_CHANNEL_KEY;
+/** `?canal=` d'un fil (cf. src/lib/channels.ts) ; null = Global. */
+export function channelKey(channel: string | null): string {
+  return channel ?? STAFF_CHANNEL_KEY;
 }
 
 // Pièces jointes des messages (migration 0036) — bucket privé `messages`

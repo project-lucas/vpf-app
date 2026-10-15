@@ -49,9 +49,8 @@ export default async function CoachLayout({ children }: { children: React.ReactN
     ...(isAdmin ? [{ href: "/coach/admin", label: "Admin", icon: <ShieldIcon /> }] : []),
   ];
   const secondary = [
-    ...(isAdmin
-      ? [{ href: "/coach/messages", label: "Relais messages", icon: <MessagesSquare /> }]
-      : []),
+    // toutes mes discussions, façon WhatsApp (0048)
+    { href: "/coach/messages", label: "Messages", icon: <MessagesSquare /> },
     { href: "/coach/parametres", label: "Réglages", icon: <Settings /> },
   ];
 

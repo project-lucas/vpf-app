@@ -30,7 +30,10 @@ export interface QueueReview extends QueuePlayer {
 
 export interface QueueVisio extends QueuePlayer {
   reasons: string[];
+  /** proposer la visio */
   body: string;
+  /** prendre des nouvelles, sans visio */
+  checkinBody: string;
   /** pourquoi Jarvis s'inquiète, null si message type */
   reason: string | null;
   fromJarvis: boolean;
@@ -39,8 +42,10 @@ export interface QueueVisio extends QueuePlayer {
 export interface QueueProgram extends QueuePlayer {
   items: {
     key: string;
-    kind: "add" | "pause";
+    kind: "add" | "pause" | "replace";
     sessionName: string;
+    /** remplacer : les séances mises en pause */
+    pausedNames: string[];
     pole: SessionPole | null;
     weekdays: number[];
     sessionId: string | null;

@@ -1,263 +1,296 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "./supabase/admin";
 import { messagePreview } from "./attachments";
-import { canUsePrivateChannels } from "./offers";
-import { INBOX_SCAN_LIMIT, STAFF_UNREAD_SCAN_LIMIT, channelKey } from "./constants";
-import type { AttachmentKind, ConversationChannel, PlayerOffer } from "./types";
+import { INBOX_SCAN_LIMIT, STAFF_UNREAD_SCAN_LIMIT } from "./constants";
+import {
+  CHANNEL_MEMBERS,
+  CHANNEL_ORDER,
+  channelId,
+  channelLabel,
+  onChannel,
+  parseChannelId,
+  refOfRow,
+  type ChannelKind,
+  type ChannelRef,
+} from "./channels";
+import type { AttachmentKind, ConversationChannel } from "./types";
 
 /**
- * Canaux de discussion (migration 0034) — source unique du « qui a quels fils ».
+ * Qui a quels fils (0048) — source unique côté application. La RLS
+ * (`can_read_channel`) reste seule juge de ce qui se lit ; ici on décide de ce
+ * qu'on AFFICHE à chacun, et sous quel nom.
  *
- *  * Fil coach & parents  : `adminId = null`, ouvert à tous les joueurs.
- *  * Fils privés          : un par admin, offre formation uniquement.
- *
- * La liste des admins passe par le service_role : la RLS de profiles ne laisse
- * pas un joueur lire le profil d'un admin qui n'est pas son coach, alors qu'il
- * doit voir « Lucas » et « Maxime » sur ses onglets. On n'expose que le prénom.
+ * Les prénoms du staff passent par le service_role : la RLS de profiles ne les
+ * donne pas à un joueur ni à un parent. On n'expose que le prénom.
  */
 
-export interface StaffAdmin {
-  id: string;
-  firstName: string;
+export type Viewer = "player" | "parent" | "coach" | "admin";
+
+/** Les titulaires des rôles d'un joueur : référent, coachs technique et physique. */
+export interface ChannelHolders {
+  coachId: string | null;
+  technique: string | null;
+  physique: string | null;
 }
 
-/** Admins du club, par ordre alphabétique (ordre stable des onglets). */
-export async function listStaffAdmins(): Promise<StaffAdmin[]> {
+/** Titulaires des rôles pour ces joueurs (service_role, ids seulement). */
+export async function getChannelHolders(playerIds: string[]): Promise<Map<string, ChannelHolders>> {
+  const out = new Map<string, ChannelHolders>();
+  if (playerIds.length === 0) return out;
   const admin = createAdminClient();
-  const { data } = await admin
-    .from("profiles")
-    .select("id, first_name")
-    .eq("role", "admin")
-    .order("first_name");
-  return (data ?? []).map((p) => ({ id: p.id, firstName: p.first_name || "Staff" }));
+  const { data: players } = await admin.from("players").select("id, coach_id, group_id").in("id", playerIds);
+  const groupIds = [...new Set((players ?? []).map((p) => p.group_id as string | null).filter(Boolean))] as string[];
+  const { data: roles } =
+    groupIds.length === 0
+      ? { data: [] }
+      : await admin
+          .from("group_staff")
+          .select("group_id, profile_id, role")
+          .in("group_id", groupIds)
+          .not("role", "is", null);
+  for (const p of players ?? []) {
+    const ofGroup = (roles ?? []).filter((r) => r.group_id === p.group_id);
+    out.set(p.id as string, {
+      coachId: (p.coach_id as string | null) ?? null,
+      technique: (ofGroup.find((r) => r.role === "technique")?.profile_id as string | undefined) ?? null,
+      physique: (ofGroup.find((r) => r.role === "physique")?.profile_id as string | undefined) ?? null,
+    });
+  }
+  return out;
 }
 
-/**
- * Porteurs possibles d'un fil privé avec ce joueur (0037) : son coach référent
- * d'abord, puis les admins. Un coach référent qui est aussi admin n'apparaît
- * qu'une fois. Service_role : la RLS de profiles ne donne pas ces noms à un
- * joueur — on n'expose que le prénom.
- */
-export async function listPrivateChannelOwners(playerId: string): Promise<StaffAdmin[]> {
-  const admin = createAdminClient();
-  const [{ data: player }, admins] = await Promise.all([
-    admin.from("players").select("coach_id").eq("id", playerId).maybeSingle(),
-    listStaffAdmins(),
-  ]);
-  const coachId = player?.coach_id as string | null | undefined;
-  if (!coachId || admins.some((a) => a.id === coachId)) return admins;
-
-  const { data: coach } = await admin
-    .from("profiles")
-    .select("id, first_name")
-    .eq("id", coachId)
-    .maybeSingle();
-  if (!coach) return admins;
-  return [{ id: coach.id, firstName: coach.first_name || "Coach" }, ...admins];
+async function firstNames(ids: string[]): Promise<Map<string, string>> {
+  const unique = [...new Set(ids.filter(Boolean))];
+  if (unique.length === 0) return new Map();
+  const { data } = await createAdminClient().from("profiles").select("id, first_name").in("id", unique);
+  return new Map((data ?? []).map((p) => [p.id as string, (p.first_name as string) || "Staff"]));
 }
 
-/**
- * Y a-t-il, dans ce canal, un message plus récent que le dernier passage de
- * l'utilisateur — et écrit par quelqu'un d'autre ?
- *
- * Lecture sous RLS : un canal auquel l'appelant n'a pas accès ne renvoie rien,
- * donc jamais de pastille sur un fil qu'on ne peut pas ouvrir.
- */
-async function channelHasUnread(
+/** Les fils qu'un lecteur voit dans la conversation d'un joueur (avant non-lu). */
+function visibleKinds(viewer: Viewer, viewerId: string, holders: ChannelHolders | undefined): ChannelKind[] {
+  const has = (k: "technique" | "physique") => Boolean(holders?.[k]);
+  switch (viewer) {
+    case "parent":
+      return ["global", "parents"];
+    case "player":
+      return [
+        "global",
+        ...(holders?.coachId ? (["referent"] as const) : []),
+        ...(has("technique") ? (["technique"] as const) : []),
+        ...(has("physique") ? (["physique"] as const) : []),
+      ];
+    case "admin":
+      return [
+        "global",
+        ...(holders?.coachId ? (["referent"] as const) : []),
+        ...(has("technique") ? (["technique"] as const) : []),
+        ...(has("physique") ? (["physique"] as const) : []),
+        "parents",
+      ];
+    case "coach":
+      return [
+        "global",
+        ...(holders?.coachId === viewerId ? (["referent"] as const) : []),
+        ...(holders?.technique === viewerId ? (["technique"] as const) : []),
+        ...(holders?.physique === viewerId ? (["physique"] as const) : []),
+        "parents",
+      ];
+  }
+}
+
+/** Le dernier message d'un fil et son non-lu pour ce lecteur (lecture RLS). */
+async function channelState(
   supabase: SupabaseClient,
   playerId: string,
   viewerId: string,
-  adminId: string | null,
+  ref: ChannelRef,
   lastReadAt: string | null
-): Promise<boolean> {
-  let query = supabase.from("conversation_messages").select("id").eq("player_id", playerId).limit(1);
-  query = adminId ? query.eq("channel_admin_id", adminId) : query.is("channel_admin_id", null);
-  // Les siens ne comptent pas. Pour le JOUEUR, un message sans auteur compte
-  // (rappel automatique « VPF », 0043) — en SQL, `sender_id <> x` exclurait
-  // les NULL, d'où le `or`. Pour le staff et les parents, ni les comptes
-  // supprimés ni les rappels : un rappel s'adresse au joueur, pas à eux.
-  query =
-    viewerId === playerId
-      ? query.or(`sender_id.is.null,sender_id.neq.${viewerId}`)
-      : query.neq("sender_id", viewerId).eq("is_system", false);
-  if (lastReadAt) query = query.gt("created_at", lastReadAt);
-
-  const { data } = await query;
-  return (data ?? []).length > 0;
+): Promise<{ last: ConversationChannel["last"]; hasUnread: boolean }> {
+  const { data } = await onChannel(
+    supabase
+      .from("conversation_messages")
+      .select("sender_id, body, created_at, attachment_kind, is_system")
+      .eq("player_id", playerId),
+    ref
+  )
+    .order("created_at", { ascending: false })
+    .limit(1);
+  const m = data?.[0];
+  if (!m) return { last: null, hasUnread: false };
+  // les siens ne comptent pas ; un rappel « VPF » (sans auteur) ne compte que
+  // pour le joueur à qui il s'adresse
+  const counts =
+    m.sender_id !== viewerId && (viewerId === playerId ? true : !m.is_system && m.sender_id !== null);
+  return {
+    last: {
+      body: messagePreview({ body: m.body, attachment_kind: m.attachment_kind as AttachmentKind | null }),
+      at: m.created_at as string,
+      fromMe: m.sender_id === viewerId,
+      senderId: (m.sender_id as string | null) ?? null,
+      isSystem: Boolean(m.is_system),
+      fromName: null,
+    },
+    hasUnread: counts && (!lastReadAt || (m.created_at as string) > lastReadAt),
+  };
 }
 
 /**
- * Canaux qui ont du nouveau pour l'utilisateur, parmi ceux demandés. Sert au
- * rafraîchissement des pastilles pendant qu'un fil est ouvert (la liste des
- * canaux, elle, ne bouge pas).
- */
-export async function getUnreadChannelKeys(
-  supabase: SupabaseClient,
-  playerId: string,
-  viewerId: string,
-  adminIds: (string | null)[]
-): Promise<string[]> {
-  const { data: reads } = await supabase
-    .from("conversation_reads")
-    .select("channel_admin_id, last_read_at")
-    .eq("player_id", playerId)
-    .eq("user_id", viewerId);
-
-  const lastReadByChannel = new Map<string, string>(
-    (reads ?? []).map((r) => [channelKey(r.channel_admin_id), r.last_read_at])
-  );
-
-  // canaux indépendants les uns des autres : une seule salve réseau
-  const flags = await Promise.all(
-    adminIds.map((adminId) =>
-      channelHasUnread(
-        supabase,
-        playerId,
-        viewerId,
-        adminId,
-        lastReadByChannel.get(channelKey(adminId)) ?? null
-      )
-    )
-  );
-  return adminIds.filter((_, i) => flags[i]).map((adminId) => channelKey(adminId));
-}
-
-/**
- * Canaux visibles par l'utilisateur courant dans le fil d'un joueur, avec leur
- * état non-lu. Sert au joueur (ses fils) comme au staff (fiche joueur).
- *
- * `includePrivate` :
- *  * `true`  — tous les fils privés (le joueur lui-même, les admins) ;
- *  * `"own"` — seulement le sien (le coach référent, 0037) ;
- *  * `false` — le fil global uniquement (les parents).
+ * Les fils de la conversation d'un joueur, tels que ce lecteur les voit : nom,
+ * membres, dernier message, non-lu, droit d'écrire. Triés comme une liste de
+ * discussions WhatsApp : par activité, Global en tête à égalité.
  */
 export async function getConversationChannels(
   supabase: SupabaseClient,
-  {
-    playerId,
-    viewerId,
-    offer,
-    includePrivate,
-  }: {
-    playerId: string;
-    viewerId: string;
-    offer: PlayerOffer;
-    includePrivate: boolean | "own";
-  }
+  { playerId, viewerId, viewer }: { playerId: string; viewerId: string; viewer: Viewer }
 ): Promise<ConversationChannel[]> {
-  const owners =
-    includePrivate && canUsePrivateChannels(offer) ? await listPrivateChannelOwners(playerId) : [];
-  const visible = includePrivate === "own" ? owners.filter((o) => o.id === viewerId) : owners;
+  const holders = (await getChannelHolders([playerId])).get(playerId);
+  const kinds = visibleKinds(viewer, viewerId, holders);
 
-  const wanted: { adminId: string | null; adminName: string | null }[] = [
-    { adminId: null, adminName: null },
-    ...visible.map((a) => ({ adminId: a.id, adminName: a.firstName })),
+  // anciens fils privés (avant 0048) qui ont des messages : en lecture seule
+  const legacyOwners: string[] = [];
+  if (viewer !== "parent") {
+    const { data: legacy } = await supabase
+      .from("conversation_messages")
+      .select("channel_admin_id")
+      .eq("player_id", playerId)
+      .eq("channel", "legacy")
+      .limit(200);
+    for (const l of legacy ?? []) {
+      const owner = l.channel_admin_id as string | null;
+      if (owner && !legacyOwners.includes(owner) && (viewer !== "coach" || owner === viewerId)) {
+        legacyOwners.push(owner);
+      }
+    }
+  }
+
+  const refs: ChannelRef[] = [
+    ...kinds.map((kind) => ({ kind, ownerId: null })),
+    ...legacyOwners.map((ownerId) => ({ kind: "legacy" as const, ownerId })),
   ];
 
-  const unread = new Set(
-    await getUnreadChannelKeys(
-      supabase,
-      playerId,
-      viewerId,
-      wanted.map((c) => c.adminId)
-    )
-  );
+  const [{ data: reads }, names] = await Promise.all([
+    supabase
+      .from("conversation_reads")
+      .select("channel, channel_admin_id, last_read_at")
+      .eq("player_id", playerId)
+      .eq("user_id", viewerId),
+    firstNames([holders?.coachId ?? "", holders?.technique ?? "", holders?.physique ?? "", ...legacyOwners]),
+  ]);
+  const lastRead = new Map((reads ?? []).map((r) => [channelId(refOfRow(r)), r.last_read_at as string]));
 
-  return wanted.map((c) => ({ ...c, hasUnread: unread.has(channelKey(c.adminId)) }));
+  const states = await Promise.all(
+    refs.map((ref) => channelState(supabase, playerId, viewerId, ref, lastRead.get(channelId(ref)) ?? null))
+  );
+  // l'auteur du dernier message, pour l'aperçu « Lucas : … »
+  const senderNames = await firstNames(
+    states.map((s) => s.last?.senderId ?? "").filter((id) => id && !names.has(id))
+  );
+  for (const s of states) {
+    if (!s.last) continue;
+    s.last.fromName = s.last.isSystem
+      ? "VPF"
+      : s.last.fromMe
+        ? "Toi"
+        : (s.last.senderId && (names.get(s.last.senderId) ?? senderNames.get(s.last.senderId))) || null;
+  }
+
+  const holderOf = (ref: ChannelRef): string | null => {
+    if (ref.kind === "legacy") return ref.ownerId;
+    if (ref.kind === "referent") return holders?.coachId ?? null;
+    if (ref.kind === "technique") return holders?.technique ?? null;
+    if (ref.kind === "physique") return holders?.physique ?? null;
+    return null;
+  };
+
+  return refs
+    .map((ref, i) => {
+      const holder = holderOf(ref);
+      return {
+        id: channelId(ref),
+        kind: ref.kind,
+        ownerId: ref.ownerId,
+        label: channelLabel(ref.kind, holder ? (names.get(holder) ?? null) : null),
+        members: CHANNEL_MEMBERS[ref.kind],
+        canWrite: ref.kind !== "legacy",
+        hasUnread: states[i].hasUnread,
+        last: states[i].last,
+      };
+    })
+    .sort((a, b) => {
+      if (a.last && b.last && a.last.at !== b.last.at) return a.last.at < b.last.at ? 1 : -1;
+      if (a.last && !b.last) return -1;
+      if (!a.last && b.last) return 1;
+      return CHANNEL_ORDER[a.kind] - CHANNEL_ORDER[b.kind];
+    });
 }
 
 // ---------------------------------------------------------------------------
-// Pastille de la barre de navigation du joueur
+// Pastille de la barre de navigation (joueur, parent)
 // ---------------------------------------------------------------------------
 
 /**
  * Messages balayés pour la pastille de la barre du bas. Les marqueurs de
- * lecture étant monotones (lire un message vaut lecture de tout ce qui
- * précède dans le canal), il suffit de regarder les derniers messages reçus :
- * si tous sont lus, tout ce qui est plus ancien l'est aussi.
+ * lecture sont monotones par fil : si les derniers messages reçus sont lus,
+ * tout ce qui est plus ancien l'est aussi.
  */
-const NAV_UNREAD_SCAN = 30;
-
-export interface NavUnreadInput {
-  reads: { channel_admin_id: string | null; last_read_at: string }[];
-  recent: { channel_admin_id: string | null; created_at: string }[];
-}
+const NAV_UNREAD_SCAN = 40;
 
 /**
- * Lecture nécessaire à la pastille de navigation : deux requêtes lancées avec
- * le reste du layout (le verdict, lui, dépend de l'offre — cf. hasNavUnread).
+ * Du non-lu dans l'un des fils du joueur (ou, pour un parent, de son enfant) ?
+ * La RLS ne rend que les fils de ce lecteur : un parent ne voit jamais un fil
+ * Technique, un joueur jamais le fil Parents.
  */
-export async function fetchNavUnread(
+export async function hasFamilyUnread(
   supabase: SupabaseClient,
-  playerId: string
-): Promise<NavUnreadInput> {
+  playerId: string,
+  viewerId: string
+): Promise<boolean> {
   const [{ data: reads }, { data: recent }] = await Promise.all([
     supabase
       .from("conversation_reads")
-      .select("channel_admin_id, last_read_at")
+      .select("channel, channel_admin_id, last_read_at")
       .eq("player_id", playerId)
-      .eq("user_id", playerId),
+      .eq("user_id", viewerId),
     supabase
       .from("conversation_messages")
-      .select("channel_admin_id, created_at")
+      .select("channel, channel_admin_id, created_at, sender_id, is_system")
       .eq("player_id", playerId)
       // ses propres messages ne se notifient pas ; un rappel « VPF » (sans
-      // auteur, 0043) si — d'où le `or`, `<>` exclurait les NULL
-      .or(`sender_id.is.null,sender_id.neq.${playerId}`)
+      // auteur) seulement au joueur — `<>` exclurait les NULL, d'où le `or`
+      .or(`sender_id.is.null,sender_id.neq.${viewerId}`)
       .order("created_at", { ascending: false })
       .limit(NAV_UNREAD_SCAN),
   ]);
-  return { reads: reads ?? [], recent: recent ?? [] };
-}
-
-/**
- * Le joueur a-t-il du non-lu dans l'un de ses canaux ?
- *
- * Un joueur repassé en perf ne voit plus ses fils privés : on ignore leur
- * non-lu, sinon la pastille resterait allumée sur un onglet qu'il ne peut plus
- * ouvrir.
- */
-export function hasNavUnread(input: NavUnreadInput, offer: PlayerOffer): boolean {
-  const includePrivate = canUsePrivateChannels(offer);
-  const lastReadByChannel = new Map(
-    input.reads.map((r) => [channelKey(r.channel_admin_id), r.last_read_at])
-  );
-  return input.recent.some((m) => {
-    if (m.channel_admin_id && !includePrivate) return false;
-    const lastRead = lastReadByChannel.get(channelKey(m.channel_admin_id));
-    return !lastRead || m.created_at > lastRead;
+  const lastRead = new Map((reads ?? []).map((r) => [channelId(refOfRow(r)), r.last_read_at as string]));
+  return (recent ?? []).some((m) => {
+    if (m.is_system && viewerId !== playerId) return false;
+    const seen = lastRead.get(channelId(refOfRow(m)));
+    return !seen || (m.created_at as string) > seen;
   });
 }
 
 // ---------------------------------------------------------------------------
-// Pastilles de non-lu du staff
+// Pastilles et boîte de réception du staff
 // ---------------------------------------------------------------------------
 
 /**
- * Parmi ces joueurs, ceux dont un fil porte un message que le membre du staff
- * n'a pas lu.
- *
- * Sert à la pastille de l'onglet Joueurs et à celle de chaque carte de la
- * liste : un message raté ne doit jamais demander d'ouvrir les fiches une par
- * une pour être découvert.
- *
- * PÉRIMÈTRE — exactement celui de `getStaffInbox`, et c'est ce qui fait tenir
- * la pastille : une pastille qu'on ne peut pas éteindre est pire que pas de
- * pastille. La RLS est plus large que la boîte (0037 rend TOUS les fils privés
- * à un admin, y compris ceux de ses collègues), donc sans filtre explicite un
- * admin s'allumait sur le fil privé de l'autre admin — fil que sa boîte
- * n'affiche pas et qu'il ne peut donc jamais marquer lu. On ne retient donc :
- *
- *  - que le fil global (`channel_admin_id is null`) et SES propres fils privés,
- *  - et, pour les fils privés, que les joueurs en offre formation : un joueur
- *    repassé en perf perd l'onglet côté joueur comme le fil côté boîte
- *    (symétrique de `hasNavUnread`).
- *
- * Balayage borné à STAFF_UNREAD_SCAN_LIMIT messages récents. Les marqueurs de
- * lecture étant monotones par canal, le dernier message d'un fil tranche pour
- * tout le fil : remonter plus loin n'apprendrait rien, sauf si un seul fil
- * concentrait à lui seul des centaines de messages plus récents que le dernier
- * message non lu d'un autre.
+ * Les fils d'un joueur qui « sont à moi » : Global et Parents pour tout le
+ * staff du joueur, plus les fils dont je tiens le rôle (référent, technique,
+ * physique). Un admin lit tous les fils (supervision) mais ne s'allume que
+ * sur les siens : une pastille qu'on ne peut pas éteindre est pire que rien.
+ */
+function myKinds(viewerId: string, holders: ChannelHolders | undefined): Set<ChannelKind> {
+  const kinds = new Set<ChannelKind>(["global", "parents"]);
+  if (holders?.coachId === viewerId) kinds.add("referent");
+  if (holders?.technique === viewerId) kinds.add("technique");
+  if (holders?.physique === viewerId) kinds.add("physique");
+  return kinds;
+}
+
+/**
+ * Parmi ces joueurs, ceux dont un de MES fils porte un message que je n'ai
+ * pas lu. Même périmètre que `getStaffInbox` : la pastille, la liste et la
+ * boîte disent la même chose.
  */
 export async function getStaffUnreadPlayerIds(
   supabase: SupabaseClient,
@@ -266,43 +299,35 @@ export async function getStaffUnreadPlayerIds(
 ): Promise<Set<string>> {
   if (playerIds.length === 0) return new Set();
 
-  const [{ data: messages }, { data: reads }, { data: formationRows }] = await Promise.all([
+  const [{ data: messages }, { data: reads }, holders] = await Promise.all([
     supabase
       .from("conversation_messages")
-      .select("player_id, channel_admin_id, created_at")
+      .select("player_id, channel, channel_admin_id, created_at")
       .in("player_id", playerIds)
       // les siens ne comptent pas ; un compte supprimé (sender null) non plus ;
-      // ni les rappels automatiques « VPF » (0043), adressés au joueur
+      // ni les rappels automatiques « VPF », adressés au joueur
       .neq("sender_id", viewerId)
       .eq("is_system", false)
-      // fil global + ses propres fils privés (cf. périmètre ci-dessus)
-      .or(`channel_admin_id.is.null,channel_admin_id.eq.${viewerId}`)
+      .neq("channel", "legacy")
       .order("created_at", { ascending: false })
       .limit(STAFF_UNREAD_SCAN_LIMIT),
     supabase
       .from("conversation_reads")
-      .select("player_id, channel_admin_id, last_read_at")
+      .select("player_id, channel, channel_admin_id, last_read_at")
       .in("player_id", playerIds)
       .eq("user_id", viewerId),
-    supabase
-      .from("players")
-      .select("id")
-      .in("id", playerIds)
-      .eq("offer", "formation")
-      .eq("status", "active"),
+    getChannelHolders(playerIds),
   ]);
 
-  const lastReadByChannel = new Map(
-    (reads ?? []).map((r) => [`${r.player_id}:${channelKey(r.channel_admin_id)}`, r.last_read_at])
+  const lastRead = new Map(
+    (reads ?? []).map((r) => [`${r.player_id}:${channelId(refOfRow(r))}`, r.last_read_at as string])
   );
-  const hasPrivateChannels = new Set((formationRows ?? []).map((p) => p.id));
-
   const unread = new Set<string>();
   for (const m of messages ?? []) {
-    // fil privé d'un joueur repassé en perf : plus affiché nulle part
-    if (m.channel_admin_id && !hasPrivateChannels.has(m.player_id)) continue;
-    const seenAt = lastReadByChannel.get(`${m.player_id}:${channelKey(m.channel_admin_id)}`);
-    if (!seenAt || m.created_at > seenAt) unread.add(m.player_id);
+    const ref = refOfRow(m);
+    if (!myKinds(viewerId, holders.get(m.player_id as string)).has(ref.kind)) continue;
+    const seen = lastRead.get(`${m.player_id}:${channelId(ref)}`);
+    if (!seen || (m.created_at as string) > seen) unread.add(m.player_id as string);
   }
   return unread;
 }
@@ -310,9 +335,6 @@ export async function getStaffUnreadPlayerIds(
 /**
  * Les joueurs actifs « à moi » pour la pastille et le brief : ceux dont je
  * suis le référent, plus ceux des groupes dont je fais partie du staff (0040).
- * Filtre explicite : la RLS montre TOUS les joueurs à un admin, or la pastille
- * ne parle que de ce qui m'attend — et depuis les groupes, ce qui attend le
- * staff du groupe m'attend aussi.
  */
 export async function getMyPlayerIds(supabase: SupabaseClient, staffId: string): Promise<string[]> {
   const { data: memberships } = await supabase
@@ -331,27 +353,18 @@ export async function getMyPlayerIds(supabase: SupabaseClient, staffId: string):
 }
 
 /** Le staff a-t-il du non-lu chez l'un de ses joueurs actifs ? */
-export async function hasStaffUnread(
-  supabase: SupabaseClient,
-  staffId: string
-): Promise<boolean> {
-  const unread = await getStaffUnreadPlayerIds(
-    supabase,
-    staffId,
-    await getMyPlayerIds(supabase, staffId)
-  );
+export async function hasStaffUnread(supabase: SupabaseClient, staffId: string): Promise<boolean> {
+  const unread = await getStaffUnreadPlayerIds(supabase, staffId, await getMyPlayerIds(supabase, staffId));
   return unread.size > 0;
 }
-
-// ---------------------------------------------------------------------------
-// Boîtes de réception du staff
-// ---------------------------------------------------------------------------
 
 export interface InboxThread {
   playerId: string;
   playerName: string;
-  /** null = fil coach & parents ; sinon fil privé porté par cet admin */
-  channelAdminId: string | null;
+  /** identifiant du fil (cf. channels.ts) : `global`, `technique`… */
+  channel: string;
+  /** nom du fil : « Technique », « Parents »… */
+  channelName: string;
   /** dernier message du fil, null si personne n'a encore écrit */
   lastBody: string | null;
   lastAt: string | null;
@@ -368,200 +381,103 @@ function byLastMessage(a: InboxThread, b: InboxThread): number {
 }
 
 /**
- * TOUS les fils dont ce membre du staff est destinataire, du plus récemment
- * animé au plus ancien — la boîte de réception de la liste des joueurs.
- *
- *  * le fil global de chaque joueur du périmètre (`scope`, par défaut SES
- *    joueurs — la RLS rend tous les joueurs du club à un admin) ;
- *  * ses propres fils privés : un par joueur formation actif pour un admin,
- *    un par joueur formation qu'il encadre pour un coach référent (0037).
- *
- * Les fils privés d'un collègue ne sont PAS ici : ils ont leur propre onglet
- * (getAdminInbox), pour que « mes fils » veuille dire quelque chose.
- *
- * Un seul balayage de messages, borné à INBOX_SCAN_LIMIT : au-delà, un fil dont
- * le dernier message est très ancien s'affiche comme muet — même borne que
- * l'historique du fil lui-même, pas une perte de données.
+ * TOUS mes fils (cf. `myKinds`) chez ces joueurs, du plus récemment animé au
+ * plus ancien — une ligne par (joueur, fil), comme une liste de discussions.
+ * Par défaut, les joueurs dont je suis le référent. Un seul balayage borné à
+ * INBOX_SCAN_LIMIT : au-delà, un fil très ancien s'affiche comme muet.
  */
 export async function getStaffInbox(
   supabase: SupabaseClient,
   viewerId: string,
-  isAdmin: boolean,
-  /**
-   * Joueurs à couvrir. Par défaut, ceux dont il est le coach référent — c'est
-   * le périmètre de l'accueil. La liste des joueurs, elle, passe TOUS les
-   * joueurs qu'elle affiche (le club entier pour un admin) : elle sert de
-   * boîte de réception et un fil ne doit pas y rester muet faute d'être
-   * demandé ici. La RLS reste seule juge de ce qui se lit.
-   */
+  _isAdmin: boolean,
   scope?: string[]
 ): Promise<InboxThread[]> {
-  // fils privés portés par le lecteur : tous les joueurs formation pour un
-  // admin, SES joueurs formation pour un coach référent (0037)
-  let privateQuery = supabase
-    .from("players")
-    .select("id")
-    .eq("offer", "formation")
-    .eq("status", "active");
-  if (scope) privateQuery = privateQuery.in("id", scope);
-  if (!isAdmin) privateQuery = privateQuery.eq("coach_id", viewerId);
+  const playerIds =
+    scope ??
+    (
+      await supabase.from("players").select("id").eq("coach_id", viewerId).eq("status", "active")
+    ).data?.map((p) => p.id as string) ??
+    [];
+  if (playerIds.length === 0) return [];
 
-  const [{ data: globalPlayers }, { data: formationPlayers }] = await Promise.all([
-    scope
-      ? Promise.resolve({ data: scope.map((id) => ({ id })) })
-      : supabase.from("players").select("id").eq("coach_id", viewerId).eq("status", "active"),
-    privateQuery,
-  ]);
-
-  const wanted: { playerId: string; channelAdminId: string | null }[] = [
-    ...(globalPlayers ?? []).map((p) => ({ playerId: p.id, channelAdminId: null })),
-    ...(formationPlayers ?? []).map((p) => ({ playerId: p.id, channelAdminId: viewerId })),
-  ];
-  if (wanted.length === 0) return [];
-
-  const playerIds = [...new Set(wanted.map((w) => w.playerId))];
-
-  const [{ data: profiles }, { data: messages }, { data: reads }] = await Promise.all([
+  const [{ data: profiles }, { data: messages }, { data: reads }, holders] = await Promise.all([
     supabase.from("profiles").select("id, first_name, last_name").in("id", playerIds),
     supabase
       .from("conversation_messages")
-      .select("player_id, channel_admin_id, sender_id, body, created_at, attachment_kind")
+      .select("player_id, channel, channel_admin_id, sender_id, body, created_at, attachment_kind")
       .in("player_id", playerIds)
-      // sans ce filtre, un admin balaierait aussi les fils privés de ses
-      // collègues (la RLS les lui rend) et pourrait épuiser la limite dessus
-      .or(`channel_admin_id.is.null,channel_admin_id.eq.${viewerId}`)
+      .neq("channel", "legacy")
       // la boîte du staff parle des échanges humains : un rappel automatique
-      // « VPF » (0043) ne la remonte pas et ne l'allume pas
+      // « VPF » ne la remonte pas et ne l'allume pas
       .eq("is_system", false)
       .order("created_at", { ascending: false })
       .limit(INBOX_SCAN_LIMIT),
     supabase
       .from("conversation_reads")
-      .select("player_id, channel_admin_id, last_read_at")
+      .select("player_id, channel, channel_admin_id, last_read_at")
       .in("player_id", playerIds)
       .eq("user_id", viewerId),
+    getChannelHolders(playerIds),
   ]);
 
-  const nameById = new Map(
-    (profiles ?? []).map((p) => [p.id, `${p.first_name} ${p.last_name}`.trim()])
+  const nameById = new Map((profiles ?? []).map((p) => [p.id, `${p.first_name} ${p.last_name}`.trim()]));
+  const lastRead = new Map(
+    (reads ?? []).map((r) => [`${r.player_id}:${channelId(refOfRow(r))}`, r.last_read_at as string])
   );
-  const lastReadByKey = new Map(
-    (reads ?? []).map((r) => [`${r.player_id}:${channelKey(r.channel_admin_id)}`, r.last_read_at])
-  );
-
-  // messages triés du plus récent au plus ancien : le premier vu pour une paire
-  // (joueur, canal) est le dernier message de ce fil
   const lastByKey = new Map<
     string,
-    {
-      body: string;
-      created_at: string;
-      sender_id: string | null;
-      attachment_kind: AttachmentKind | null;
-    }
+    { body: string; created_at: string; sender_id: string | null; attachment_kind: AttachmentKind | null }
   >();
   for (const m of messages ?? []) {
-    const key = `${m.player_id}:${channelKey(m.channel_admin_id)}`;
+    const key = `${m.player_id}:${channelId(refOfRow(m))}`;
     if (!lastByKey.has(key)) lastByKey.set(key, m);
   }
 
-  return wanted
-    .map(({ playerId, channelAdminId }) => {
-      const key = `${playerId}:${channelKey(channelAdminId)}`;
+  const threads: InboxThread[] = [];
+  for (const playerId of playerIds) {
+    for (const kind of myKinds(viewerId, holders.get(playerId))) {
+      const key = `${playerId}:${kind}`;
       const last = lastByKey.get(key);
-      const lastRead = lastReadByKey.get(key) ?? null;
-      return {
+      // Parents : un fil sans message n'a pas besoin d'encombrer la liste
+      if (kind !== "global" && !last) continue;
+      const seen = lastRead.get(key) ?? null;
+      threads.push({
         playerId,
         playerName: nameById.get(playerId) ?? "Joueur",
-        channelAdminId,
+        channel: kind,
+        channelName: channelLabel(kind, null),
         lastBody: last ? messagePreview(last) : null,
         lastAt: last?.created_at ?? null,
         lastFromMe: last?.sender_id === viewerId,
-        hasUnread: Boolean(
-          last && last.sender_id !== viewerId && (!lastRead || last.created_at > lastRead)
-        ),
-      };
-    })
-    .sort(byLastMessage);
+        hasUnread: Boolean(last && last.sender_id !== viewerId && (!seen || last.created_at > seen)),
+      });
+    }
+  }
+  return threads.sort(byLastMessage);
 }
 
 /**
- * Tous les fils privés portés par un admin (un par joueur formation actif),
- * du plus récemment animé au plus ancien.
- *
- * `channelAdminId` est le porteur du fil, `viewerId` celui qui regarde : les
- * deux diffèrent quand un admin consulte les fils de son collègue (0034).
- *
- * Les messages sont lus en une requête bornée à INBOX_SCAN_LIMIT : au-delà, un
- * fil dont le dernier message est très ancien s'affiche comme vide — c'est la
- * même borne d'historique que le fil lui-même, pas une perte de données.
+ * Parmi ces fils, ceux qui portent du nouveau pour ce lecteur. Rafraîchit les
+ * pastilles pendant qu'un fil est ouvert ; la RLS fait foi, un fil hors de
+ * portée ne renvoie jamais rien.
  */
-export async function getAdminInbox(
+export async function getUnreadChannelIds(
   supabase: SupabaseClient,
-  channelAdminId: string,
-  viewerId: string
-): Promise<InboxThread[]> {
-  const { data: players } = await supabase
-    .from("players")
-    .select("id")
-    .eq("offer", "formation")
-    .eq("status", "active");
-
-  const playerIds = (players ?? []).map((p) => p.id);
-  if (playerIds.length === 0) return [];
-
-  const [{ data: profiles }, { data: messages }, { data: reads }] = await Promise.all([
-    supabase.from("profiles").select("id, first_name, last_name").in("id", playerIds),
-    supabase
-      .from("conversation_messages")
-      .select("player_id, sender_id, body, created_at, attachment_kind")
-      .eq("channel_admin_id", channelAdminId)
-      .eq("is_system", false)
-      .order("created_at", { ascending: false })
-      .limit(INBOX_SCAN_LIMIT),
-    supabase
-      .from("conversation_reads")
-      .select("player_id, last_read_at")
-      .eq("channel_admin_id", channelAdminId)
-      .eq("user_id", viewerId),
-  ]);
-
-  const nameById = new Map(
-    (profiles ?? []).map((p) => [p.id, `${p.first_name} ${p.last_name}`.trim()])
-  );
-  const lastReadById = new Map((reads ?? []).map((r) => [r.player_id, r.last_read_at]));
-
-  // messages triés du plus récent au plus ancien : le premier vu pour un
-  // joueur est le dernier message de son fil
-  const lastByPlayer = new Map<
-    string,
-    {
-      body: string;
-      created_at: string;
-      sender_id: string | null;
-      attachment_kind: AttachmentKind | null;
-    }
-  >();
-  for (const m of messages ?? []) {
-    if (!lastByPlayer.has(m.player_id)) lastByPlayer.set(m.player_id, m);
-  }
-
-  return playerIds
-    .map((id) => {
-      const last = lastByPlayer.get(id);
-      const lastRead = lastReadById.get(id) ?? null;
-      return {
-        playerId: id,
-        playerName: nameById.get(id) ?? "Joueur",
-        channelAdminId,
-        // un vocal ou une photo n'a pas de texte : l'aperçu annonce sa nature
-        lastBody: last ? messagePreview(last) : null,
-        lastAt: last?.created_at ?? null,
-        lastFromMe: last?.sender_id === viewerId,
-        hasUnread: Boolean(
-          last && last.sender_id !== viewerId && (!lastRead || last.created_at > lastRead)
-        ),
-      };
+  playerId: string,
+  viewerId: string,
+  ids: string[]
+): Promise<string[]> {
+  const { data: reads } = await supabase
+    .from("conversation_reads")
+    .select("channel, channel_admin_id, last_read_at")
+    .eq("player_id", playerId)
+    .eq("user_id", viewerId);
+  const lastRead = new Map((reads ?? []).map((r) => [channelId(refOfRow(r)), r.last_read_at as string]));
+  const states = await Promise.all(
+    ids.map((id) => {
+      const ref = parseChannelId(id);
+      return channelState(supabase, playerId, viewerId, ref, lastRead.get(channelId(ref)) ?? null);
     })
-    .sort(byLastMessage);
+  );
+  return ids.filter((_, i) => states[i].hasUnread);
 }

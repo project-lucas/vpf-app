@@ -171,9 +171,20 @@ export function ReviewCard({ item }: { item: QueueReview }) {
 }
 
 export function VisioCard({ item }: { item: QueueVisio }) {
-  const [body, setBody] = useState(item.body);
+  // deux réponses au décrochage : proposer une visio, ou simplement prendre des nouvelles
+  const [mode, setMode] = useState<"visio" | "news">("visio");
+  const [texts, setTexts] = useState({ visio: item.body, news: item.checkinBody });
+  const body = texts[mode];
+  const setBody = (v: string) => setTexts((t) => ({ ...t, [mode]: v }));
   const d = useDecision();
-  if (d.state !== "open") return <Done p={item} text={d.state === "sent" ? "visio proposée" : "passé cette semaine"} />;
+  if (d.state !== "open") {
+    return (
+      <Done
+        p={item}
+        text={d.state === "sent" ? (mode === "visio" ? "visio proposée" : "message envoyé") : "passé cette semaine"}
+      />
+    );
+  }
   return (
     <article className="space-y-3 rounded-2xl border border-navy-100 bg-white p-4">
       <PlayerLine p={item} />
@@ -188,11 +199,32 @@ export function VisioCard({ item }: { item: QueueVisio }) {
       {!item.fromJarvis && (
         <p className="text-[12px] text-navy-400">Message type — Jarvis le personnalisera au prochain passage du matin.</p>
       )}
+      <div role="tablist" aria-label="Réponse" className="inline-flex gap-1 rounded-xl bg-cream p-1">
+        {(
+          [
+            { key: "visio", label: "Proposer une visio" },
+            { key: "news", label: "Prendre des nouvelles" },
+          ] as const
+        ).map((o) => (
+          <button
+            key={o.key}
+            type="button"
+            role="tab"
+            aria-selected={mode === o.key}
+            onClick={() => setMode(o.key)}
+            className={`rounded-lg px-3 py-1.5 text-[12.5px] font-bold transition-colors ${
+              mode === o.key ? "bg-white text-navy-900 shadow-sm" : "text-navy-500 hover:text-navy-900"
+            }`}
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
       <DraftEditor value={body} onChange={setBody} max={800} rows={3} />
       <Actions
         pending={d.pending}
         error={d.error}
-        sendLabel="Proposer la visio"
+        sendLabel={mode === "visio" ? "Proposer la visio" : "Envoyer le message"}
         disabled={!body.trim()}
         onSend={() => d.run(() => decideVisio(item.id, "send", body), "sent")}
         onSkip={() => d.run(() => decideVisio(item.id, "dismiss"), "dismissed")}
@@ -213,7 +245,7 @@ export function ReportCard({ item }: { item: QueueReport }) {
         extra={`${item.monthLabel} · ${
           item.parentCount > 0
             ? `${item.parentCount} parent${item.parentCount > 1 ? "s" : ""} inscrit${item.parentCount > 1 ? "s" : ""}`
-            : "aucun parent inscrit : seul le joueur le lira"
+            : "aucun parent inscrit : invite un parent pour l'envoyer"
         }`}
       />
       <JarvisNote text={item.reason} />
@@ -222,7 +254,7 @@ export function ReportCard({ item }: { item: QueueReport }) {
         pending={d.pending}
         error={d.error}
         sendLabel="Envoyer aux parents"
-        disabled={!body.trim()}
+        disabled={!body.trim() || item.parentCount === 0}
         onSend={() => d.run(() => approveReportDraft(item.draftId, body), "sent")}
         onSkip={() => d.run(() => dismissDraft(item.draftId), "dismissed")}
       />
@@ -261,6 +293,7 @@ export function ProgramBatch({ items }: { items: QueueProgram[] }) {
         selected.map((i) => ({
           kind: i.kind,
           playerId: i.playerId,
+          pole: i.pole ?? undefined,
           sessionId: i.sessionId ?? undefined,
           weekdays: i.weekdays,
           assignmentIds: i.assignmentIds,
@@ -271,6 +304,8 @@ export function ProgramBatch({ items }: { items: QueueProgram[] }) {
       setMessage({
         ok: (r.failed ?? []).length === 0,
         text: `${r.applied} appliquée${(r.applied ?? 0) > 1 ? "s" : ""}${
+          r.skipped ? ` · ${r.skipped} déjà en place, rien ajouté` : ""
+        }${
           (r.failed ?? []).length > 0 ? ` · ${r.failed!.length} refusée(s) : ${r.failed![0]}` : ""
         }`,
       });
@@ -300,11 +335,19 @@ export function ProgramBatch({ items }: { items: QueueProgram[] }) {
                         className="mt-0.5 h-4 w-4 accent-navy-800"
                       />
                       <span className="min-w-0">
-                        <span className={`font-semibold ${i.kind === "pause" ? "text-danger" : "text-navy-900"}`}>
-                          {i.kind === "pause" ? "Mettre en pause · " : "Affecter · "}
-                          <span className={i.pole ? POLE_TONE[i.pole] : ""}>{i.sessionName}</span>
-                        </span>
-                        {i.kind === "add" && <span className="text-navy-400"> · {weekdaysLabel(i.weekdays)}</span>}
+                        {i.kind === "replace" ? (
+                          <span className="font-semibold text-navy-900">
+                            Remplacer · <span className="text-danger line-through decoration-1">{i.pausedNames.join(", ")}</span>
+                            {" → "}
+                            <span className={i.pole ? POLE_TONE[i.pole] : ""}>{i.sessionName}</span>
+                          </span>
+                        ) : (
+                          <span className={`font-semibold ${i.kind === "pause" ? "text-danger" : "text-navy-900"}`}>
+                            {i.kind === "pause" ? "Mettre en pause · " : "Ajouter · "}
+                            <span className={i.pole ? POLE_TONE[i.pole] : ""}>{i.sessionName}</span>
+                          </span>
+                        )}
+                        {i.kind !== "pause" && <span className="text-navy-400"> · {weekdaysLabel(i.weekdays)}</span>}
                         <span className="block text-[12px] text-navy-400">{i.reason}</span>
                       </span>
                     </label>

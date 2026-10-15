@@ -43,6 +43,20 @@ export type ProgramProposal =
       assignmentIds: string[];
       sessionName: string;
       reason: string;
+    }
+  | {
+      // changement de direction (douleur) : les séances qui chargent la zone
+      // sont mises en pause ET la routine qui la soigne prend leur place
+      kind: "replace";
+      key: string;
+      playerId: string;
+      assignmentIds: string[];
+      pausedNames: string[];
+      sessionId: string;
+      sessionName: string;
+      pole: SessionPole;
+      weekdays: number[];
+      reason: string;
     };
 
 export async function getProgramProposals(
@@ -108,7 +122,29 @@ export async function getProgramProposals(
     }
 
     const care = suggested.routine.find((s) => s.forPain);
-    if (care) {
+    const conflicts = assignedConflicts(
+      mine.map((m) => ({ id: m.sessionId, name: m.name })),
+      painZones
+    );
+    const conflictIds = mine
+      .filter((m) => conflicts.some((c) => c.name === m.name))
+      .map((m) => m.id);
+
+    if (care && conflicts.length > 0) {
+      // une seule ligne : on ne peut pas garder l'ancien ET ajouter le nouveau
+      out.push({
+        kind: "replace",
+        key: `${playerId}:replace:${care.sessionId}`,
+        playerId,
+        assignmentIds: conflictIds,
+        pausedNames: conflicts.map((c) => c.name),
+        sessionId: care.sessionId,
+        sessionName: care.name,
+        pole: "routine",
+        weekdays: DEFAULT_DAYS.routine,
+        reason: `Douleur signalée (${ZONE_LABELS[care.forPain!]}) : les séances qui chargent la zone passent en pause, la routine de soin les remplace.`,
+      });
+    } else if (care) {
       out.push({
         kind: "add",
         key: `${playerId}:${care.sessionId}`,
@@ -119,21 +155,18 @@ export async function getProgramProposals(
         weekdays: DEFAULT_DAYS.routine,
         reason: `Douleur signalée (${ZONE_LABELS[care.forPain!]}) · ${care.reason}`,
       });
-    }
-
-    for (const conflict of assignedConflicts(
-      mine.map((m) => ({ id: m.sessionId, name: m.name })),
-      painZones
-    )) {
-      const assignmentIds = mine.filter((m) => m.name === conflict.name).map((m) => m.id);
-      out.push({
-        kind: "pause",
-        key: `${playerId}:pause:${assignmentIds.join(",")}`,
-        playerId,
-        assignmentIds,
-        sessionName: conflict.name,
-        reason: `Charge la zone douloureuse (${ZONE_LABELS[conflict.zone]}) : à mettre en pause`,
-      });
+    } else {
+      for (const conflict of conflicts) {
+        const assignmentIds = mine.filter((m) => m.name === conflict.name).map((m) => m.id);
+        out.push({
+          kind: "pause",
+          key: `${playerId}:pause:${assignmentIds.join(",")}`,
+          playerId,
+          assignmentIds,
+          sessionName: conflict.name,
+          reason: `Charge la zone douloureuse (${ZONE_LABELS[conflict.zone]}) : à mettre en pause`,
+        });
+      }
     }
   }
   return out;

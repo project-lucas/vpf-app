@@ -94,7 +94,7 @@ async function loadOne(admin: SupabaseClient, id: string, memory: PlayerMemory |
       .from("conversation_messages")
       .select("body, sender_id, is_system, created_at")
       .eq("player_id", id)
-      .is("channel_admin_id", null)
+      .eq("channel", "global")
       .order("created_at", { ascending: false })
       .limit(14),
   ]);

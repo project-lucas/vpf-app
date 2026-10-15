@@ -111,9 +111,10 @@ export async function updateCoach(
  * d'abord réassignés à l'admin qui exécute l'action — sinon la contrainte
  * `players.coach_id` (on delete restrict) bloquerait la suppression. La
  * suppression du compte auth cascade ensuite sur le profil, ses invitations,
- * ses subscriptions push, sa place dans les groupes — et ses fils privés avec
- * les joueurs (`conversation_messages.channel_admin_id` en cascade) : l'écran
- * le dit avant la confirmation. Depuis le 15/10/2026, un admin peut aussi
+ * ses subscriptions push, sa place dans les groupes (et donc ses rôles). Les
+ * fils par rôle (0048) restent : le prochain titulaire du rôle reprend leur
+ * historique ; seules ses anciennes archives privées (`legacy`) partent en
+ * cascade. Depuis le 15/10/2026, un admin peut aussi
  * supprimer un autre admin ; jamais lui-même, il en reste donc toujours un.
  */
 export async function deleteCoach(coachId: string): Promise<ActionResult> {

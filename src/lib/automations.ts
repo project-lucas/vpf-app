@@ -34,7 +34,7 @@ export async function postSystemMessage(input: {
 
   const { error } = await admin.from("conversation_messages").insert({
     player_id: input.playerId,
-    channel_admin_id: null,
+    channel: "global",
     sender_id: null,
     is_system: true,
     body: input.body.slice(0, 2000),

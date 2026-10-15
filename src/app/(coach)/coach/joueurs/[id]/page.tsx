@@ -4,6 +4,7 @@ import { createClient, getCachedUser } from "@/lib/supabase/server";
 import { getConversationMessages } from "@/app/actions/messages";
 import { ConversationPanel } from "@/components/messages/ConversationPanel";
 import { getConversationChannels } from "@/lib/conversations";
+import { channelId, parseChannelId } from "@/lib/channels";
 import { getNavRole } from "@/lib/auth";
 import {
   ageFromBirthdate,
@@ -19,10 +20,8 @@ import { PlayerRadar } from "@/app/(player)/dashboard/PlayerRadar";
 import { HeartPulse, History, ListChecks, MessageCircle, Star, Target, Zap } from "lucide-react";
 import {
   AVAILABILITY_LABELS,
-  channelKey,
   eventLabel,
   REVIEW_HEALTH_LABELS,
-  STAFF_CHANNEL_KEY,
   WEEKDAY_LABELS,
 } from "@/lib/constants";
 import { EventTypeIcon } from "@/components/planning/EventIcon";
@@ -41,7 +40,7 @@ import {
   ZONE_LABELS,
 } from "@/lib/session-suggestions";
 import { EVENT_TYPE_LABELS, formatDuration } from "@/lib/constants";
-import { JarvisPlayerButton } from "@/components/coach/JarvisPlayerBox";
+import { JarvisConversationSuggestions, JarvisPlayerButton } from "@/components/coach/JarvisPlayerBox";
 import { PlayerMemoryCard } from "@/components/coach/PlayerMemoryCard";
 import { getPlayerMemories } from "@/lib/player-memory";
 import { getBriefsForDate, isMorningBriefConfigured, type BriefRecommendation } from "@/lib/briefs";
@@ -99,8 +98,8 @@ export default async function PlayerDetailPage({
 }) {
   const { id } = await params;
   const { onglet, canal } = await searchParams;
-  // canal ouvert d'entrée dans l'onglet Messages (lien depuis la liste, push)
-  const initialChannelAdminId = canal && canal !== STAFF_CHANNEL_KEY ? canal : null;
+  // fil ouvert d'entrée dans l'onglet Messages (lien depuis la liste, push)
+  const initialChannel = channelId(parseChannelId(canal));
   const supabase = await createClient();
   const user = await getCachedUser();
   const weekStart = currentWeekStart();
@@ -214,7 +213,7 @@ export default async function PlayerDetailPage({
       .eq("player_id", id)
       .order("log_date", { ascending: false }),
     // fil de discussion du joueur (lecture RLS : coach référent + admin)
-    getConversationMessages(id, initialChannelAdminId),
+    getConversationMessages(id, initialChannel),
     // vidéothèque hygiène : catalogue complet + activations de ce joueur
     supabase.from("hygiene_videos").select("*").order("category").order("title"),
     supabase.from("hygiene_video_assignments").select("video_id").eq("player_id", id),
@@ -242,12 +241,11 @@ export default async function PlayerDetailPage({
   const [pushDeviceCount, playerParents, channels, { data: groups }, memories] = await Promise.all([
     countPushDevices(id),
     getPlayerParents(id),
+    // les fils de ce joueur que je vois (0048) : un admin les voit tous
     getConversationChannels(supabase, {
       playerId: id,
       viewerId: user?.id ?? "",
-      offer: toOffer(playerRaw.offer),
-      // admin : tous les fils privés ; coach référent : le sien (0037)
-      includePrivate: isAdminViewer ? true : playerRaw.coach_id === user?.id ? "own" : false,
+      viewer: isAdminViewer ? "admin" : "coach",
     }),
     // les groupes du service (0040) : l'étiquette de la tête de fiche, et le
     // sélecteur de l'onglet Fiche pour un admin
@@ -259,14 +257,7 @@ export default async function PlayerDetailPage({
   const groupName =
     (groups ?? []).find((g) => g.id === (playerRaw.group_id as string | null))?.name ?? null;
 
-  // « Global » = joueur + parents + tout le staff ; un prénom = le fil privé
-  // entre le joueur et ce membre du staff
-  const conversationChannels = channels.map((c) => ({
-    key: channelKey(c.adminId),
-    adminId: c.adminId,
-    label: c.adminId ? (c.adminName ?? "Staff") : "Global",
-    hasUnread: c.hasUnread,
-  }));
+  const conversationChannels = channels;
 
   const otherPlayers = (otherPlayersRaw ?? [])
     .map((p) => {
@@ -621,11 +612,13 @@ export default async function PlayerDetailPage({
                     playerId={id}
                     currentUserId={user?.id ?? ""}
                     channels={conversationChannels}
-                    initialChannelKey={channelKey(initialChannelAdminId)}
+                    initialChannelKey={initialChannel}
+                    startInChat={Boolean(canal)}
                     initialMessages={conversationMessages}
                     variant="coach"
                     className="h-[460px] lg:h-[520px]"
                   />
+                  <JarvisConversationSuggestions playerId={id} recos={playerRecos} />
                 </Card>
                 <div className="space-y-5">
                   <WeekDaysCard days={weekDetail} today={todayWeekday} playerId={id} />

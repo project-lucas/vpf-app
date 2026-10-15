@@ -264,7 +264,7 @@ export async function getHomeRows(
       if (!cur || t.lastAt > cur.at) lastByPlayer.set(t.playerId, { at: t.lastAt, body: t.lastBody });
     }
     if (t.hasUnread && !unreadThread.has(t.playerId)) {
-      unreadThread.set(t.playerId, { channel: t.channelAdminId, body: t.lastBody, at: t.lastAt });
+      unreadThread.set(t.playerId, { channel: t.channel, body: t.lastBody, at: t.lastAt });
     }
   }
 

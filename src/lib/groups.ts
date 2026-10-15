@@ -21,7 +21,7 @@ export async function getGroupsWithStaff(supabase: SupabaseClient): Promise<Grou
     // son staff, et c'est ce qui part vers le navigateur d'un coach
     createAdminClient()
       .from("group_staff")
-      .select("group_id, profile:profiles!group_staff_profile_id_fkey(id, first_name)"),
+      .select("group_id, role, profile:profiles!group_staff_profile_id_fkey(id, first_name)"),
   ]);
 
   const staffByGroup = new Map<string, GroupStaffMember[]>();
@@ -29,7 +29,11 @@ export async function getGroupsWithStaff(supabase: SupabaseClient): Promise<Grou
     const profile = Array.isArray(row.profile) ? row.profile[0] : row.profile;
     if (!profile) continue;
     const list = staffByGroup.get(row.group_id) ?? [];
-    list.push({ id: profile.id as string, first_name: profile.first_name as string });
+    list.push({
+      id: profile.id as string,
+      first_name: profile.first_name as string,
+      staff_role: (row.role as "technique" | "physique" | null) ?? null,
+    });
     staffByGroup.set(row.group_id, list);
   }
 

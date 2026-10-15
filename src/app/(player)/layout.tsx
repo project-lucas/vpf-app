@@ -1,7 +1,7 @@
 import { createClient, getCachedUser } from "@/lib/supabase/server";
 import { daysBetween, parisNow } from "@/lib/dates";
 import { canUseHygiene, toOffer } from "@/lib/offers";
-import { fetchNavUnread, hasNavUnread } from "@/lib/conversations";
+import { hasFamilyUnread } from "@/lib/conversations";
 import { CHECKIN_INTERVAL_DAYS } from "@/lib/constants";
 import { getPlayerGates, type DueMatch, type DueReview } from "@/lib/player-gates";
 import { BottomNav } from "@/components/BottomNav";
@@ -53,9 +53,8 @@ export default async function PlayerLayout({ children }: { children: React.React
       // annonces du club : la RLS filtre déjà selon l'offre du joueur
       supabase.from("announcements").select("*").order("created_at", { ascending: false }),
       supabase.from("announcement_reads").select("announcement_id").eq("user_id", user.id),
-      // messagerie : la lecture part avec le reste, le verdict dépend de
-      // l'offre (les fils privés n'existent qu'en formation)
-      fetchNavUnread(supabase, user.id),
+      // messagerie : du non-lu dans l'un de ses fils (0048)
+      hasFamilyUnread(supabase, user.id, user.id),
       getPlayerGates(supabase, user.id),
     ]);
     dueReview = gates.review;
@@ -63,7 +62,7 @@ export default async function PlayerLayout({ children }: { children: React.React
 
     const offer = toOffer(playerRow?.offer);
     showHygiene = canUseHygiene(offer);
-    hasUnreadMessages = hasNavUnread(navUnread, offer);
+    hasUnreadMessages = navUnread;
 
     announcements = (announcementRows ?? []) as Announcement[];
     const readIds = new Set((announcementReads ?? []).map((r) => r.announcement_id));

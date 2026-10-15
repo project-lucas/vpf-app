@@ -169,6 +169,64 @@ export async function setGroupStaff(
   return { ok: true };
 }
 
+const ROLE_LABELS = { technique: "coach technique", physique: "coach physique" } as const;
+
+/**
+ * Le rôle d'un membre du staff dans un groupe (0048) : coach technique ou
+ * physique. Il donne aux joueurs du groupe leur fil « Technique » ou
+ * « Physique » avec lui. Un seul titulaire par rôle et par groupe : en nommer
+ * un nouveau retire le rôle au précédent, qui reprend l'historique du fil.
+ */
+export async function setStaffRole(
+  groupId: string,
+  profileId: string,
+  role: "technique" | "physique" | null
+): Promise<ActionResult> {
+  const guard = await requireAdmin();
+  if (!guard.ok) return guard;
+  if (role !== null && role !== "technique" && role !== "physique") {
+    return { ok: false, error: "Rôle inconnu." };
+  }
+
+  const admin = createAdminClient();
+  const [{ data: member }, { data: profile }, { data: group }] = await Promise.all([
+    admin.from("group_staff").select("profile_id").eq("group_id", groupId).eq("profile_id", profileId).maybeSingle(),
+    admin.from("profiles").select("first_name").eq("id", profileId).maybeSingle(),
+    admin.from("groups").select("name").eq("id", groupId).maybeSingle(),
+  ]);
+  if (!group) return { ok: false, error: "Groupe introuvable." };
+  if (!member) return { ok: false, error: "Ajoute-le d'abord au staff du groupe." };
+
+  if (role) {
+    // un seul titulaire par rôle : l'ancien le perd
+    const { error: clearError } = await admin
+      .from("group_staff")
+      .update({ role: null })
+      .eq("group_id", groupId)
+      .eq("role", role)
+      .neq("profile_id", profileId);
+    if (clearError) return { ok: false, error: "Modification impossible." };
+  }
+  const { error } = await admin
+    .from("group_staff")
+    .update({ role })
+    .eq("group_id", groupId)
+    .eq("profile_id", profileId);
+  if (error) return { ok: false, error: "Modification impossible." };
+
+  await logStaffAction({
+    actorId: guard.adminId,
+    playerId: null,
+    action: "group_staff_role",
+    summary: role
+      ? `a nommé ${profile?.first_name ?? "un coach"} ${ROLE_LABELS[role]} du ${group.name}`
+      : `a retiré son rôle à ${profile?.first_name ?? "un coach"} dans le ${group.name}`,
+  });
+  revalidateGroups();
+  revalidatePath("/coach/messages");
+  return { ok: true };
+}
+
 /** Déplace un joueur dans un autre groupe. Aucune donnée ne bouge. */
 export async function setPlayerGroup(playerId: string, groupId: string): Promise<ActionResult> {
   const guard = await requireAdmin();

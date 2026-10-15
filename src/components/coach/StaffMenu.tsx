@@ -14,7 +14,7 @@ import { MessagesSquare, Settings, X } from "lucide-react";
  * Un cercle aux initiales, un petit panneau. Il se ferme au clic dehors, à
  * Échap, et à chaque navigation.
  */
-export function StaffMenu({ initials, isAdmin }: { initials: string; isAdmin: boolean }) {
+export function StaffMenu({ initials }: { initials: string; isAdmin?: boolean }) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
   const ref = useRef<HTMLDivElement>(null);
@@ -36,12 +36,8 @@ export function StaffMenu({ initials, isAdmin }: { initials: string; isAdmin: bo
   }, [open]);
 
   const items = [
-    ...(isAdmin
-      ? [
-          // les fils privés des collègues admins : du relais, pas du quotidien
-          { href: "/coach/messages", label: "Relais messages", icon: <MessagesSquare size={15} /> },
-        ]
-      : []),
+    // toutes mes discussions, façon WhatsApp (0048)
+    { href: "/coach/messages", label: "Messages", icon: <MessagesSquare size={15} /> },
     { href: "/coach/parametres", label: "Réglages", icon: <Settings size={15} /> },
   ];
 

@@ -3,7 +3,7 @@
 import { useEffect, useState, useTransition, type ReactNode } from "react";
 import Link from "next/link";
 import { MoreHorizontal, Plus, Settings2, Trash2, UserMinus, X } from "lucide-react";
-import { createGroup, deleteGroup, moveStaffToGroup, renameGroup, setGroupStaff } from "@/app/actions/groups";
+import { createGroup, deleteGroup, moveStaffToGroup, renameGroup, setGroupStaff, setStaffRole } from "@/app/actions/groups";
 import { archivePlayer, deleteCoach } from "@/app/actions/admin";
 import { OfferMark } from "@/components/coach/HomeCells";
 import { formatPercent } from "@/lib/discipline";
@@ -29,6 +29,8 @@ export interface BoardGroup {
   id: string;
   name: string;
   staffIds: string[];
+  /** rôle de chaque membre du staff (0048) : technique / physique */
+  roles: Record<string, "technique" | "physique">;
   /** coachs référents de joueurs du groupe sans en être le staff */
   referentIds: string[];
   players: BoardPlayer[];
@@ -443,6 +445,7 @@ function StaffLine({
 
   const others = groups.filter((g) => g.id !== group.id && !g.staffIds.includes(m.id));
   const firstName = m.name.split(" ")[0] ?? m.name;
+  const staffRole = isStaff ? (group.roles[m.id] ?? null) : null;
 
   return (
     <li className={`rounded-lg ${open ? "bg-cream" : ""}`}>
@@ -454,6 +457,16 @@ function StaffLine({
           <span className="truncate text-[13px] font-bold text-navy-900">{m.name}</span>
           {m.isAdmin && (
             <span className="rounded bg-navy-800 px-1 text-[9.5px] font-extrabold uppercase text-white">Admin</span>
+          )}
+          {staffRole && (
+            <span
+              className={`rounded px-1 text-[9.5px] font-extrabold uppercase text-white ${
+                staffRole === "technique" ? "bg-[#2a6fb0]" : "bg-[#b4232c]"
+              }`}
+              title={`Coach ${staffRole} du groupe : il a un fil « ${staffRole === "technique" ? "Technique" : "Physique"} » avec chaque joueur`}
+            >
+              {staffRole === "technique" ? "Technique" : "Physique"}
+            </span>
           )}
           {!isStaff && (
             <span
@@ -503,6 +516,21 @@ function StaffLine({
               Ajouter au staff de {group.name}
             </button>
           )}
+          {/* le rôle donne aux joueurs du groupe un fil Technique / Physique avec lui */}
+          {isStaff &&
+            (["technique", "physique"] as const).map((r) => (
+              <button
+                key={r}
+                type="button"
+                disabled={disabled}
+                onClick={() => run(() => setStaffRole(group.id, m.id, staffRole === r ? null : r), () => setOpen(false))}
+                className={`rounded-md px-2 py-1 text-[11.5px] font-bold ring-1 ring-inset ${
+                  staffRole === r ? "bg-navy-800 text-white ring-navy-800" : "bg-white text-navy-800 ring-sand hover:text-accent"
+                }`}
+              >
+                {staffRole === r ? `Retirer le rôle ${r}` : `Coach ${r}`}
+              </button>
+            ))}
           {isStaff && (
             <button
               type="button"
@@ -528,7 +556,7 @@ function StaffLine({
                 <span className="text-[11.5px] font-semibold text-danger">
                   {step === 1
                     ? `Supprimer le compte de ${firstName} ? C'est définitif.`
-                    : `Ses joueurs passent à toi, ses fils privés avec les joueurs sont effacés.`}
+                    : `Ses joueurs passent à toi ; les discussions restent, reprises par le prochain titulaire du rôle.`}
                 </span>
                 <button
                   type="button"

@@ -240,7 +240,9 @@ async function prepareReviewReplies(ctx: Ctx): Promise<number> {
 // ---------------------------------------------------------------------------
 
 const VisioOut = z.object({
-  messages: z.array(z.object({ playerId: z.string(), message: z.string(), reason: z.string() })),
+  messages: z.array(
+    z.object({ playerId: z.string(), message: z.string(), checkin: z.string(), reason: z.string() })
+  ),
 });
 
 const VISIO_SYSTEM = `${CONTEXT}
@@ -253,7 +255,9 @@ ${PRIVATE_RULE}
 
 ${TONE}
 
-Pour chaque joueur, renvoie playerId (tel quel), message, et reason : en une phrase pour le coach, ce qui t'inquiète.`;
+Écris aussi, pour chaque joueur, une seconde version plus légère (checkin) : sans visio, on prend simplement de ses nouvelles. 2 phrases : on a remarqué que c'était plus calme, on lui demande ce qui se passe de son côté, et on propose d'adapter son programme si besoin. Même ton, mêmes règles.
+
+Pour chaque joueur, renvoie playerId (tel quel), message (la visio), checkin (la version légère), et reason : en une phrase pour le coach, ce qui t'inquiète.`;
 
 async function prepareVisios(ctx: Ctx): Promise<number> {
   const weekStart = currentWeekStart();
@@ -300,6 +304,7 @@ async function prepareVisios(ctx: Ctx): Promise<number> {
           player_id: r.id,
           period: weekStart,
           body: m?.message.trim().slice(0, 800) ?? "",
+          alt_body: m?.checkin.trim().slice(0, 800) ?? "",
           // les signaux restent lisibles pour le staff, même sans la phrase du modèle
           reason: [m?.reason.trim(), (r.dropout?.reasons ?? []).join(" · ")].filter(Boolean).join(" — ").slice(0, 400),
           status: m?.message.trim() ? "pending" : "error",
@@ -448,7 +453,7 @@ const ReportOut = z.object({
 
 const REPORT_SYSTEM = `${CONTEXT}
 
-Tu rédiges le compte rendu mensuel adressé aux PARENTS de chaque joueur. Il part dans le fil Global (lu par les parents et le joueur) après relecture du staff : n'écris pas de signature.
+Tu rédiges le compte rendu mensuel adressé aux PARENTS de chaque joueur. Il part dans le fil privé « Parents » (les parents et le staff, sans le joueur) après relecture du staff : n'écris pas de signature.
 
 Forme : « Bonjour, voici le point du mois de <mois> pour <prénom> : » puis trois courts paragraphes séparés par une ligne vide, chacun commençant par son intitulé :
 Assiduité : ce qu'il a fait de son programme (pointages, bilans rendus), sans pourcentage brut si le chiffre est faible — dis-le avec tact.
@@ -456,7 +461,7 @@ Progrès : ce qui a avancé (matchs, objectifs, ce qu'il dit lui-même dans ses 
 Objectif du mois prochain : UN cap concret et atteignable.
 Puis une phrase de fin chaleureuse. 900 signes au plus.
 
-Tu parles du joueur à la troisième personne, avec bienveillance : il lira aussi. Jamais de diagnostic médical (une gêne se dit « une gêne au genou dont on tient compte »), jamais de reproche, jamais d'information absente des données. S'il y a peu de données, fais court et dis-le simplement. Texte brut, sans Markdown.
+Tu parles du joueur à la troisième personne, avec bienveillance : les parents peuvent lui montrer. Jamais de diagnostic médical (une gêne se dit « une gêne au genou dont on tient compte »), jamais de reproche, jamais d'information absente des données. S'il y a peu de données, fais court et dis-le simplement. Texte brut, sans Markdown.
 
 ${PRIVATE_RULE} Le rapport parle du basket : programme, bilans, matchs, objectifs.
 
@@ -473,7 +478,13 @@ async function prepareReports(ctx: Ctx, period: string): Promise<number> {
     .select("id")
     .eq("status", "active")
     .lte("created_at", cutoff);
-  const ids = (players ?? []).map((p) => p.id as string);
+  // le rapport part dans le fil Parents (0048) : sans parent inscrit, personne ne le lirait
+  const { data: links } = await ctx.admin
+    .from("parent_links")
+    .select("player_id")
+    .in("player_id", (players ?? []).map((p) => p.id as string));
+  const withParents = new Set((links ?? []).map((l) => l.player_id as string));
+  const ids = (players ?? []).map((p) => p.id as string).filter((id) => withParents.has(id));
   if (ids.length === 0) return 0;
   await releaseOldErrors(ctx, "parent_report");
   const { data: existing } = await ctx.admin

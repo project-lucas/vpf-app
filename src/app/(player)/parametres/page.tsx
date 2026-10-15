@@ -9,8 +9,7 @@ import { RulesCard } from "@/components/settings/RulesCard";
 import { SettingsSheet } from "@/components/settings/SettingsSheet";
 import { ConversationPanel } from "@/components/messages/ConversationPanel";
 import { getConversationChannels } from "@/lib/conversations";
-import { channelKey } from "@/lib/constants";
-import { toOffer } from "@/lib/offers";
+import { channelId, parseChannelId } from "@/lib/channels";
 import { Overline, Serif, DoubleRule, SectionHead } from "@/components/editorial/primitives";
 import { BellIcon } from "@/components/icons";
 import { MessageCircle } from "lucide-react";
@@ -30,7 +29,14 @@ function clubTag(club: string | null | undefined): string | undefined {
   return word ? word.toUpperCase().slice(0, 6) : undefined;
 }
 
-export default async function ProfilPage() {
+export default async function ProfilPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ canal?: string }>;
+}) {
+  const { canal } = await searchParams;
+  // fil ouvert d'entrée (lien d'une notification), Global sinon
+  const openChannel = channelId(parseChannelId(canal));
   const supabase = await createClient();
   const user = await getCachedUser();
   if (!user) return null;
@@ -48,7 +54,7 @@ export default async function ProfilPage() {
       )
       .eq("id", user.id)
       .maybeSingle(),
-    getConversationMessages(user.id),
+    getConversationMessages(user.id, openChannel),
   ]);
 
   const coach = playerRow
@@ -61,24 +67,13 @@ export default async function ProfilPage() {
   const initials =
     `${profile?.first_name?.[0] ?? ""}${profile?.last_name?.[0] ?? ""}`.toUpperCase();
 
-  // Canaux du joueur : son fil coach & parents, plus un fil privé par admin
-  // en offre formation (0034). L'étiquette du fil coach nomme le coach ; les
-  // fils privés portent le prénom de l'admin (Lucas, Maxime).
-  const channels = (
-    await getConversationChannels(supabase, {
-      playerId: user.id,
-      viewerId: user.id,
-      offer: toOffer(playerRow?.offer),
-      includePrivate: true,
-    })
-  ).map((c) => ({
-    key: channelKey(c.adminId),
-    adminId: c.adminId,
-    // « Global » = toi, tes parents et tout le staff ; un prénom = ton fil
-    // privé avec ce membre du staff
-    label: c.adminId ? (c.adminName ?? "Staff VPF") : "Global",
-    hasUnread: c.hasUnread,
-  }));
+  // Ses fils (0048) : Global, son référent, ses coachs technique et physique
+  // — jamais le fil Parents. Triés comme WhatsApp, le plus récent d'abord.
+  const channels = await getConversationChannels(supabase, {
+    playerId: user.id,
+    viewerId: user.id,
+    viewer: "player",
+  });
 
   const metaParts = [
     playerRow?.position,
@@ -133,8 +128,9 @@ export default async function ProfilPage() {
           playerId={user.id}
           currentUserId={user.id}
           channels={channels}
+          initialChannelKey={openChannel}
+          startInChat={Boolean(canal)}
           initialMessages={messages}
-          variant="editorial"
           className="mt-4 h-[calc(100dvh-420px)] min-h-[320px] max-h-[640px]"
         />
       </section>

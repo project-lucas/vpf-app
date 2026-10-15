@@ -117,6 +117,10 @@ export default async function TodayPage({
           body: fromJarvis
             ? draft!.body
             : `Salut ${r.firstName} ! J'aimerais qu'on prenne 20 minutes en visio cette semaine pour faire le point ensemble, sur ce qui va et ce qui coince. Quel créneau t'arrangerait ?`,
+          checkinBody:
+            fromJarvis && draft!.alt_body
+              ? draft!.alt_body
+              : `Salut ${r.firstName}, on a remarqué que c'était plus calme ces dernières semaines. Qu'est-ce qui se passe de ton côté ? Dis-nous, on peut adapter ton programme si besoin.`,
           reason: fromJarvis ? draft!.reason : null,
           fromJarvis,
         };
@@ -129,10 +133,11 @@ export default async function TodayPage({
           key: p.key,
           kind: p.kind,
           sessionName: p.sessionName,
-          pole: p.kind === "add" ? p.pole : null,
-          weekdays: p.kind === "add" ? p.weekdays : [],
-          sessionId: p.kind === "add" ? p.sessionId : null,
-          assignmentIds: p.kind === "pause" ? p.assignmentIds : [],
+          pole: p.kind === "pause" ? null : p.pole,
+          weekdays: p.kind === "pause" ? [] : p.weekdays,
+          sessionId: p.kind === "pause" ? null : p.sessionId,
+          assignmentIds: p.kind === "add" ? [] : p.assignmentIds,
+          pausedNames: p.kind === "replace" ? p.pausedNames : [],
           reason: p.reason,
         })),
     })),
